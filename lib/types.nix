@@ -101,7 +101,9 @@ let
       {
         freeformType = lib.types.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
-        imports = [ (lib.mkAliasOptionModule [ "_" ] [ "provides" ]) ];
+        imports =
+          [ (lib.mkAliasOptionModule [ "_" ] [ "provides" ]) ]
+          ++ (cnf.aspectModules or [ ]);
 
         options =
           {

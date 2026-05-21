@@ -45,4 +45,7 @@ in
 
   # canTake introspection
   can-take = import ./can-take.nix { inherit lib aspects; };
+
+  # Pipeline extensions via cnf.aspectModules
+  extensions = import ./extensions.nix { inherit lib; };
 }
