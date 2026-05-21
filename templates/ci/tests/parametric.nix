@@ -1,7 +1,9 @@
-# Test: parametric (function) aspects — submodule functions and curried providers.
+# Test: module functions vs guard functions.
+# Module functions ({ config, ... }:) are evaluated by the submodule.
+# Guard functions ({ host, ... }:) are wrapped via functionTo for pipeline resolution.
 { lib, mkDefaultEval }:
 {
-  test-submodule-function-aspect =
+  test-module-function-aspect =
     let
       eval = mkDefaultEval [
         {
@@ -18,7 +20,30 @@
       expected = "myAspect";
     };
 
-  test-parametric-provider =
+  test-module-function-with-config =
+    let
+      eval = mkDefaultEval [
+        {
+          config.aspects.myAspect =
+            { config, ... }:
+            {
+              classOne.setting = config.name;
+            };
+        }
+      ];
+      classEval = lib.evalModules {
+        modules = [
+          { options.setting = lib.mkOption { type = lib.types.str; }; }
+          eval.config.aspects.myAspect.classOne
+        ];
+      };
+    in
+    {
+      expr = classEval.config.setting;
+      expected = "myAspect";
+    };
+
+  test-guard-function-is-callable =
     let
       eval = mkDefaultEval [
         {
@@ -42,7 +67,7 @@
       };
     };
 
-  test-parametric-provider-callable =
+  test-guard-function-result-has-aspect-structure =
     let
       eval = mkDefaultEval [
         {
@@ -56,7 +81,7 @@
       result = eval.config.aspects.parent.provides.greeter { who = "world"; };
     in
     {
-      # functionTo(aspectSubmodule) wrapping gives the result aspect structure
+      # functionTo(aspectSubmodule) wrapping gives the result full aspect structure
       expr = {
         hasIncludes = result ? includes;
         hasClassOne = result ? classOne;

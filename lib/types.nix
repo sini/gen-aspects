@@ -1,8 +1,9 @@
 # gen-aspects type system.
 #
 # Palmer et al. (2024) "Intensional Functions" §3: one type, dispatch in merge.
-# aspectType dispatches by value shape — attrsets to aspectSubmodule, functions
-# to functionTo, primitives pass through.
+# aspectType dispatches by value shape — attrsets and module functions to
+# aspectSubmodule, guard functions to functionTo (deferred for pipeline resolution),
+# primitives pass through.
 #
 # Class content uses explicit deferredModule options (from cnf.classes).
 # The module system's own option/freeform separation routes class keys cleanly —
@@ -11,16 +12,23 @@
 # Lorenzen et al. (2025) "First-Order Laziness" §2.4: class content is a lazy
 # constructor (deferredModule) — inspectable before forcing, evaluated only when
 # the consuming NixOS/homeManager evaluation imports it.
+#
+# Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
+# (Reynolds 1972 defunctionalization). The pipeline resolves them when context
+# is available — they are NOT evaluated by the type system.
 { lib }:
 let
   identity = import ./identity.nix { inherit lib; };
+  canTake = import ./can-take.nix { inherit lib; };
 
-  isSubmoduleFn =
-    v:
-    let
-      args = builtins.functionArgs v;
-    in
-    args ? lib || args ? config || args ? options || args ? aspect;
+  # Module functions take lib/config/options — evaluated by the submodule.
+  # Guard functions take other args (host/user/etc.) — wrapped for later.
+  isModuleFn = canTake.upTo {
+    lib = true;
+    config = true;
+    options = true;
+    aspect = true;
+  };
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   aspectType =
@@ -49,9 +57,10 @@ let
           in
           if builtins.isAttrs v && (v.__isWrappedFn or false) then
             v
-          else if builtins.isFunction v && isSubmoduleFn v then
+          else if builtins.isFunction v && isModuleFn v then
             (aspectSubmodule cnf).merge loc defs
           else if builtins.isFunction v then
+            # Guard function — wrap for pipeline resolution (Reynolds defunctionalization)
             (lib.types.functionTo (aspectSubmodule cnf)).merge (loc ++ [ "<function body>" ]) defs
             // { __isWrappedFn = true; }
           else if builtins.isAttrs v then
@@ -156,5 +165,5 @@ let
 
 in
 {
-  inherit aspectType aspectSubmodule aspectsType;
+  inherit aspectType aspectSubmodule aspectsType isModuleFn canTake;
 }

@@ -42,4 +42,7 @@ in
 
   # Identity
   identity = import ./identity.nix { inherit lib aspects mkDefaultEval; };
+
+  # canTake introspection
+  can-take = import ./can-take.nix { inherit lib aspects; };
 }
