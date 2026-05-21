@@ -1,0 +1,85 @@
+# Test: freeform key dispatch — primitives pass through, nested aspects get identity,
+# registered classes get deferredModule.
+{ lib, mkDefaultEval }:
+{
+  test-primitive-string-passthrough =
+    let
+      eval = mkDefaultEval [
+        { config.aspects.foo.tag = "production"; }
+      ];
+    in
+    {
+      # Unregistered freeform key with string value → primitive passthrough
+      expr = eval.config.aspects.foo.tag;
+      expected = "production";
+    };
+
+  test-primitive-list-passthrough =
+    let
+      eval = mkDefaultEval [
+        { config.aspects.foo.tags = [ "web" "prod" ]; }
+      ];
+    in
+    {
+      expr = eval.config.aspects.foo.tags;
+      expected = [ "web" "prod" ];
+    };
+
+  test-deep-nesting-identity =
+    let
+      eval = mkDefaultEval [
+        { config.aspects.infra.networking.dns.classOne = { }; }
+      ];
+    in
+    {
+      expr = {
+        infraName = eval.config.aspects.infra.name;
+        netName = eval.config.aspects.infra.networking.name;
+        dnsName = eval.config.aspects.infra.networking.dns.name;
+      };
+      expected = {
+        infraName = "infra";
+        netName = "networking";
+        dnsName = "dns";
+      };
+    };
+
+  test-deep-nesting-class-clean =
+    let
+      eval = mkDefaultEval [
+        { config.aspects.infra.networking.dns.classOne.nameservers = [ "1.1.1.1" ]; }
+      ];
+      classEval = lib.evalModules {
+        modules = [
+          {
+            options.nameservers = lib.mkOption { type = lib.types.listOf lib.types.str; };
+          }
+          eval.config.aspects.infra.networking.dns.classOne
+        ];
+      };
+    in
+    {
+      # Class content clean at 3 levels deep — no structural keys
+      expr = classEval.config.nameservers;
+      expected = [ "1.1.1.1" ];
+    };
+
+  test-meta-provenance-on-nested =
+    let
+      eval = mkDefaultEval [
+        { config.aspects.parent.child.classOne = { }; }
+      ];
+    in
+    {
+      expr = {
+        parentHasLoc = eval.config.aspects.parent.meta ? loc;
+        childHasLoc = eval.config.aspects.parent.child.meta ? loc;
+        childHasFile = eval.config.aspects.parent.child.meta ? file;
+      };
+      expected = {
+        parentHasLoc = true;
+        childHasLoc = true;
+        childHasFile = true;
+      };
+    };
+}

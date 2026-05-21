@@ -51,4 +51,10 @@ in
 
   # Guard function identity and provenance
   guard-identity = import ./guard-identity.nix { inherit lib aspects mkDefaultEval; };
+
+  # Multi-definition merging
+  multi-def = import ./multi-def.nix { inherit lib mkDefaultEval; };
+
+  # Freeform dispatch: primitives, nesting, provenance
+  freeform-dispatch = import ./freeform-dispatch.nix { inherit lib mkDefaultEval; };
 }
