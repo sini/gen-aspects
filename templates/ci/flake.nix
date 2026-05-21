@@ -8,10 +8,7 @@
     { target, nixpkgs, ... }:
     let
       lib = nixpkgs.lib;
-      aspects = import "${target}/lib" {
-        inherit lib;
-        schemaLib = import "${target.inputs.den-schema}/nix/lib" { inherit lib; };
-      };
+      aspects = import "${target}/lib" { inherit lib; };
       tests = import ./tests { inherit lib aspects; };
     in
     {

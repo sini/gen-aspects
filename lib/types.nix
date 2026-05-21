@@ -16,9 +16,8 @@
 # Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
 # (Reynolds 1972 defunctionalization). The pipeline resolves them when context
 # is available — they are NOT evaluated by the type system.
-{ lib, schemaLib }:
+{ lib }:
 let
-  inherit (schemaLib._internal) mkMethodsModule;
   identity = import ./identity.nix { inherit lib; };
   canTake = import ./can-take.nix { inherit lib; };
 
@@ -37,42 +36,28 @@ let
   mkIsModuleFn = cnf: canTake.upTo (cnf.moduleArgs or defaultModuleArgs);
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
-  # cnf.wrapMerge: optional hook for pipeline-specific merge wrapping (e.g., den's
-  # mergeWithAspectMeta for __functor rescue and provides forwarding).
   aspectType =
     cnf:
     let
       isModuleFn = mkIsModuleFn cnf;
-      baseMerge =
+    in
+    lib.types.mkOptionType {
+      name = "aspect";
+      check = _: true;
+      merge =
         loc: defs:
-        let
-          # Palmer §5.1: inject ℓ (program point) for tracing/diagramming/visibility.
-          # loc = option path, file = definition source, defs = all contributing definitions.
-          injectMeta =
-            result:
-            result
-            // {
-              meta = (result.meta or { }) // {
-                loc = loc;
-                file = (lib.last defs).file or "<unknown>";
-                definitionCount = builtins.length defs;
-              };
-            };
-        in
         if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
             lib.mkMerge (map (d: d.value) defs)
           else
-            injectMeta (
-              (aspectSubmodule cnf).merge loc (
-                map (
-                  d:
-                  if builtins.isFunction d.value then
-                    d // { value = { includes = [ d.value ]; }; }
-                  else
-                    d
-                ) defs
-              )
+            (aspectSubmodule cnf).merge loc (
+              map (
+                d:
+                if builtins.isFunction d.value then
+                  d // { value = { includes = [ d.value ]; }; }
+                else
+                  d
+              ) defs
             )
         else
           let
@@ -81,9 +66,10 @@ let
           if builtins.isAttrs v && (v.__isWrappedFn or false) then
             v
           else if builtins.isFunction v && isModuleFn v then
-            injectMeta ((aspectSubmodule cnf).merge loc defs)
+            (aspectSubmodule cnf).merge loc defs
           else if builtins.isFunction v then
             # Guard function — wrap for pipeline resolution (Reynolds defunctionalization).
+            # Palmer §5.1: name + meta from loc for tracing/diagramming.
             (lib.types.functionTo (aspectSubmodule cnf)).merge (loc ++ [ "<function body>" ]) defs
             // {
               __isWrappedFn = true;
@@ -94,24 +80,19 @@ let
               };
             }
           else if builtins.isAttrs v then
-            injectMeta ((aspectSubmodule cnf).merge loc defs)
+            (aspectSubmodule cnf).merge loc defs
           else
             (lib.last defs).value;
-      merge = if cnf ? wrapMerge then cnf.wrapMerge baseMerge else baseMerge;
-    in
-    lib.types.mkOptionType {
-      name = "aspect";
-      check = _: true;
-      inherit merge;
     };
 
   # Recursion-safe binding: either doesn't force subtypes during construction.
   aspectOrFn = cnf: lib.types.either (aspectType cnf) (aspectSubmodule cnf);
 
   # Aspect entry submodule.
-  # Structural options (name, includes, meta, provides) give each aspect identity.
+  # Structural options (name, includes, meta) give each aspect identity.
   # Explicit deferredModule options per registered class keep class content clean.
   # Freeform keys that aren't classes or structural become nested aspects.
+  # cnf.aspectModules extends with pipeline-specific options (excludes, policies, etc.)
   aspectSubmodule =
     cnf:
     let
@@ -127,12 +108,9 @@ let
     lib.types.submodule (
       { name, config, ... }:
       {
-        freeformType = lib.types.lazyAttrsOf (cnf.freeformElemType or (aspectType cnf));
+        freeformType = lib.types.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
-        imports =
-          (cnf.aspectModules or [ ])
-          ++ lib.optional ((cnf.aspectMethods or { }) != { })
-            (mkMethodsModule "aspect" cnf.aspectMethods);
+        imports = cnf.aspectModules or [ ];
 
         options =
           {
@@ -179,12 +157,12 @@ let
     lib.types.submodule (
       { config, ... }:
       {
-        freeformType = lib.types.lazyAttrsOf (cnf.freeformElemType or (aspectType cnf));
+        freeformType = lib.types.lazyAttrsOf (aspectType cnf);
         config._module.args.aspects = config;
       }
     );
 
 in
 {
-  inherit aspectType aspectSubmodule aspectsType mkIsModuleFn canTake;
+  inherit aspectType aspectSubmodule aspectsType aspectOrFn mkIsModuleFn canTake;
 }

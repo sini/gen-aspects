@@ -64,22 +64,20 @@
       expected = [ "1.1.1.1" ];
     };
 
-  test-meta-provenance-on-nested =
+  test-meta-is-freeform =
     let
       eval = mkDefaultEval [
-        { config.aspects.parent.child.classOne = { }; }
+        {
+          config.aspects.parent = {
+            meta.custom = "hello";
+            classOne = { };
+          };
+        }
       ];
     in
     {
-      expr = {
-        parentHasLoc = eval.config.aspects.parent.meta ? loc;
-        childHasLoc = eval.config.aspects.parent.child.meta ? loc;
-        childHasFile = eval.config.aspects.parent.child.meta ? file;
-      };
-      expected = {
-        parentHasLoc = true;
-        childHasLoc = true;
-        childHasFile = true;
-      };
+      # meta is a freeform submodule — user fields preserved
+      expr = eval.config.aspects.parent.meta.custom;
+      expected = "hello";
     };
 }

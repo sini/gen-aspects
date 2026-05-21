@@ -34,7 +34,7 @@ in
   # Includes and diamond dedup
   includes = import ./includes.nix { inherit lib mkDefaultEval; };
 
-  # Parametric aspects (function defs)
+  # Module functions vs guard functions
   parametric = import ./parametric.nix { inherit lib mkDefaultEval; };
 
   # Identity
@@ -45,9 +45,6 @@ in
 
   # Pipeline extensions via cnf.aspectModules
   extensions = import ./extensions.nix { inherit lib aspects; };
-
-  # den-schema methods on aspects
-  methods = import ./methods.nix { inherit lib aspects; };
 
   # Guard function identity and provenance
   guard-identity = import ./guard-identity.nix { inherit lib aspects mkDefaultEval; };

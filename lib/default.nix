@@ -1,13 +1,9 @@
-{ lib, schemaLib }:
+{ lib }:
 let
-  types = import ./types.nix { inherit lib schemaLib; };
+  types = import ./types.nix { inherit lib; };
   identity = import ./identity.nix { inherit lib; };
 in
 {
-  inherit (types) aspectType aspectSubmodule aspectsType mkIsModuleFn canTake;
+  inherit (types) aspectType aspectSubmodule aspectsType aspectOrFn mkIsModuleFn canTake;
   inherit (identity) aspectPath pathKey key isMeaningfulName;
-
-  # Re-export den-schema utilities for consumers building aspect methods/validators
-  inherit (schemaLib) schemaFn mkSchemaOption;
-  inherit (schemaLib._internal) mkMethodsModule;
 }
