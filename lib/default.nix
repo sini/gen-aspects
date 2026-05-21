@@ -4,6 +4,6 @@ let
   identity = import ./identity.nix { inherit lib; };
 in
 {
-  inherit (types) aspectType aspectSubmodule aspectsType isModuleFn canTake;
+  inherit (types) aspectType aspectSubmodule aspectsType mkIsModuleFn canTake;
   inherit (identity) aspectPath pathKey key isMeaningfulName;
 }

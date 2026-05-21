@@ -21,18 +21,26 @@ let
   identity = import ./identity.nix { inherit lib; };
   canTake = import ./can-take.nix { inherit lib; };
 
-  # Module functions take lib/config/options — evaluated by the submodule.
-  # Guard functions take other args (host/user/etc.) — wrapped for later.
-  isModuleFn = canTake.upTo {
+  # Module functions take known module args — evaluated by the submodule.
+  # Guard functions take context args (host/user/etc.) — wrapped for later.
+  # The set of known module args is configurable via cnf.moduleArgs.
+  # Default includes standard NixOS args + aspect (provided by gen-aspects).
+  defaultModuleArgs = {
     lib = true;
     config = true;
     options = true;
+    pkgs = true;
+    modulesPath = true;
     aspect = true;
   };
+  mkIsModuleFn = cnf: canTake.upTo (cnf.moduleArgs or defaultModuleArgs);
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   aspectType =
     cnf:
+    let
+      isModuleFn = mkIsModuleFn cnf;
+    in
     lib.types.mkOptionType {
       name = "aspect";
       check = _: true;
@@ -165,5 +173,5 @@ let
 
 in
 {
-  inherit aspectType aspectSubmodule aspectsType isModuleFn canTake;
+  inherit aspectType aspectSubmodule aspectsType mkIsModuleFn canTake;
 }

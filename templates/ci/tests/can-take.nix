@@ -1,7 +1,9 @@
 # Test: canTake introspection for module vs guard function detection.
 { lib, aspects }:
 let
-  inherit (aspects) canTake isModuleFn;
+  inherit (aspects) canTake mkIsModuleFn;
+  # Use default module args for tests
+  isModuleFn = mkIsModuleFn { };
 in
 {
   test-module-fn-config =
@@ -22,15 +24,21 @@ in
       expected = true;
     };
 
+  test-module-fn-pkgs =
+    {
+      expr = isModuleFn ({ pkgs, ... }: { });
+      expected = true;
+    };
+
+  test-module-fn-aspect =
+    {
+      expr = isModuleFn ({ aspect, ... }: { });
+      expected = true;
+    };
+
   test-guard-fn-host =
     {
       expr = isModuleFn ({ host, ... }: { });
-      expected = false;
-    };
-
-  test-guard-fn-pkgs =
-    {
-      expr = isModuleFn ({ pkgs, ... }: { });
       expected = false;
     };
 
@@ -52,5 +60,12 @@ in
     {
       expr = isModuleFn ({ who }: { });
       expected = false;
+    };
+
+  test-custom-module-args =
+    {
+      # Custom module args via cnf.moduleArgs
+      expr = (mkIsModuleFn { moduleArgs = { foo = true; }; }) ({ foo, ... }: { });
+      expected = true;
     };
 }
