@@ -16,8 +16,9 @@
 # Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
 # (Reynolds 1972 defunctionalization). The pipeline resolves them when context
 # is available — they are NOT evaluated by the type system.
-{ lib }:
+{ lib, schemaLib }:
 let
+  inherit (schemaLib._internal) mkMethodsModule;
   identity = import ./identity.nix { inherit lib; };
   canTake = import ./can-take.nix { inherit lib; };
 
@@ -103,7 +104,9 @@ let
         config._module.args.aspect = config;
         imports =
           [ (lib.mkAliasOptionModule [ "_" ] [ "provides" ]) ]
-          ++ (cnf.aspectModules or [ ]);
+          ++ (cnf.aspectModules or [ ])
+          ++ lib.optional ((cnf.aspectMethods or { }) != { })
+            (mkMethodsModule "aspect" cnf.aspectMethods);
 
         options =
           {

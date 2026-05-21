@@ -1,8 +1,7 @@
 # Test: pipeline-provided aspect extensions via cnf.aspectModules.
 # Den uses this to add excludes, policies, and other pipeline options.
-{ lib }:
+{ lib, aspects }:
 let
-  aspects = import ../../../lib { inherit lib; };
   inherit (aspects) aspectsType;
 
   mkEval =

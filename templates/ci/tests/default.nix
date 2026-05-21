@@ -47,5 +47,8 @@ in
   can-take = import ./can-take.nix { inherit lib aspects; };
 
   # Pipeline extensions via cnf.aspectModules
-  extensions = import ./extensions.nix { inherit lib; };
+  extensions = import ./extensions.nix { inherit lib aspects; };
+
+  # den-schema methods on aspects
+  methods = import ./methods.nix { inherit lib aspects; };
 }
