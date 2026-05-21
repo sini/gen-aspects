@@ -37,15 +37,13 @@ let
   mkIsModuleFn = cnf: canTake.upTo (cnf.moduleArgs or defaultModuleArgs);
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
+  # cnf.wrapMerge: optional hook for pipeline-specific merge wrapping (e.g., den's
+  # mergeWithAspectMeta for __functor rescue and provides forwarding).
   aspectType =
     cnf:
     let
       isModuleFn = mkIsModuleFn cnf;
-    in
-    lib.types.mkOptionType {
-      name = "aspect";
-      check = _: true;
-      merge =
+      baseMerge =
         loc: defs:
         let
           # Palmer §5.1: inject ℓ (program point) for tracing/diagramming/visibility.
@@ -99,6 +97,12 @@ let
             injectMeta ((aspectSubmodule cnf).merge loc defs)
           else
             (lib.last defs).value;
+      merge = if cnf ? wrapMerge then cnf.wrapMerge baseMerge else baseMerge;
+    in
+    lib.types.mkOptionType {
+      name = "aspect";
+      check = _: true;
+      inherit merge;
     };
 
   # Recursion-safe binding: either doesn't force subtypes during construction.
@@ -123,7 +127,7 @@ let
     lib.types.submodule (
       { name, config, ... }:
       {
-        freeformType = lib.types.lazyAttrsOf (aspectType cnf);
+        freeformType = lib.types.lazyAttrsOf (cnf.freeformElemType or (aspectType cnf));
         config._module.args.aspect = config;
         imports =
           (cnf.aspectModules or [ ])
@@ -175,7 +179,7 @@ let
     lib.types.submodule (
       { config, ... }:
       {
-        freeformType = lib.types.lazyAttrsOf (aspectType cnf);
+        freeformType = lib.types.lazyAttrsOf (cnf.freeformElemType or (aspectType cnf));
         config._module.args.aspects = config;
       }
     );
