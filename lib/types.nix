@@ -47,18 +47,34 @@ let
       check = _: true;
       merge =
         loc: defs:
+        let
+          # Palmer §5.1: inject ℓ (program point) for tracing/diagramming/visibility.
+          # loc = option path, file = definition source, defs = all contributing definitions.
+          injectMeta =
+            result:
+            result
+            // {
+              meta = (result.meta or { }) // {
+                loc = loc;
+                file = (lib.last defs).file or "<unknown>";
+                definitionCount = builtins.length defs;
+              };
+            };
+        in
         if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
             lib.mkMerge (map (d: d.value) defs)
           else
-            (aspectSubmodule cnf).merge loc (
-              map (
-                d:
-                if builtins.isFunction d.value then
-                  d // { value = { includes = [ d.value ]; }; }
-                else
-                  d
-              ) defs
+            injectMeta (
+              (aspectSubmodule cnf).merge loc (
+                map (
+                  d:
+                  if builtins.isFunction d.value then
+                    d // { value = { includes = [ d.value ]; }; }
+                  else
+                    d
+                ) defs
+              )
             )
         else
           let
@@ -67,13 +83,20 @@ let
           if builtins.isAttrs v && (v.__isWrappedFn or false) then
             v
           else if builtins.isFunction v && isModuleFn v then
-            (aspectSubmodule cnf).merge loc defs
+            injectMeta ((aspectSubmodule cnf).merge loc defs)
           else if builtins.isFunction v then
-            # Guard function — wrap for pipeline resolution (Reynolds defunctionalization)
+            # Guard function — wrap for pipeline resolution (Reynolds defunctionalization).
             (lib.types.functionTo (aspectSubmodule cnf)).merge (loc ++ [ "<function body>" ]) defs
-            // { __isWrappedFn = true; }
+            // {
+              __isWrappedFn = true;
+              name = lib.last loc;
+              meta = {
+                loc = loc;
+                file = (builtins.head defs).file or "<unknown>";
+              };
+            }
           else if builtins.isAttrs v then
-            (aspectSubmodule cnf).merge loc defs
+            injectMeta ((aspectSubmodule cnf).merge loc defs)
           else
             (lib.last defs).value;
     };

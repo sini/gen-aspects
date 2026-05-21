@@ -48,4 +48,7 @@ in
 
   # den-schema methods on aspects
   methods = import ./methods.nix { inherit lib aspects; };
+
+  # Guard function identity and provenance
+  guard-identity = import ./guard-identity.nix { inherit lib aspects mkDefaultEval; };
 }
