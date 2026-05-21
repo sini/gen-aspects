@@ -34,9 +34,6 @@ in
   # Includes and diamond dedup
   includes = import ./includes.nix { inherit lib mkDefaultEval; };
 
-  # Provides namespace
-  provides = import ./provides.nix { inherit lib mkDefaultEval; };
-
   # Parametric aspects (function defs)
   parametric = import ./parametric.nix { inherit lib mkDefaultEval; };
 

@@ -22,17 +22,6 @@
       expected = "networking";
     };
 
-  test-provides-aspect-key =
-    let
-      eval = mkDefaultEval [
-        { config.aspects.infra.provides.dns.classOne = { }; }
-      ];
-    in
-    {
-      expr = eval.config.aspects.infra.provides.dns.key;
-      expected = "infra/dns";
-    };
-
   test-meaningful-name-check =
     {
       expr = {

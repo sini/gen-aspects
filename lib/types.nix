@@ -103,8 +103,7 @@ let
         freeformType = lib.types.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
         imports =
-          [ (lib.mkAliasOptionModule [ "_" ] [ "provides" ]) ]
-          ++ (cnf.aspectModules or [ ])
+          (cnf.aspectModules or [ ])
           ++ lib.optional ((cnf.aspectMethods or { }) != { })
             (mkMethodsModule "aspect" cnf.aspectMethods);
 
@@ -134,10 +133,6 @@ let
               default = { };
               type = lib.types.submodule {
                 freeformType = lib.types.lazyAttrsOf lib.types.raw;
-                options.aspect-chain = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = cnf.aspectChain or [ ];
-                };
               };
             };
 
@@ -145,20 +140,6 @@ let
               description = "Aspects to include";
               type = lib.types.listOf (aspectOrFn cnf);
               default = [ ];
-            };
-
-            provides = lib.mkOption {
-              description = "Named sub-aspects";
-              default = { };
-              type = lib.types.submodule (
-                { config, ... }:
-                {
-                  freeformType = lib.types.lazyAttrsOf (
-                    aspectOrFn (cnf // { aspectChain = (cnf.aspectChain or [ ]) ++ [ name ]; })
-                  );
-                  config._module.args.aspects = config;
-                }
-              );
             };
           }
           // classOptions;
