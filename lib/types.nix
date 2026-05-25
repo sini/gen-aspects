@@ -138,6 +138,7 @@ let
               default = { };
               type = lib.types.submodule {
                 freeformType = lib.types.lazyAttrsOf lib.types.raw;
+                imports = cnf.metaModules or [ ];
               };
             };
 

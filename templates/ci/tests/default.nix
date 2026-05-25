@@ -54,4 +54,7 @@ in
 
   # Freeform dispatch: primitives, nesting, provenance
   freeform-dispatch = import ./freeform-dispatch.nix { inherit lib mkDefaultEval; };
+
+  # Extensible meta submodule via cnf.metaModules
+  meta-modules = import ./meta-modules.nix { inherit lib aspects; };
 }

@@ -1,0 +1,110 @@
+# Test: extensible meta submodule via cnf.metaModules.
+# Consumers can declare typed meta options without hardcoding them in gen-aspects.
+{ lib, aspects }:
+let
+  inherit (aspects) aspectsType;
+
+  mkEval =
+    modules:
+    lib.evalModules {
+      modules = [
+        {
+          options.aspects = lib.mkOption {
+            type = aspectsType {
+              classes.classOne = { };
+              metaModules = [
+                {
+                  options.guard = lib.mkOption {
+                    description = "Guard predicate for conditional aspects";
+                    type = lib.types.bool;
+                    default = false;
+                  };
+                  options.priority = lib.mkOption {
+                    description = "Resolution priority";
+                    type = lib.types.int;
+                    default = 100;
+                  };
+                }
+              ];
+            };
+            default = { };
+          };
+        }
+      ] ++ modules;
+    };
+in
+{
+  test-meta-module-option-has-default =
+    let
+      eval = mkEval [ { config.aspects.foo.classOne = { }; } ];
+    in
+    {
+      expr = {
+        guard = eval.config.aspects.foo.meta.guard;
+        priority = eval.config.aspects.foo.meta.priority;
+      };
+      expected = {
+        guard = false;
+        priority = 100;
+      };
+    };
+
+  test-meta-module-option-settable =
+    let
+      eval = mkEval [
+        {
+          config.aspects.foo = {
+            meta.guard = true;
+            meta.priority = 50;
+            classOne.x = "hello";
+          };
+        }
+      ];
+    in
+    {
+      expr = {
+        guard = eval.config.aspects.foo.meta.guard;
+        priority = eval.config.aspects.foo.meta.priority;
+      };
+      expected = {
+        guard = true;
+        priority = 50;
+      };
+    };
+
+  test-meta-freeform-alongside-typed =
+    let
+      eval = mkEval [
+        {
+          config.aspects.foo = {
+            meta.guard = true;
+            meta.customField = "arbitrary";
+            classOne = { };
+          };
+        }
+      ];
+    in
+    {
+      expr = {
+        guard = eval.config.aspects.foo.meta.guard;
+        customField = eval.config.aspects.foo.meta.customField;
+      };
+      expected = {
+        guard = true;
+        customField = "arbitrary";
+      };
+    };
+
+  test-meta-module-on-nested-aspect =
+    let
+      eval = mkEval [
+        {
+          config.aspects.parent.child.meta.guard = true;
+        }
+      ];
+    in
+    {
+      expr = eval.config.aspects.parent.child.meta.guard;
+      expected = true;
+    };
+}
