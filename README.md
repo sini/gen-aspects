@@ -4,6 +4,26 @@ Aspect-oriented composition types for Nix module systems.
 
 A pure type library: no resolve, no pipeline, no framework. Provides the structural types for defining aspects — composable configuration units with identity, includes, and class-separated content. Consumers (like [den](https://github.com/vic/den)) bring their own evaluation pipeline.
 
+## Terminology
+
+| Term | Definition |
+|------|-----------|
+| Traits | The aspect type — one type, dispatch in merge (Palmer 2024) |
+| Classes | Output targets (NixOS, darwin, homeManager module systems) |
+| Collections | Named data aggregation (aspect keys matching registered collection names) |
+| Edges | Composition relationships: includes (forward I), neededBy (reverse I) |
+| Constraints | Pruning rules: meta.guard, meta.drop, meta.substitute |
+
+## Gen Ecosystem
+
+| Library | Role |
+|---------|------|
+| [gen](https://github.com/sini/gen) | Pure primitives (search, record, identity) |
+| [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs) |
+| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect types (traits, classification, dispatch) |
+| [gen-graph](https://github.com/sini/gen-graph) | Graph queries (combinators, traversals, fixpoint) |
+| [gen-scope](https://github.com/sini/gen-scope) | Scope graphs (construction, evaluation, resolution) |
+
 ## Usage
 
 ```nix
@@ -80,6 +100,11 @@ aspectsType {
       options.excludes = lib.mkOption { default = []; type = lib.types.listOf lib.types.str; };
     })
   ];
+
+  # List of NixOS modules imported into each aspect's `meta` submodule.
+  # Allows consumers to declare typed meta options (e.g., `meta.guard`,
+  # `meta.priority`) alongside the freeform attrs.
+  metaModules = [ ];
 }
 ```
 
@@ -87,7 +112,7 @@ aspectsType {
 
 - **`canTake`** — function arg introspection. `canTake.upTo params fn` checks if all required args of `fn` are satisfiable by `params`.
 - **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
-- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`** — identity computation from `meta` + `name`.
+- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`** — identity computation from `meta` + `name`. `key` handles both static aspects (via `meta.aspect-chain`) and wrapped guard functions (via `meta.loc`).
 
 ## Design
 
