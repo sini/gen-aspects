@@ -2,7 +2,7 @@
 
 Aspect-oriented composition types for Nix module systems.
 
-A pure type library: no resolve, no pipeline, no framework. Provides the structural types for defining aspects — composable configuration units with identity, includes, and class-separated content. Consumers (like [den](https://github.com/vic/den)) bring their own evaluation pipeline.
+A pure type library: no resolve, no pipeline, no framework. Provides the structural types for defining aspects — composable configuration units with identity, includes, and class-separated content. Consumers (like [den](https://github.com/sini/den)) bring their own evaluation pipeline.
 
 ## Terminology
 

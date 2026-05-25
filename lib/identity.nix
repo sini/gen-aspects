@@ -1,5 +1,4 @@
 # Aspect identity: path-based key for dedup.
-# Palmer §3 — fold-based collect uses these keys for diamond dedup.
 { lib }:
 let
   aspectPath = a: (a.meta.aspect-chain or [ ]) ++ [ (a.name or "<anon>") ];
