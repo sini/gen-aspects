@@ -1,4 +1,6 @@
 # Introspect whether a function's required args are satisfiable by a param set.
+# Used to distinguish module functions (take lib/config/options) from
+# guard functions (take context like host/user) at the type level.
 { lib }:
 let
   canTake =

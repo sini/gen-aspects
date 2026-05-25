@@ -15,7 +15,7 @@
 #
 # Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
 # (Reynolds 1972 defunctionalization). The pipeline resolves them when context
-# is available.
+# is available — they are NOT evaluated by the type system.
 { lib }:
 let
   identity = import ./identity.nix { inherit lib; };
