@@ -12,5 +12,10 @@ let
 in
 {
   inherit aspectPath pathKey isMeaningfulName;
-  key = a: pathKey (aspectPath a);
+  key =
+    a:
+    if a.__isWrappedFn or false then
+      pathKey (a.meta.loc or [ (a.name or "<anon>") ])
+    else
+      pathKey (aspectPath a);
 }

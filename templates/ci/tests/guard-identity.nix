@@ -38,6 +38,69 @@
       expected = "child";
     };
 
+  test-guard-identity-key =
+    let
+      eval = mkDefaultEval [
+        {
+          config.aspects.fonts =
+            { host }:
+            {
+              classOne.packages = [ "noto" ];
+            };
+        }
+      ];
+      wrapper = eval.config.aspects.fonts;
+    in
+    {
+      # identity.key on a wrapped guard returns loc-based key
+      expr = aspects.key wrapper;
+      expected = "aspects/fonts";
+    };
+
+  test-guard-nested-identity-key =
+    let
+      eval = mkDefaultEval [
+        {
+          config.aspects.theme.fonts =
+            { host }:
+            {
+              classOne.packages = [ "noto" ];
+            };
+        }
+      ];
+      wrapper = eval.config.aspects.theme.fonts;
+    in
+    {
+      # nested guard: loc includes full module path
+      expr = aspects.key wrapper;
+      expected = "aspects/theme/fonts";
+    };
+
+  test-static-vs-guard-keys-differ =
+    let
+      eval = mkDefaultEval [
+        {
+          config.aspects.staticOne.classOne.setting = "a";
+          config.aspects.guardOne =
+            { host }:
+            {
+              classOne.setting = "b";
+            };
+        }
+      ];
+    in
+    {
+      # static uses aspectPath, guard uses loc — both produce stable strings
+      expr = {
+        static = aspects.key eval.config.aspects.staticOne;
+        guard = aspects.key eval.config.aspects.guardOne;
+      };
+      expected = {
+        static = "staticOne";
+        guard = "aspects/guardOne";
+      };
+    };
+
   test-guard-has-functionArgs =
     let
       eval = mkDefaultEval [
