@@ -1,17 +1,56 @@
 {
   inputs = {
-    target.url = "github:sini/gen-aspects";
+    gen-aspects.url = "github:sini/gen-aspects";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nix-unit.url = "github:nix-community/nix-unit";
+    nix-unit.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
-    { target, nixpkgs, ... }:
+    {
+      gen-aspects,
+      nixpkgs,
+      nix-unit,
+      ...
+    }:
     let
-      lib = nixpkgs.lib;
-      aspects = import "${target}/lib" { inherit lib; };
+      inherit (nixpkgs) lib;
+      aspects = import "${gen-aspects}/lib" { inherit lib; };
+      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
       tests = import ./tests { inherit lib aspects; };
     in
     {
       inherit tests;
+      checks = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          assertTests = lib.mapAttrsToList (
+            suite: subtests:
+            lib.mapAttrsToList (
+              name: t:
+              if t.expr == t.expected then true
+              else throw "FAIL ${suite}.${name}: got ${builtins.toJSON t.expr}, expected ${builtins.toJSON t.expected}"
+            ) subtests
+          ) tests;
+        in
+        {
+          default = pkgs.runCommand "gen-aspects-tests" { } ''
+            echo "${toString (builtins.length (lib.flatten assertTests))} tests passed"
+            touch $out
+          '';
+        }
+      );
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [ nix-unit.packages.${system}.default ];
+          };
+        }
+      );
     };
 }
