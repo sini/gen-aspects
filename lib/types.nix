@@ -1,16 +1,21 @@
 # gen-aspects type system.
 #
-# Palmer et al. (2024) "Intensional Functions" S3: one type, dispatch in merge.
-# aspectType dispatches by value shape -- attrsets and module functions to
+# Palmer et al. (2024) "Intensional Functions" §3: one type, dispatch in merge.
+# aspectType dispatches by value shape — attrsets and module functions to
 # aspectSubmodule, guard functions to functionTo (deferred for pipeline resolution),
 # primitives pass through.
 #
 # Class content uses explicit deferredModule options (from cnf.classes).
-# The module system's own option/freeform separation routes class keys cleanly --
+# The module system's own option/freeform separation routes class keys cleanly —
 # classes must be registered.
 #
-# Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping.
-# The pipeline resolves them when context is available.
+# Lorenzen et al. (2025) "First-Order Laziness" §2.4: class content is a lazy
+# constructor (deferredModule) — inspectable before forcing, evaluated only when
+# the consuming NixOS/homeManager evaluation imports it.
+#
+# Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
+# (Reynolds 1972 defunctionalization). The pipeline resolves them when context
+# is available.
 { lib }:
 let
   identity = import ./identity.nix { inherit lib; };
@@ -63,8 +68,8 @@ let
           else if builtins.isFunction v && isModuleFn v then
             (aspectSubmodule cnf).merge loc defs
           else if builtins.isFunction v then
-            # Guard function — wrap for pipeline resolution.
-            # name + meta from loc for tracing/diagramming.
+            # Guard function — wrap for pipeline resolution (Reynolds defunctionalization).
+            # Palmer §5.1: name + meta from loc for tracing/diagramming.
             (lib.types.functionTo (aspectSubmodule cnf)).merge (loc ++ [ "<function body>" ]) defs
             // {
               __isWrappedFn = true;
