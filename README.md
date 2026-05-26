@@ -16,7 +16,6 @@ A pure type library: no resolve, no pipeline, no framework. Provides the structu
   - [Utilities](#utilities)
 - [Testing](#testing)
 - [Theoretical Foundations](#theoretical-foundations)
-- [License](#license)
 
 ## Terminology
 
@@ -154,7 +153,3 @@ nix shell nixpkgs#nix-unit -c nix-unit \
 **Lorenzen et al. (2025) "First-Order Laziness"** — Class content as `deferredModule` is a lazy constructor: inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3).
 
 **Reynolds (1972) "Definitional Interpreters"** — Guard functions wrapped via `functionTo` are Reynolds defunctionalization: closures become tagged data (`__isWrappedFn`, `__functionArgs`) with explicit dispatch (`__functor`).
-
-## License
-
-MIT
