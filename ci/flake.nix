@@ -55,7 +55,7 @@
         in
         {
           treefmt = {
-            projectRootFile = "flake.nix";
+            projectRootFile = ".git/config";
             flakeCheck = false;
             enableDefaultExcludes = true;
             settings.on-unmatched = "info";
