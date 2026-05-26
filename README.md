@@ -135,7 +135,7 @@ aspectsType {
 ```bash
 nix shell nixpkgs#nix-unit -c nix-unit \
   --override-input target . \
-  --flake './templates/ci#.tests'
+  --flake './ci#.tests'
 ```
 
 40 tests covering: class content cleanliness, nested aspect identity, includes/fixpoint, module vs guard function dispatch, multi-def merging, primitive passthrough, deep nesting, extensions, and `canTake` introspection.
