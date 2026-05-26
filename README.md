@@ -18,11 +18,14 @@ A pure type library: no resolve, no pipeline, no framework. Provides the structu
 
 | Library | Role |
 |---------|------|
-| [gen-algebra](https://github.com/sini/gen-algebra) | Pure algebraic primitives (search, record, identity) |
+| [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (search, record, identity) |
 | [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs) |
 | [gen-aspects](https://github.com/sini/gen-aspects) | Aspect types (traits, classification, dispatch) |
 | [gen-graph](https://github.com/sini/gen-graph) | Graph queries (combinators, traversals, fixpoint) |
 | [gen-scope](https://github.com/sini/gen-scope) | Scope graphs (construction, evaluation, resolution) |
+| [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
+| [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject args into NixOS modules) |
+| [gen-derive](https://github.com/sini/gen-derive) | Rule dispatch (stratified phases, fixpoint, conflict resolution) |
 
 ## Usage
 
@@ -118,9 +121,9 @@ aspectsType {
 
 Based on three papers:
 
-**Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§3). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable diamond dedup in fold-based collect (§3, Theorem 5.12).
+**Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable diamond dedup in fold-based collect (§5.3, Lemma 5.12).
 
-**Lorenzen et al. (2025) "First-Order Laziness"** — Class content as `deferredModule` is a lazy constructor: inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§2.4).
+**Lorenzen et al. (2025) "First-Order Laziness"** — Class content as `deferredModule` is a lazy constructor: inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3).
 
 **Reynolds (1972) "Definitional Interpreters"** — Guard functions wrapped via `functionTo` are Reynolds defunctionalization: closures become tagged data (`__isWrappedFn`, `__functionArgs`) with explicit dispatch (`__functor`).
 

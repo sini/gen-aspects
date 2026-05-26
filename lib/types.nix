@@ -1,6 +1,6 @@
 # gen-aspects type system.
 #
-# Palmer et al. (2024) "Intensional Functions" §3: one type, dispatch in merge.
+# Palmer et al. (2024) "Intensional Functions" §2: one type, dispatch in merge.
 # aspectType dispatches by value shape — attrsets and module functions to
 # aspectSubmodule, guard functions to functionTo (deferred for pipeline resolution),
 # primitives pass through.
@@ -9,7 +9,7 @@
 # The module system's own option/freeform separation routes class keys cleanly —
 # classes must be registered.
 #
-# Lorenzen et al. (2025) "First-Order Laziness" §2.4: class content is a lazy
+# Lorenzen et al. (2025) "First-Order Laziness" §1-2.3: class content is a lazy
 # constructor (deferredModule) — inspectable before forcing, evaluated only when
 # the consuming NixOS/homeManager evaluation imports it.
 #
