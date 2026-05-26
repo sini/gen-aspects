@@ -48,7 +48,10 @@
         in
         {
           default = pkgs.mkShell {
-            packages = [ nix-unit.packages.${system}.default ];
+            packages = [
+              nix-unit.packages.${system}.default
+              pkgs.just
+            ];
           };
         }
       );
