@@ -3,7 +3,7 @@
 {
   test-class-is-deferred-module =
     let
-      eval = mkDefaultEval [{ config.aspects.myAspect.classOne.setting = "hello"; }];
+      eval = mkDefaultEval [ { config.aspects.myAspect.classOne.setting = "hello"; } ];
       classVal = eval.config.aspects.myAspect.classOne;
     in
     {
@@ -23,7 +23,7 @@
 
   test-class-content-evaluates-cleanly =
     let
-      eval = mkDefaultEval [{ config.aspects.myAspect.classOne.setting = "hello"; }];
+      eval = mkDefaultEval [ { config.aspects.myAspect.classOne.setting = "hello"; } ];
       classEval = lib.evalModules {
         modules = [
           { options.setting = lib.mkOption { type = lib.types.str; }; }
@@ -51,7 +51,10 @@
     in
     {
       expr = lib.sort (a: b: a < b) classEval.config.names;
-      expected = [ "alice" "bob" ];
+      expected = [
+        "alice"
+        "bob"
+      ];
     };
 
   test-function-def-class-content =

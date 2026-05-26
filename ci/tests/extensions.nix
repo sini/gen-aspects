@@ -30,13 +30,14 @@ let
             default = { };
           };
         }
-      ] ++ modules;
+      ]
+      ++ modules;
     };
 in
 {
   test-extension-option-has-default =
     let
-      eval = mkEval [{ config.aspects.foo.classOne = { }; }];
+      eval = mkEval [ { config.aspects.foo.classOne = { }; } ];
     in
     {
       expr = {
@@ -54,7 +55,10 @@ in
       eval = mkEval [
         {
           config.aspects.foo = {
-            excludes = [ "bar" "baz" ];
+            excludes = [
+              "bar"
+              "baz"
+            ];
             priority = 50;
             classOne.x = "hello";
           };
@@ -67,7 +71,10 @@ in
         priority = eval.config.aspects.foo.priority;
       };
       expected = {
-        excludes = [ "bar" "baz" ];
+        excludes = [
+          "bar"
+          "baz"
+        ];
         priority = 50;
       };
     };

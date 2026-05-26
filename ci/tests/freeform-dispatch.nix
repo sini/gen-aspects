@@ -17,12 +17,20 @@
   test-primitive-list-passthrough =
     let
       eval = mkDefaultEval [
-        { config.aspects.foo.tags = [ "web" "prod" ]; }
+        {
+          config.aspects.foo.tags = [
+            "web"
+            "prod"
+          ];
+        }
       ];
     in
     {
       expr = eval.config.aspects.foo.tags;
-      expected = [ "web" "prod" ];
+      expected = [
+        "web"
+        "prod"
+      ];
     };
 
   test-deep-nesting-identity =

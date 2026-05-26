@@ -1,6 +1,10 @@
 # Test: guard functions (wrapped via functionTo) preserve positional identity
 # from loc for diamond dedup. Palmer §5.1: ℓ (program point) from merge location.
-{ lib, aspects, mkDefaultEval }:
+{
+  lib,
+  aspects,
+  mkDefaultEval,
+}:
 {
   test-guard-function-has-name =
     let

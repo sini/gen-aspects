@@ -13,7 +13,8 @@ let
             default = { };
           };
         }
-      ] ++ modules;
+      ]
+      ++ modules;
     };
 
   # Standard class set for most tests
@@ -22,7 +23,12 @@ let
     classTwo = { };
   };
 
-  mkDefaultEval = modules: mkEval { classes = defaultClasses; inherit modules; };
+  mkDefaultEval =
+    modules:
+    mkEval {
+      classes = defaultClasses;
+      inherit modules;
+    };
 in
 {
   # Class content is clean — no structural keys

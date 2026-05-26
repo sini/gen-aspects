@@ -30,7 +30,8 @@ let
             default = { };
           };
         }
-      ] ++ modules;
+      ]
+      ++ modules;
     };
 in
 {

@@ -16,7 +16,10 @@
     in
     {
       expr = lib.sort (a: b: a < b) classEval.config.names;
-      expected = [ "alice" "bob" ];
+      expected = [
+        "alice"
+        "bob"
+      ];
     };
 
   test-attrset-multi-def-preserves-both-keys =
