@@ -1,0 +1,43 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1779508470,
+        "narHash": "sha256-Ap9KJX+5xHIn3bPIpfNgT6MEXdAECECwo4/rmlQD74M=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "29916453413845e54a65b8a1cf996842300cd299",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "target": "target"
+      }
+    },
+    "target": {
+      "locked": {
+        "lastModified": 1779680979,
+        "narHash": "sha256-dQLFl+DsH7TBVndJx1Cdjgwpuns6gesTzktQBMr0naU=",
+        "owner": "sini",
+        "repo": "gen-aspects",
+        "rev": "fbf88dd82a3a1610c8045ad0e249bee8e8d275df",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-aspects",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

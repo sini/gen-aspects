@@ -4,6 +4,20 @@ Aspect-oriented composition types for Nix module systems.
 
 A pure type library: no resolve, no pipeline, no framework. Provides the structural types for defining aspects — composable configuration units with identity, includes, and class-separated content. Consumers (like [den](https://github.com/sini/den)) bring their own evaluation pipeline.
 
+## Table of Contents
+
+- [Terminology](#terminology)
+- [Gen Ecosystem](#gen-ecosystem)
+- [Usage](#usage)
+- [Core Concepts](#core-concepts)
+- [API](#api)
+  - [Types](#types)
+  - [Configuration](#configuration-cnf)
+  - [Utilities](#utilities)
+- [Testing](#testing)
+- [Theoretical Foundations](#theoretical-foundations)
+- [License](#license)
+
 ## Terminology
 
 | Term | Definition |
@@ -117,16 +131,6 @@ aspectsType {
 - **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
 - **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`** — identity computation from `meta` + `name`. `key` handles both static aspects (via `meta.aspect-chain`) and wrapped guard functions (via `meta.loc`).
 
-## Design
-
-Based on three papers:
-
-**Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable diamond dedup in fold-based collect (§5.3, Lemma 5.12).
-
-**Lorenzen et al. (2025) "First-Order Laziness"** — Class content as `deferredModule` is a lazy constructor: inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3).
-
-**Reynolds (1972) "Definitional Interpreters"** — Guard functions wrapped via `functionTo` are Reynolds defunctionalization: closures become tagged data (`__isWrappedFn`, `__functionArgs`) with explicit dispatch (`__functor`).
-
 ## Testing
 
 ```bash
@@ -136,3 +140,21 @@ nix shell nixpkgs#nix-unit -c nix-unit \
 ```
 
 40 tests covering: class content cleanliness, nested aspect identity, includes/fixpoint, module vs guard function dispatch, multi-def merging, primitive passthrough, deep nesting, extensions, and `canTake` introspection.
+
+## Theoretical Foundations
+
+| Paper | Relationship | Mechanism |
+|-------|-------------|-----------|
+| Palmer et al. (2024) "Intensional Functions" | Implements | Flat dispatch via one type in merge §2, identity §2.2, fold-based dedup |
+| Lorenzen et al. (2025) "First-Order Laziness" | Implements | `deferredModule` as lazy constructor §1-2.3 |
+| Reynolds (1972) "Definitional Interpreters" | Implements | Guard function defunctionalization — closures become tagged data |
+
+**Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable diamond dedup in fold-based collect (§5.3, Lemma 5.12).
+
+**Lorenzen et al. (2025) "First-Order Laziness"** — Class content as `deferredModule` is a lazy constructor: inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3).
+
+**Reynolds (1972) "Definitional Interpreters"** — Guard functions wrapped via `functionTo` are Reynolds defunctionalization: closures become tagged data (`__isWrappedFn`, `__functionArgs`) with explicit dispatch (`__functor`).
+
+## License
+
+MIT
