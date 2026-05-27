@@ -6,8 +6,7 @@ let
   pathKey = path: lib.concatStringsSep "/" path;
 
   isMeaningfulName =
-    name:
-    name != "<anon>" && name != "<function body>" && !(lib.hasPrefix "[definition " name);
+    name: name != "<anon>" && name != "<function body>" && !(lib.hasPrefix "[definition " name);
 in
 {
   inherit aspectPath pathKey isMeaningfulName;

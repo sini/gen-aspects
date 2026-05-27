@@ -54,7 +54,12 @@ let
               map (
                 d:
                 if builtins.isFunction d.value then
-                  d // { value = { includes = [ d.value ]; }; }
+                  d
+                  // {
+                    value = {
+                      includes = [ d.value ];
+                    };
+                  }
                 else
                   d
               ) defs
@@ -112,43 +117,42 @@ let
         config._module.args.aspect = config;
         imports = cnf.aspectModules or [ ];
 
-        options =
-          {
-            name = lib.mkOption {
-              description = "Aspect name";
-              default = name;
-              type = lib.types.str;
-            };
+        options = {
+          name = lib.mkOption {
+            description = "Aspect name";
+            default = name;
+            type = lib.types.str;
+          };
 
-            description = lib.mkOption {
-              description = "Aspect description";
-              default = "Aspect ${name}";
-              type = lib.types.str;
-            };
+          description = lib.mkOption {
+            description = "Aspect description";
+            default = "Aspect ${name}";
+            type = lib.types.str;
+          };
 
-            key = lib.mkOption {
-              internal = true;
-              readOnly = true;
-              type = lib.types.str;
-              default = identity.key config;
-            };
+          key = lib.mkOption {
+            internal = true;
+            readOnly = true;
+            type = lib.types.str;
+            default = identity.key config;
+          };
 
-            meta = lib.mkOption {
-              description = "Aspect metadata";
-              default = { };
-              type = lib.types.submodule {
-                freeformType = lib.types.lazyAttrsOf lib.types.raw;
-                imports = cnf.metaModules or [ ];
-              };
+          meta = lib.mkOption {
+            description = "Aspect metadata";
+            default = { };
+            type = lib.types.submodule {
+              freeformType = lib.types.lazyAttrsOf lib.types.raw;
+              imports = cnf.metaModules or [ ];
             };
+          };
 
-            includes = lib.mkOption {
-              description = "Aspects to include";
-              type = lib.types.listOf (aspectOrFn cnf);
-              default = [ ];
-            };
-          }
-          // classOptions;
+          includes = lib.mkOption {
+            description = "Aspects to include";
+            type = lib.types.listOf (aspectOrFn cnf);
+            default = [ ];
+          };
+        }
+        // classOptions;
       }
     );
 
@@ -165,5 +169,12 @@ let
 
 in
 {
-  inherit aspectType aspectSubmodule aspectsType aspectOrFn mkIsModuleFn canTake;
+  inherit
+    aspectType
+    aspectSubmodule
+    aspectsType
+    aspectOrFn
+    mkIsModuleFn
+    canTake
+    ;
 }
