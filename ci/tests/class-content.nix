@@ -1,9 +1,9 @@
 # Test: registered class content is clean (deferredModule, no structural keys).
-{ lib, mkDefaultEval }:
+{ lib, mkSchemaEval }:
 {
   test-class-is-deferred-module =
     let
-      eval = mkDefaultEval [ { config.aspects.myAspect.classOne.setting = "hello"; } ];
+      eval = mkSchemaEval { modules = [ { config.aspects.myAspect.classOne.setting = "hello"; } ]; };
       classVal = eval.config.aspects.myAspect.classOne;
     in
     {
@@ -23,7 +23,7 @@
 
   test-class-content-evaluates-cleanly =
     let
-      eval = mkDefaultEval [ { config.aspects.myAspect.classOne.setting = "hello"; } ];
+      eval = mkSchemaEval { modules = [ { config.aspects.myAspect.classOne.setting = "hello"; } ]; };
       classEval = lib.evalModules {
         modules = [
           { options.setting = lib.mkOption { type = lib.types.str; }; }
@@ -38,10 +38,12 @@
 
   test-multi-def-class-merges =
     let
-      eval = mkDefaultEval [
-        { config.aspects.myAspect.classOne.names = [ "alice" ]; }
-        { config.aspects.myAspect.classOne.names = [ "bob" ]; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.myAspect.classOne.names = [ "alice" ]; }
+          { config.aspects.myAspect.classOne.names = [ "bob" ]; }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           { options.names = lib.mkOption { type = lib.types.listOf lib.types.str; }; }
@@ -59,15 +61,17 @@
 
   test-function-def-class-content =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.myAspect =
-            { aspect, ... }:
-            {
-              classOne.greeting = "hello ${aspect.name}";
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.myAspect =
+              { aspect, ... }:
+              {
+                classOne.greeting = "hello ${aspect.name}";
+              };
+          }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           { options.greeting = lib.mkOption { type = lib.types.str; }; }

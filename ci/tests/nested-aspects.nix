@@ -1,11 +1,13 @@
 # Test: unregistered freeform keys become nested aspects with full identity.
-{ lib, mkDefaultEval }:
+{ lib, mkSchemaEval }:
 {
   test-nested-has-structural-keys =
     let
-      eval = mkDefaultEval [
-        { config.aspects.parent.child.classOne.foo = "bar"; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.parent.child.classOne.foo = "bar"; }
+        ];
+      };
       child = eval.config.aspects.parent.child;
     in
     {
@@ -25,9 +27,11 @@
 
   test-nested-class-content-is-clean =
     let
-      eval = mkDefaultEval [
-        { config.aspects.parent.child.classOne.foo = "bar"; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.parent.child.classOne.foo = "bar"; }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           { options.foo = lib.mkOption { type = lib.types.str; }; }

@@ -1,12 +1,14 @@
 # Test: freeform key dispatch — primitives pass through, nested aspects get identity,
 # registered classes get deferredModule.
-{ lib, mkDefaultEval }:
+{ lib, mkSchemaEval }:
 {
   test-primitive-string-passthrough =
     let
-      eval = mkDefaultEval [
-        { config.aspects.foo.tag = "production"; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.foo.tag = "production"; }
+        ];
+      };
     in
     {
       # Unregistered freeform key with string value → primitive passthrough
@@ -16,14 +18,16 @@
 
   test-primitive-list-passthrough =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.foo.tags = [
-            "web"
-            "prod"
-          ];
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.foo.tags = [
+              "web"
+              "prod"
+            ];
+          }
+        ];
+      };
     in
     {
       expr = eval.config.aspects.foo.tags;
@@ -35,9 +39,11 @@
 
   test-deep-nesting-identity =
     let
-      eval = mkDefaultEval [
-        { config.aspects.infra.networking.dns.classOne = { }; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.infra.networking.dns.classOne = { }; }
+        ];
+      };
     in
     {
       expr = {
@@ -54,9 +60,11 @@
 
   test-deep-nesting-class-clean =
     let
-      eval = mkDefaultEval [
-        { config.aspects.infra.networking.dns.classOne.nameservers = [ "1.1.1.1" ]; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.infra.networking.dns.classOne.nameservers = [ "1.1.1.1" ]; }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           {
@@ -74,14 +82,16 @@
 
   test-meta-is-freeform =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.parent = {
-            meta.custom = "hello";
-            classOne = { };
-          };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.parent = {
+              meta.custom = "hello";
+              classOne = { };
+            };
+          }
+        ];
+      };
     in
     {
       # meta is a freeform submodule — user fields preserved

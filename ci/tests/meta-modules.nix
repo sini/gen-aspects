@@ -1,37 +1,26 @@
 # Test: extensible meta submodule via cnf.metaModules.
 # Consumers can declare typed meta options without hardcoding them in gen-aspects.
-{ lib, aspects }:
+{ lib, mkSchemaEval }:
 let
-  inherit (aspects) aspectsType;
-
   mkEval =
     modules:
-    lib.evalModules {
-      modules = [
+    mkSchemaEval {
+      classes.classOne = { };
+      metaModules = [
         {
-          options.aspects = lib.mkOption {
-            type = aspectsType {
-              classes.classOne = { };
-              metaModules = [
-                {
-                  options.guard = lib.mkOption {
-                    description = "Guard predicate for conditional aspects";
-                    type = lib.types.bool;
-                    default = false;
-                  };
-                  options.priority = lib.mkOption {
-                    description = "Resolution priority";
-                    type = lib.types.int;
-                    default = 100;
-                  };
-                }
-              ];
-            };
-            default = { };
+          options.guard = lib.mkOption {
+            description = "Guard predicate for conditional aspects";
+            type = lib.types.bool;
+            default = false;
+          };
+          options.priority = lib.mkOption {
+            description = "Resolution priority";
+            type = lib.types.int;
+            default = 100;
           };
         }
-      ]
-      ++ modules;
+      ];
+      inherit modules;
     };
 in
 {

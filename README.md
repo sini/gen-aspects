@@ -16,6 +16,9 @@ A pure type library: no resolve, no pipeline, no framework. Provides the structu
   - [Types](#types)
   - [Configuration](#configuration-cnf)
   - [Utilities](#utilities)
+- [Schema Integration](#schema-integration)
+- [Flat Registry](#flat-registry)
+- [Demo](#demo)
 - [Testing](#testing)
 - [Theoretical Foundations](#theoretical-foundations)
 
@@ -35,7 +38,7 @@ A pure type library: no resolve, no pipeline, no framework. Provides the structu
 |---------|------|
 | [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (search, record, identity) |
 | [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs) |
-| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect types (traits, classification, dispatch) |
+| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect types (traits, classification, dispatch, schema integration) |
 | [gen-graph](https://github.com/sini/gen-graph) | Graph queries (combinators, traversals, fixpoint) |
 | [gen-scope](https://github.com/sini/gen-scope) | Scope graphs (construction, evaluation, resolution) |
 | [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
@@ -132,6 +135,83 @@ aspectsType {
 - **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
 - **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`** — identity computation from `meta` + `name`. `key` handles both static aspects (via `meta.aspect-chain`) and wrapped guard functions (via `meta.loc`).
 
+## Schema Integration
+
+gen-aspects depends on [gen-schema](https://github.com/sini/gen-schema) and provides `mkAspectSchema` to bridge aspect types with gen-schema's kind-level infrastructure (collections, introspection, schema extensions).
+
+```nix
+aspects = import gen-aspects { inherit lib; };
+schema = aspects.mkAspectSchema cnf;
+```
+
+`mkAspectSchema cnf` returns:
+
+| Field | Description |
+|-------|-------------|
+| `schemaOption` | gen-schema option wrapping `aspectType` as the custom entry type |
+| `mkAspectOption { providerPrefix? }` | Declares `options.aspects` with `lazyAttrsOf aspectType` |
+| `mkAspectModule { providerPrefix? }` | NixOS module declaring both `options.aspects` and `options.schema`, lazily threading schema-declared options into every aspect instance |
+| `mkNamespaceType { }` | Submodule type for namespace composition — includes `schema`, `classes`, and freeform aspect content |
+| `aspectType` | Re-exported aspect type |
+| `identity` | Bundled identity functions (`aspectPath`, `pathKey`, `key`, `isMeaningfulName`) |
+| `canTake` | Re-exported function arg introspection |
+| `mkIsModuleFn` | Re-exported module function predicate |
+
+### Schema extensions
+
+Schema-declared options propagate to aspect instances via `mkAspectModule`. When a schema kind entry declares options (e.g., `priority`, `tier`), those options become available on every aspect:
+
+```nix
+{ config, ... }:
+{
+  imports = [ (schema.mkAspectModule { }) ];
+
+  # Collections and extensions declared on the schema kind
+  schema.aspect = {
+    settings = { };  # collection
+    tags = { };      # collection
+    # options.priority = lib.mkOption { ... };  # schema extension
+  };
+
+  # Every aspect now has access to schema-declared options
+  aspects.networking.priority = 10;
+}
+```
+
+`mkAspectModule` lazily injects `config.schema.aspect.__defsModule` into each aspect's `aspectModules`, so schema extensions are available without manual wiring.
+
+## Flat Registry
+
+The `flatten` function walks the recursive aspect tree and produces a flat attrset keyed by path identity:
+
+```nix
+aspects = import gen-aspects { inherit lib; };
+
+flat = aspects.flatten eval.config.aspects;
+# => { "networking" = ...; "networking/firewall" = ...; }
+```
+
+Entries are the aspect values unchanged — `flatten` does not inject any fields. Parent relationships are implicit in the path key: `"networking/firewall"` → parent is `"networking"`. Guard functions (`__isWrappedFn`) are included as entries but not recursed into.
+
+Detection is structural rather than relying on a hardcoded key list:
+
+- Nested aspects are attrsets with a `name` field (from `aspectSubmodule`)
+- Class content (`deferredModule`) lacks `name` and is skipped
+- Primitives (strings, lists) are skipped
+
+The flat registry enables gen-graph and gen-select queries over the aspect tree. Parent accessors derive from the key:
+
+```nix
+parentOf = id:
+  let parts = lib.splitString "/" id;
+  in if builtins.length parts <= 1 then null
+  else lib.concatStringsSep "/" (lib.init parts);
+```
+
+## Demo
+
+The `examples/demo/` directory exercises all 8 gen libraries together: gen-algebra, gen-schema, gen-aspects, gen-graph, gen-scope, gen-select, gen-bind, and gen-derive. It demonstrates entities, aspects, namespaces, policies, queries, bindings, composition, and settings in a single integrated flake.
+
 ## Testing
 
 ```bash
@@ -140,7 +220,7 @@ nix shell nixpkgs#nix-unit -c nix-unit \
   --flake './ci#.tests'
 ```
 
-40 tests covering: class content cleanliness, nested aspect identity, includes/fixpoint, module vs guard function dispatch, multi-def merging, primitive passthrough, deep nesting, extensions, and `canTake` introspection.
+67 tests covering: class content cleanliness, nested aspect identity, includes/fixpoint, module vs guard function dispatch, multi-def merging, primitive passthrough, deep nesting, extensions, `canTake` introspection, schema integration, and flat registry.
 
 ## Theoretical Foundations
 

@@ -1,37 +1,26 @@
 # Test: pipeline-provided aspect extensions via cnf.aspectModules.
 # Den uses this to add excludes, policies, and other pipeline options.
-{ lib, aspects }:
+{ lib, mkSchemaEval }:
 let
-  inherit (aspects) aspectsType;
-
   mkEval =
     modules:
-    lib.evalModules {
-      modules = [
+    mkSchemaEval {
+      classes.classOne = { };
+      aspectModules = [
         {
-          options.aspects = lib.mkOption {
-            type = aspectsType {
-              classes.classOne = { };
-              aspectModules = [
-                {
-                  options.excludes = lib.mkOption {
-                    description = "Aspects to exclude from resolution";
-                    type = lib.types.listOf lib.types.str;
-                    default = [ ];
-                  };
-                  options.priority = lib.mkOption {
-                    description = "Resolution priority";
-                    type = lib.types.int;
-                    default = 100;
-                  };
-                }
-              ];
-            };
-            default = { };
+          options.excludes = lib.mkOption {
+            description = "Aspects to exclude from resolution";
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          options.priority = lib.mkOption {
+            description = "Resolution priority";
+            type = lib.types.int;
+            default = 100;
           };
         }
-      ]
-      ++ modules;
+      ];
+      inherit modules;
     };
 in
 {

@@ -53,6 +53,22 @@
         "type": "github"
       }
     },
+    "gen-schema": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1779930223,
+        "narHash": "sha256-pQ2C79bZXpkxvU3pfrX/5DoVStF/lyxhQdEZ7wdlE5g=",
+        "owner": "sini",
+        "repo": "gen-schema",
+        "rev": "3421c97de4860da85a9eec4741bee9a2d2ac5748",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen-schema",
+        "type": "github"
+      }
+    },
     "nix-github-actions": {
       "inputs": {
         "nixpkgs": [
@@ -129,6 +145,7 @@
         "devshell": "devshell",
         "flake-parts": "flake-parts",
         "flake-root": "flake-root",
+        "gen-schema": "gen-schema",
         "nix-unit": "nix-unit",
         "nixpkgs": "nixpkgs",
         "treefmt-nix": "treefmt-nix_2"

@@ -1,12 +1,14 @@
 # Test: multi-definition merging behavior at the type level.
-{ lib, mkDefaultEval }:
+{ lib, mkSchemaEval }:
 {
   test-attrset-multi-def-lists-merge =
     let
-      eval = mkDefaultEval [
-        { config.aspects.foo.classOne.names = [ "alice" ]; }
-        { config.aspects.foo.classOne.names = [ "bob" ]; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.foo.classOne.names = [ "alice" ]; }
+          { config.aspects.foo.classOne.names = [ "bob" ]; }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           { options.names = lib.mkOption { type = lib.types.listOf lib.types.str; }; }
@@ -24,10 +26,12 @@
 
   test-attrset-multi-def-preserves-both-keys =
     let
-      eval = mkDefaultEval [
-        { config.aspects.foo.classOne.x = "from-a"; }
-        { config.aspects.foo.classOne.y = "from-b"; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.foo.classOne.x = "from-a"; }
+          { config.aspects.foo.classOne.y = "from-b"; }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           {
@@ -50,16 +54,18 @@
 
   test-mixed-attrset-and-module-fn-coerces-fn-to-include =
     let
-      eval = mkDefaultEval [
-        { config.aspects.foo.classOne.x = [ "static" ]; }
-        {
-          config.aspects.foo =
-            { aspect, ... }:
-            {
-              classOne.x = [ "from-fn" ];
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.foo.classOne.x = [ "static" ]; }
+          {
+            config.aspects.foo =
+              { aspect, ... }:
+              {
+                classOne.x = [ "from-fn" ];
+              };
+          }
+        ];
+      };
     in
     {
       # Mixed defs: function is coerced to { includes = [fn]; }

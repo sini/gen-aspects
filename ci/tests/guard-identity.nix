@@ -3,20 +3,22 @@
 {
   lib,
   aspects,
-  mkDefaultEval,
+  mkSchemaEval,
 }:
 {
   test-guard-function-has-name =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.fonts =
-            { host }:
-            {
-              classOne.packages = [ "noto" ];
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.fonts =
+              { host }:
+              {
+                classOne.packages = [ "noto" ];
+              };
+          }
+        ];
+      };
     in
     {
       # Guard function wrapper preserves name from loc
@@ -26,15 +28,17 @@
 
   test-guard-function-name-matches-key =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.parent.child =
-            { host }:
-            {
-              classOne.setting = "value";
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.parent.child =
+              { host }:
+              {
+                classOne.setting = "value";
+              };
+          }
+        ];
+      };
     in
     {
       # Nested guard function gets name from its position
@@ -44,15 +48,17 @@
 
   test-guard-identity-key =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.fonts =
-            { host }:
-            {
-              classOne.packages = [ "noto" ];
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.fonts =
+              { host }:
+              {
+                classOne.packages = [ "noto" ];
+              };
+          }
+        ];
+      };
       wrapper = eval.config.aspects.fonts;
     in
     {
@@ -63,15 +69,17 @@
 
   test-guard-nested-identity-key =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.theme.fonts =
-            { host }:
-            {
-              classOne.packages = [ "noto" ];
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.theme.fonts =
+              { host }:
+              {
+                classOne.packages = [ "noto" ];
+              };
+          }
+        ];
+      };
       wrapper = eval.config.aspects.theme.fonts;
     in
     {
@@ -82,16 +90,18 @@
 
   test-static-vs-guard-keys-differ =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.staticOne.classOne.setting = "a";
-          config.aspects.guardOne =
-            { host }:
-            {
-              classOne.setting = "b";
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.staticOne.classOne.setting = "a";
+            config.aspects.guardOne =
+              { host }:
+              {
+                classOne.setting = "b";
+              };
+          }
+        ];
+      };
     in
     {
       # static uses aspectPath, guard uses loc — both produce stable strings
@@ -107,15 +117,17 @@
 
   test-guard-has-functionArgs =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.fonts =
-            { host, user }:
-            {
-              classOne.packages = [ "noto" ];
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.fonts =
+              { host, user }:
+              {
+                classOne.packages = [ "noto" ];
+              };
+          }
+        ];
+      };
       wrapper = eval.config.aspects.fonts;
     in
     {

@@ -9,6 +9,10 @@
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
     devshell.url = "github:numtide/devshell";
     devshell.inputs.nixpkgs.follows = "nixpkgs";
+    gen-schema = {
+      url = "github:sini/gen-schema";
+      flake = false;
+    };
   };
 
   outputs =
@@ -20,7 +24,12 @@
     }:
     let
       inherit (nixpkgs) lib;
-      aspects = import ../lib { inherit lib; };
+      aspects = import ../lib {
+        inherit lib;
+        inputs = {
+          gen-schema = import inputs.gen-schema { inherit lib; };
+        };
+      };
       tests = import ./tests { inherit lib aspects; };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {

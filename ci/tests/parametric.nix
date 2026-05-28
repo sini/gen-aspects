@@ -1,19 +1,21 @@
 # Test: module functions vs guard functions.
 # Module functions ({ config, ... }:) are evaluated by the submodule.
 # Guard functions ({ host, ... }:) are wrapped via functionTo for pipeline resolution.
-{ lib, mkDefaultEval }:
+{ lib, mkSchemaEval }:
 {
   test-module-function-aspect =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.myAspect =
-            { aspect, ... }:
-            {
-              classOne.greeting = "hello ${aspect.name}";
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.myAspect =
+              { aspect, ... }:
+              {
+                classOne.greeting = "hello ${aspect.name}";
+              };
+          }
+        ];
+      };
     in
     {
       expr = eval.config.aspects.myAspect.name;
@@ -22,15 +24,17 @@
 
   test-module-function-with-config =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.myAspect =
-            { config, ... }:
-            {
-              classOne.setting = config.name;
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.myAspect =
+              { config, ... }:
+              {
+                classOne.setting = config.name;
+              };
+          }
+        ];
+      };
       classEval = lib.evalModules {
         modules = [
           { options.setting = lib.mkOption { type = lib.types.str; }; }
@@ -45,15 +49,17 @@
 
   test-guard-function-is-callable =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.parent.provides.greeter =
-            { who }:
-            {
-              classOne.message = "hello ${who}";
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.parent.provides.greeter =
+              { who }:
+              {
+                classOne.message = "hello ${who}";
+              };
+          }
+        ];
+      };
       provider = eval.config.aspects.parent.provides.greeter;
     in
     {
@@ -69,15 +75,17 @@
 
   test-guard-function-result-has-aspect-structure =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects.parent.provides.greeter =
-            { who }:
-            {
-              classOne.message = "hello ${who}";
-            };
-        }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.parent.provides.greeter =
+              { who }:
+              {
+                classOne.message = "hello ${who}";
+              };
+          }
+        ];
+      };
       result = eval.config.aspects.parent.provides.greeter { who = "world"; };
     in
     {

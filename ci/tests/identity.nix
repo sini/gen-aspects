@@ -2,12 +2,12 @@
 {
   lib,
   aspects,
-  mkDefaultEval,
+  mkSchemaEval,
 }:
 {
   test-root-aspect-key =
     let
-      eval = mkDefaultEval [ { config.aspects.networking.classOne = { }; } ];
+      eval = mkSchemaEval { modules = [ { config.aspects.networking.classOne = { }; } ]; };
     in
     {
       expr = eval.config.aspects.networking.key;
@@ -16,9 +16,11 @@
 
   test-nested-aspect-key =
     let
-      eval = mkDefaultEval [
-        { config.aspects.infra.networking.classOne = { }; }
-      ];
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.infra.networking.classOne = { }; }
+        ];
+      };
     in
     {
       # nested via freeform → aspectType → aspectSubmodule

@@ -1,22 +1,24 @@
 # Test: includes and sibling references via fixpoint.
-{ lib, mkDefaultEval }:
+{ lib, mkSchemaEval }:
 {
   test-include-sibling =
     let
-      eval = mkDefaultEval [
-        (
-          { config, ... }:
-          {
-            config.aspects = {
-              main = {
-                includes = [ config.aspects.helper ];
-                classOne.names = [ "from-main" ];
+      eval = mkSchemaEval {
+        modules = [
+          (
+            { config, ... }:
+            {
+              config.aspects = {
+                main = {
+                  includes = [ config.aspects.helper ];
+                  classOne.names = [ "from-main" ];
+                };
+                helper.classOne.names = [ "from-helper" ];
               };
-              helper.classOne.names = [ "from-helper" ];
-            };
-          }
-        )
-      ];
+            }
+          )
+        ];
+      };
       aspect = eval.config.aspects.main;
     in
     {
@@ -32,19 +34,22 @@
 
   test-fixpoint-aspects-reference =
     let
-      eval = mkDefaultEval [
-        {
-          config.aspects =
-            { aspects, ... }:
+      eval = mkSchemaEval {
+        modules = [
+          (
+            { config, ... }:
             {
-              a = {
-                includes = [ aspects.b ];
-                classOne.x = [ "from-a" ];
+              config.aspects = {
+                a = {
+                  includes = [ config.aspects.b ];
+                  classOne.x = [ "from-a" ];
+                };
+                b.classOne.x = [ "from-b" ];
               };
-              b.classOne.x = [ "from-b" ];
-            };
-        }
-      ];
+            }
+          )
+        ];
+      };
     in
     {
       expr = builtins.length eval.config.aspects.a.includes;
