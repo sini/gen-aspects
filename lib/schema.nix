@@ -32,7 +32,7 @@
             allModules = defsModules ++ lib.optional (kindModule != null) kindModule;
           in
           # Return a merged VALUE (not a type). This is what config.schema.aspect
-          # evaluates to. __functor makes it importable as a module (for _kindMeta).
+          # evaluates to. __functor makes it importable as a module.
           # __defsModule carries schema-declared options for mkAspectModule to inject.
           {
             __functor =
