@@ -3,6 +3,7 @@
     "devshell": {
       "inputs": {
         "nixpkgs": [
+          "gen",
           "nixpkgs"
         ]
       },
@@ -53,14 +54,39 @@
         "type": "github"
       }
     },
+    "gen": {
+      "inputs": {
+        "devshell": "devshell",
+        "flake-parts": "flake-parts",
+        "flake-root": "flake-root",
+        "import-tree": "import-tree",
+        "nix-unit": "nix-unit",
+        "nixpkgs": "nixpkgs",
+        "treefmt-nix": "treefmt-nix_2"
+      },
+      "locked": {
+        "lastModified": 1779943458,
+        "narHash": "sha256-GKnuuJS0HY6TQBlMddyqCnIi7usO1MnWt0qc8zFn+ME=",
+        "ref": "refs/heads/main",
+        "rev": "00898898edcd26cf77c0a8680b3282113cd560ed",
+        "revCount": 15,
+        "type": "git",
+        "url": "file:///home/sini/Documents/repos/gen"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "gen",
+        "type": "github"
+      }
+    },
     "gen-schema": {
       "flake": false,
       "locked": {
-        "lastModified": 1779930223,
-        "narHash": "sha256-pQ2C79bZXpkxvU3pfrX/5DoVStF/lyxhQdEZ7wdlE5g=",
+        "lastModified": 1779947831,
+        "narHash": "sha256-6CO4Lvo2870YtoZIjNkjkjq9dm0XQhqKu2mVj9pMOY0=",
         "owner": "sini",
         "repo": "gen-schema",
-        "rev": "3421c97de4860da85a9eec4741bee9a2d2ac5748",
+        "rev": "a6b29edd36c284da047e3338ba29d7d645bd60ce",
         "type": "github"
       },
       "original": {
@@ -69,9 +95,25 @@
         "type": "github"
       }
     },
+    "import-tree": {
+      "locked": {
+        "lastModified": 1749958812,
+        "narHash": "sha256-zdo2CwxdUK3FpQjLBjkJnXvl7OPoTpjdW5OvOzQffoQ=",
+        "owner": "sini",
+        "repo": "import-tree",
+        "rev": "6fcfa909614de6dd6c712db8229b8c0261791e39",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sini",
+        "repo": "import-tree",
+        "type": "github"
+      }
+    },
     "nix-github-actions": {
       "inputs": {
         "nixpkgs": [
+          "gen",
           "nix-unit",
           "nixpkgs"
         ]
@@ -94,6 +136,7 @@
       "inputs": {
         "nix-github-actions": "nix-github-actions",
         "nixpkgs": [
+          "gen",
           "nixpkgs"
         ],
         "treefmt-nix": "treefmt-nix"
@@ -140,20 +183,54 @@
         "type": "github"
       }
     },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1779560665,
+        "narHash": "sha256-NpH8iEQ5JHv/BtUuzTEXUMDxPLetCDzIv4OxL8H7Kps=",
+        "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.05pre1004030.64c08a7ca051/nixexprs.tar.xz?lastModified=1779560665&rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
+      }
+    },
     "root": {
       "inputs": {
-        "devshell": "devshell",
-        "flake-parts": "flake-parts",
-        "flake-root": "flake-root",
+        "devshell": [
+          "gen",
+          "devshell"
+        ],
+        "flake-parts": [
+          "gen",
+          "flake-parts"
+        ],
+        "flake-root": [
+          "gen",
+          "flake-root"
+        ],
+        "gen": "gen",
         "gen-schema": "gen-schema",
-        "nix-unit": "nix-unit",
-        "nixpkgs": "nixpkgs",
-        "treefmt-nix": "treefmt-nix_2"
+        "import-tree": [
+          "gen",
+          "import-tree"
+        ],
+        "nix-unit": [
+          "gen",
+          "nix-unit"
+        ],
+        "nixpkgs": "nixpkgs_2",
+        "treefmt-nix": [
+          "gen",
+          "treefmt-nix"
+        ]
       }
     },
     "treefmt-nix": {
       "inputs": {
         "nixpkgs": [
+          "gen",
           "nix-unit",
           "nixpkgs"
         ]
@@ -175,6 +252,7 @@
     "treefmt-nix_2": {
       "inputs": {
         "nixpkgs": [
+          "gen",
           "nixpkgs"
         ]
       },

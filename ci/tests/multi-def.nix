@@ -1,7 +1,7 @@
 # Test: multi-definition merging behavior at the type level.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 {
-  test-attrset-multi-def-lists-merge =
+  flake.tests.multi-def.test-attrset-multi-def-lists-merge =
     let
       eval = mkSchemaEval {
         modules = [
@@ -24,7 +24,7 @@
       ];
     };
 
-  test-attrset-multi-def-preserves-both-keys =
+  flake.tests.multi-def.test-attrset-multi-def-preserves-both-keys =
     let
       eval = mkSchemaEval {
         modules = [
@@ -52,7 +52,7 @@
       };
     };
 
-  test-mixed-attrset-and-module-fn-coerces-fn-to-include =
+  flake.tests.multi-def.test-mixed-attrset-and-module-fn-coerces-fn-to-include =
     let
       eval = mkSchemaEval {
         modules = [

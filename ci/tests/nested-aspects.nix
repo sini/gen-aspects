@@ -1,7 +1,7 @@
 # Test: unregistered freeform keys become nested aspects with full identity.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 {
-  test-nested-has-structural-keys =
+  flake.tests.nested-aspects.test-nested-has-structural-keys =
     let
       eval = mkSchemaEval {
         modules = [
@@ -25,7 +25,7 @@
       };
     };
 
-  test-nested-class-content-is-clean =
+  flake.tests.nested-aspects.test-nested-class-content-is-clean =
     let
       eval = mkSchemaEval {
         modules = [

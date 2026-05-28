@@ -3,6 +3,7 @@
   lib,
   mkSchemaEval,
   aspects,
+  ...
 }:
 let
   inherit (aspects) flatten;
@@ -71,7 +72,7 @@ let
   deepFlat = flatten deepEval.config.aspects;
 in
 {
-  test-top-level-keys = {
+  flake.tests.flat-registry.test-top-level-keys = {
     expr = lib.sort (a: b: a < b) (builtins.attrNames flat);
     expected = [
       "desktop"
@@ -80,38 +81,38 @@ in
     ];
   };
 
-  test-nested-parent-from-key = {
+  flake.tests.flat-registry.test-nested-parent-from-key = {
     expr = parentOf "networking/firewall";
     expected = "networking";
   };
 
-  test-top-level-parent-from-key = {
+  flake.tests.flat-registry.test-top-level-parent-from-key = {
     expr = parentOf "networking";
     expected = null;
   };
 
-  test-preserves-name = {
+  flake.tests.flat-registry.test-preserves-name = {
     expr = flat."networking".name;
     expected = "networking";
   };
 
-  test-no-parent-field-injected = {
+  flake.tests.flat-registry.test-no-parent-field-injected = {
     # flatten does NOT inject __parent — parent is implicit in key
     expr = flat."networking/firewall" ? __parent;
     expected = false;
   };
 
-  test-guard-function-appears = {
+  flake.tests.flat-registry.test-guard-function-appears = {
     expr = guardFlat ? "conditional";
     expected = true;
   };
 
-  test-guard-function-not-recursed = {
+  flake.tests.flat-registry.test-guard-function-not-recursed = {
     expr = builtins.filter (k: lib.hasPrefix "conditional/" k) (builtins.attrNames guardFlat);
     expected = [ ];
   };
 
-  test-deep-nesting = {
+  flake.tests.flat-registry.test-deep-nesting = {
     expr = lib.sort (a: b: a < b) (builtins.attrNames deepFlat);
     expected = [
       "infra"
@@ -120,7 +121,7 @@ in
     ];
   };
 
-  test-deep-parent-chain = {
+  flake.tests.flat-registry.test-deep-parent-chain = {
     expr = {
       infra = parentOf "infra";
       networking = parentOf "infra/networking";
@@ -133,7 +134,7 @@ in
     };
   };
 
-  test-class-keys-excluded = {
+  flake.tests.flat-registry.test-class-keys-excluded = {
     expr = builtins.any (k: k == "networking/nixos") (builtins.attrNames flat);
     expected = false;
   };

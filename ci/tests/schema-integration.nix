@@ -4,6 +4,7 @@
   lib,
   aspects,
   mkSchemaEval,
+  ...
 }:
 let
   eval = mkSchemaEval {
@@ -71,19 +72,19 @@ let
 in
 {
   # Introspection reports kind names
-  test-introspection-kind-names = {
+  flake.tests.schema-integration.test-introspection-kind-names = {
     expr = eval.config.schema._kindNames;
     expected = [ "aspect" ];
   };
 
   # Collection data is extracted onto schema kind
-  test-collection-tags = {
+  flake.tests.schema-integration.test-collection-tags = {
     expr = eval.config.schema.aspect.tags;
     expected = [ "infra" ];
   };
 
   # Collection settings merge as attrsets
-  test-collection-settings = {
+  flake.tests.schema-integration.test-collection-settings = {
     expr = eval.config.schema.aspect.settings;
     expected = {
       port = {
@@ -93,7 +94,7 @@ in
   };
 
   # Standalone aspects preserve class content (deferredModule with imports)
-  test-standalone-class-content = {
+  flake.tests.schema-integration.test-standalone-class-content = {
     expr =
       let
         classVal = classEval.config.aspects.myAspect.classOne;
@@ -109,13 +110,13 @@ in
   };
 
   # mkAspectSchema produces a valid schemaOption
-  test-schema-option-type = {
+  flake.tests.schema-integration.test-schema-option-type = {
     expr = eval.config.schema ? _kindNames;
     expected = true;
   };
 
   # mkAspectSchema re-exports identity functions
-  test-reexport-key = {
+  flake.tests.schema-integration.test-reexport-key = {
     expr =
       let
         schema = aspects.mkAspectSchema {
@@ -128,7 +129,7 @@ in
     expected = true;
   };
 
-  test-reexport-aspect-path = {
+  flake.tests.schema-integration.test-reexport-aspect-path = {
     expr =
       let
         schema = aspects.mkAspectSchema {
@@ -141,18 +142,18 @@ in
     expected = true;
   };
 
-  test-defsmodule-present = {
+  flake.tests.schema-integration.test-defsmodule-present = {
     expr = eval.config.schema.aspect ? __defsModule;
     expected = true;
   };
 
   # Schema extension fields are readable on actual aspect instances
-  test-schema-extension-on-instance = {
+  flake.tests.schema-integration.test-schema-extension-on-instance = {
     expr = eval.config.aspects.networking.priority;
     expected = 10;
   };
 
-  test-schema-extension-default-on-instance = {
+  flake.tests.schema-integration.test-schema-extension-default-on-instance = {
     expr = eval.config.aspects.desktop.priority;
     expected = 50;
   };

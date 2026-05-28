@@ -1,6 +1,6 @@
 # Test: pipeline-provided aspect extensions via cnf.aspectModules.
 # Den uses this to add excludes, policies, and other pipeline options.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 let
   mkEval =
     modules:
@@ -24,7 +24,7 @@ let
     };
 in
 {
-  test-extension-option-has-default =
+  flake.tests.extensions.test-extension-option-has-default =
     let
       eval = mkEval [ { config.aspects.foo.classOne = { }; } ];
     in
@@ -39,7 +39,7 @@ in
       };
     };
 
-  test-extension-option-settable =
+  flake.tests.extensions.test-extension-option-settable =
     let
       eval = mkEval [
         {
@@ -68,7 +68,7 @@ in
       };
     };
 
-  test-extension-on-nested-aspect =
+  flake.tests.extensions.test-extension-on-nested-aspect =
     let
       eval = mkEval [
         { config.aspects.parent.child.excludes = [ "something" ]; }
@@ -79,7 +79,7 @@ in
       expected = [ "something" ];
     };
 
-  test-extension-coexists-with-class-content =
+  flake.tests.extensions.test-extension-coexists-with-class-content =
     let
       eval = mkEval [
         {

@@ -1,6 +1,6 @@
 # Test: extensible meta submodule via cnf.metaModules.
 # Consumers can declare typed meta options without hardcoding them in gen-aspects.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 let
   mkEval =
     modules:
@@ -24,7 +24,7 @@ let
     };
 in
 {
-  test-meta-module-option-has-default =
+  flake.tests.meta-modules.test-meta-module-option-has-default =
     let
       eval = mkEval [ { config.aspects.foo.classOne = { }; } ];
     in
@@ -39,7 +39,7 @@ in
       };
     };
 
-  test-meta-module-option-settable =
+  flake.tests.meta-modules.test-meta-module-option-settable =
     let
       eval = mkEval [
         {
@@ -62,7 +62,7 @@ in
       };
     };
 
-  test-meta-freeform-alongside-typed =
+  flake.tests.meta-modules.test-meta-freeform-alongside-typed =
     let
       eval = mkEval [
         {
@@ -85,7 +85,7 @@ in
       };
     };
 
-  test-meta-module-on-nested-aspect =
+  flake.tests.meta-modules.test-meta-module-on-nested-aspect =
     let
       eval = mkEval [
         {

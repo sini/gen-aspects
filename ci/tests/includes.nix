@@ -1,7 +1,7 @@
 # Test: includes and sibling references via fixpoint.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 {
-  test-include-sibling =
+  flake.tests.includes.test-include-sibling =
     let
       eval = mkSchemaEval {
         modules = [
@@ -32,7 +32,7 @@
       };
     };
 
-  test-fixpoint-aspects-reference =
+  flake.tests.includes.test-fixpoint-aspects-reference =
     let
       eval = mkSchemaEval {
         modules = [

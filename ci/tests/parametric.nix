@@ -1,9 +1,9 @@
 # Test: module functions vs guard functions.
 # Module functions ({ config, ... }:) are evaluated by the submodule.
 # Guard functions ({ host, ... }:) are wrapped via functionTo for pipeline resolution.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 {
-  test-module-function-aspect =
+  flake.tests.parametric.test-module-function-aspect =
     let
       eval = mkSchemaEval {
         modules = [
@@ -22,7 +22,7 @@
       expected = "myAspect";
     };
 
-  test-module-function-with-config =
+  flake.tests.parametric.test-module-function-with-config =
     let
       eval = mkSchemaEval {
         modules = [
@@ -47,7 +47,7 @@
       expected = "myAspect";
     };
 
-  test-guard-function-is-callable =
+  flake.tests.parametric.test-guard-function-is-callable =
     let
       eval = mkSchemaEval {
         modules = [
@@ -73,7 +73,7 @@
       };
     };
 
-  test-guard-function-result-has-aspect-structure =
+  flake.tests.parametric.test-guard-function-result-has-aspect-structure =
     let
       eval = mkSchemaEval {
         modules = [

@@ -1,8 +1,8 @@
 # Test: freeform key dispatch — primitives pass through, nested aspects get identity,
 # registered classes get deferredModule.
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 {
-  test-primitive-string-passthrough =
+  flake.tests.freeform-dispatch.test-primitive-string-passthrough =
     let
       eval = mkSchemaEval {
         modules = [
@@ -16,7 +16,7 @@
       expected = "production";
     };
 
-  test-primitive-list-passthrough =
+  flake.tests.freeform-dispatch.test-primitive-list-passthrough =
     let
       eval = mkSchemaEval {
         modules = [
@@ -37,7 +37,7 @@
       ];
     };
 
-  test-deep-nesting-identity =
+  flake.tests.freeform-dispatch.test-deep-nesting-identity =
     let
       eval = mkSchemaEval {
         modules = [
@@ -58,7 +58,7 @@
       };
     };
 
-  test-deep-nesting-class-clean =
+  flake.tests.freeform-dispatch.test-deep-nesting-class-clean =
     let
       eval = mkSchemaEval {
         modules = [
@@ -80,7 +80,7 @@
       expected = [ "1.1.1.1" ];
     };
 
-  test-meta-is-freeform =
+  flake.tests.freeform-dispatch.test-meta-is-freeform =
     let
       eval = mkSchemaEval {
         modules = [

@@ -3,9 +3,10 @@
   lib,
   aspects,
   mkSchemaEval,
+  ...
 }:
 {
-  test-root-aspect-key =
+  flake.tests.identity.test-root-aspect-key =
     let
       eval = mkSchemaEval { modules = [ { config.aspects.networking.classOne = { }; } ]; };
     in
@@ -14,7 +15,7 @@
       expected = "networking";
     };
 
-  test-nested-aspect-key =
+  flake.tests.identity.test-nested-aspect-key =
     let
       eval = mkSchemaEval {
         modules = [
@@ -28,7 +29,7 @@
       expected = "networking";
     };
 
-  test-meaningful-name-check = {
+  flake.tests.identity.test-meaningful-name-check = {
     expr = {
       anon = aspects.isMeaningfulName "<anon>";
       fn = aspects.isMeaningfulName "<function body>";

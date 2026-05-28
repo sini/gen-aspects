@@ -1,7 +1,7 @@
 # Test: registered class content is clean (deferredModule, no structural keys).
-{ lib, mkSchemaEval }:
+{ lib, mkSchemaEval, ... }:
 {
-  test-class-is-deferred-module =
+  flake.tests.class-content.test-class-is-deferred-module =
     let
       eval = mkSchemaEval { modules = [ { config.aspects.myAspect.classOne.setting = "hello"; } ]; };
       classVal = eval.config.aspects.myAspect.classOne;
@@ -21,7 +21,7 @@
       };
     };
 
-  test-class-content-evaluates-cleanly =
+  flake.tests.class-content.test-class-content-evaluates-cleanly =
     let
       eval = mkSchemaEval { modules = [ { config.aspects.myAspect.classOne.setting = "hello"; } ]; };
       classEval = lib.evalModules {
@@ -36,7 +36,7 @@
       expected = "hello";
     };
 
-  test-multi-def-class-merges =
+  flake.tests.class-content.test-multi-def-class-merges =
     let
       eval = mkSchemaEval {
         modules = [
@@ -59,7 +59,7 @@
       ];
     };
 
-  test-function-def-class-content =
+  flake.tests.class-content.test-function-def-class-content =
     let
       eval = mkSchemaEval {
         modules = [

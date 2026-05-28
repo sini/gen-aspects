@@ -4,9 +4,10 @@
   lib,
   aspects,
   mkSchemaEval,
+  ...
 }:
 {
-  test-guard-function-has-name =
+  flake.tests.guard-identity.test-guard-function-has-name =
     let
       eval = mkSchemaEval {
         modules = [
@@ -26,7 +27,7 @@
       expected = "fonts";
     };
 
-  test-guard-function-name-matches-key =
+  flake.tests.guard-identity.test-guard-function-name-matches-key =
     let
       eval = mkSchemaEval {
         modules = [
@@ -46,7 +47,7 @@
       expected = "child";
     };
 
-  test-guard-identity-key =
+  flake.tests.guard-identity.test-guard-identity-key =
     let
       eval = mkSchemaEval {
         modules = [
@@ -67,7 +68,7 @@
       expected = "aspects/fonts";
     };
 
-  test-guard-nested-identity-key =
+  flake.tests.guard-identity.test-guard-nested-identity-key =
     let
       eval = mkSchemaEval {
         modules = [
@@ -88,7 +89,7 @@
       expected = "aspects/theme/fonts";
     };
 
-  test-static-vs-guard-keys-differ =
+  flake.tests.guard-identity.test-static-vs-guard-keys-differ =
     let
       eval = mkSchemaEval {
         modules = [
@@ -115,7 +116,7 @@
       };
     };
 
-  test-guard-has-functionArgs =
+  flake.tests.guard-identity.test-guard-has-functionArgs =
     let
       eval = mkSchemaEval {
         modules = [
