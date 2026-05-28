@@ -65,13 +65,12 @@
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1779943458,
-        "narHash": "sha256-GKnuuJS0HY6TQBlMddyqCnIi7usO1MnWt0qc8zFn+ME=",
-        "ref": "refs/heads/main",
-        "rev": "00898898edcd26cf77c0a8680b3282113cd560ed",
-        "revCount": 15,
-        "type": "git",
-        "url": "file:///home/sini/Documents/repos/gen"
+        "lastModified": 1779948937,
+        "narHash": "sha256-0Pk/TKVPpiWrBDDcBB7YqZ+cbzPbRTcIj5LAsFbAGlY=",
+        "owner": "sini",
+        "repo": "gen",
+        "rev": "87b1d2cc3c20f3e0f783b0c6601c0d17638952f5",
+        "type": "github"
       },
       "original": {
         "owner": "sini",

@@ -88,10 +88,7 @@ let
       let
         p = parentOf id;
       in
-      if p == null then
-        [ ]
-      else
-        builtins.filter (k: k != id && parentOf k == p) flatKeys;
+      if p == null then [ ] else builtins.filter (k: k != id && parentOf k == p) flatKeys;
   };
 
   # --- Selector helpers ---
