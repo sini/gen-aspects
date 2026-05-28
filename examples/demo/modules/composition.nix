@@ -170,11 +170,10 @@ let
     hostName:
     let
       nodeId = "host:${hostName}";
-      # Neron gives us [self-settings, parent-settings, ...] ordered most-specific first
+      # Neron gives us [self-settings, parent-settings, ...] ordered D > I > P (most-specific first).
+      # foldLayers expects least-specific first (CSS cascade), so reverse.
       rawLayers = scopeResult.get nodeId "raw-settings";
-      # Flatten each layer to dot-keys
-      flatLayers = map (layer: flattenAttrs "" layer) rawLayers;
-      # Apply foldLayers with per-field strategies from aspect schemas
+      flatLayers = map (layer: flattenAttrs "" layer) (lib.reverseList rawLayers);
       composed = record.foldLayers {
         inherit strategies defaults;
         layers = flatLayers;
