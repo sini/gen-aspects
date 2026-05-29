@@ -11,7 +11,7 @@ let
     sha256 = locked.narHash;
   };
   genSchemaRaw = inputs.gen-schema or (import schemaSrc { inherit lib; });
-  schemaLib =
+  genSchema =
     if builtins.isFunction genSchemaRaw then genSchemaRaw { inherit lib; } else genSchemaRaw;
 
   types = import ./types.nix { inherit lib; };
@@ -19,7 +19,7 @@ let
   canTakeModule = import ./can-take.nix { inherit lib; };
   flatten = import ./flatten.nix { inherit lib; };
   schema = import ./schema.nix {
-    inherit lib schemaLib;
+    inherit lib genSchema;
     inherit (types) aspectType mkIsModuleFn;
     inherit (identity)
       aspectPath

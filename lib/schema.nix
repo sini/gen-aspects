@@ -2,7 +2,7 @@
 # kind-level infrastructure (collections, introspection, extension).
 {
   lib,
-  schemaLib,
+  genSchema,
   aspectType,
   mkIsModuleFn,
   aspectPath,
@@ -15,7 +15,7 @@
   mkAspectSchema =
     cnf:
     let
-      schemaOpt = schemaLib.mkSchemaOption {
+      schemaOpt = genSchema.mkSchemaOption {
         collections = cnf.collections or { };
         mkType =
           {
