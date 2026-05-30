@@ -226,12 +226,12 @@ nix shell nixpkgs#nix-unit -c nix-unit \
 
 | Paper | Relationship | Mechanism |
 |-------|-------------|-----------|
-| Palmer et al. (2024) "Intensional Functions" | Implements | Flat dispatch via one type in merge §2, identity §2.2, fold-based dedup |
-| Lorenzen et al. (2025) "First-Order Laziness" | Implements | `deferredModule` as lazy constructor §1-2.3 |
+| Palmer et al. (2024) "Intensional Functions" | Implements | Flat dispatch via one type in merge §2, identity §2.2; identity keys enable consumer-side dedup |
+| Lorenzen et al. (2025) "First-Order Laziness" | Informed by | `deferredModule` inspectable before forcing (via Nix native laziness, not Lorenzen's mechanism) §1-2.3 |
 | Reynolds (1972) "Definitional Interpreters" | Implements | Guard function defunctionalization — closures become tagged data |
 
-**Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable diamond dedup in fold-based collect (§5.3, Lemma 5.12).
+**Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable consumer-side diamond dedup (Lemma 5.12 + Theorem 1, closure consistency); gen-aspects supplies the keys, the dedup lives in the consumer.
 
-**Lorenzen et al. (2025) "First-Order Laziness"** — Class content as `deferredModule` is a lazy constructor: inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3).
+**Lorenzen et al. (2025) "First-Order Laziness"** (informed by) — Class content as `deferredModule` is inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3). This property comes from Nix native laziness plus nixpkgs `deferredModule`, NOT from Lorenzen's mechanism (first-order named constructors, defunctionalized deferred operations, in-place memoization). The citation is provenance for the laziness idea, not an implementation of the paper.
 
 **Reynolds (1972) "Definitional Interpreters"** — Guard functions wrapped via `functionTo` are Reynolds defunctionalization: closures become tagged data (`__isWrappedFn`, `__functionArgs`) with explicit dispatch (`__functor`).
