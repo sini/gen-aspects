@@ -207,6 +207,10 @@ let
       match = fromFunctionMatch;
       classify = act.classify;
       combine = ctx: ext: ctx // ext;
+      # Convergence by top-level key-set: sound here because the only feedback is
+      # enrich (via extract), which only ever ADDS top-level keys — never changes a
+      # value in place. A ruleset that mutated a value without adding a key would
+      # need a value-aware eq.
       eq = a: b: builtins.attrNames a == builtins.attrNames b;
     };
   policyResultsByHost = lib.genAttrs hostNames dispatchForHost;
@@ -214,6 +218,10 @@ let
   # Collapse one host's configure actions into ONE aspect-namespaced patch:
   #   [ {aspect="postgres";settings={...};} {aspect="firewall";settings={...};} ]
   #   => { postgres = {...}; firewall = {...}; }
+  # The inner `//` is a SHALLOW merge at the aspect's top level: safe because each
+  # rule targets a distinct aspect (or disjoint keys). Two configure actions on the
+  # same aspect with overlapping top-level keys would clobber — use recursiveUpdate
+  # if that becomes possible.
   policyPatchForHost =
     hostName:
     builtins.foldl' (
