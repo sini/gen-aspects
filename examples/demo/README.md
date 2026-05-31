@@ -36,7 +36,7 @@ modules/
 
 | Library | Role in demo |
 |---------|-------------|
-| **gen-algebra** | `record.foldLayers` merges settings layers with per-field strategies (replace, append, recursive) |
+| **gen-algebra** | `record.foldLayersTraced` merges settings layers (per-field replace/append/recursive) and returns a per-field provenance trace alongside the value |
 | **gen-schema** | `mkAspectSchema` registers the aspect kind with collections (settings, tags) and schema extensions (priority, tier) |
 | **gen-aspects** | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, parametric class content; flat registry for queries |
 | **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order |
@@ -89,14 +89,16 @@ childrenOfCore = selectWhere (genSelect.within (hasTag "core"));
 
 ### Policy fixpoint
 
-Rules emit typed actions (`edge`, `enrich`, `settings`). `enrich` actions feed back into context for the next iteration. Fixpoint converges when context stabilizes:
+Rules emit typed actions (`edge`, `enrich`, `configure`). `configure` carries an aspect target (`{ aspect; settings; }`) and folds into the cascade as the final layer; `enrich` actions feed back into context for the next iteration. Fixpoint converges when context stabilizes:
 
 ```nix
-prodHardening = fromFunction ({ env, ... }:
-  if env.tier == "production"
-  then [ (fx.edge { target = "hardening"; }) ]
-  else [ ]
-);
+prodHardening = mkRule {
+  condition.env = false;
+  produce = _id: ctx:
+    lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; });
+  identity = "prod-hardening";
+  phase = "structural";
+};
 ```
 
 ### Settings-injection construct (full loop)
