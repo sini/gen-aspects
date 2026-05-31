@@ -104,11 +104,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1779845757,
-        "narHash": "sha256-4aq0Zfkhj/1thPAYWKWPdu7TwmGXcUBsLwyi/tVq6dQ=",
+        "lastModified": 1780252476,
+        "narHash": "sha256-8F7Oh5rb91HjUSVTLZg+AetCCBYNpIfgg06sw1kiGkU=",
         "owner": "sini",
         "repo": "gen-derive",
-        "rev": "323ecdf92b50344fc3dc697abc11ec79f01ef175",
+        "rev": "5912351250a7a8b90bda68bafa6f7b12738a51dc",
         "type": "github"
       },
       "original": {
