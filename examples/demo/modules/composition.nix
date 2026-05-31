@@ -11,6 +11,7 @@
   genAspects,
   genAlgebra,
   genScope,
+  genDerive,
   ...
 }:
 let
@@ -161,31 +162,106 @@ let
           in
           if nodeSettings == { } then null else nodeSettings;
       };
+
+      # Parallel to raw-settings: the node ID of each contributing layer, so
+      # composeForHost can label layers (env vs host) without guessing. Same
+      # neron traverse + same null-drop, so it stays length-aligned with raw-settings.
+      raw-settings-ids = genScope.collectionAttr {
+        traverse = "neron";
+        extract =
+          _self: id:
+          let
+            nodeSettings = (roots.${id} or { decls.settings = { }; }).decls.settings;
+          in
+          if nodeSettings == { } then null else id;
+      };
     };
   };
 
   # --- 4. Compose settings per host ---
 
+  # Policy layer: per-host fixpoint dispatch produces `configure` actions that
+  # become the FINAL cascade layer (wins by position over env/host settings).
+  policyRules = import ./_policy-rules.nix { inherit lib genDerive; };
+  inherit (policyRules)
+    act
+    phases
+    rules
+    extract
+    fromFunctionMatch
+    ;
+
+  dispatchForHost =
+    hostName:
+    let
+      h = config.fleet.hosts.${hostName};
+    in
+    genDerive.fixpoint {
+      inherit rules phases extract;
+      context = {
+        env = config.fleet.environments.${h.env};
+        host = h // {
+          name = hostName;
+        };
+      };
+      match = fromFunctionMatch;
+      classify = act.classify;
+      combine = ctx: ext: ctx // ext;
+      eq = a: b: builtins.attrNames a == builtins.attrNames b;
+    };
+  policyResultsByHost = lib.genAttrs hostNames dispatchForHost;
+
+  # Collapse one host's configure actions into ONE aspect-namespaced patch:
+  #   [ {aspect="postgres";settings={...};} {aspect="firewall";settings={...};} ]
+  #   => { postgres = {...}; firewall = {...}; }
+  policyPatchForHost =
+    hostName:
+    builtins.foldl' (
+      acc: a:
+      acc
+      // {
+        ${a.aspect} = (acc.${a.aspect} or { }) // a.settings;
+      }
+    ) { } (policyResultsByHost.${hostName}.actions.configuration or [ ]);
+
   composeForHost =
     hostName:
     let
       nodeId = "host:${hostName}";
-      # Neron gives us [self-settings, parent-settings, ...] ordered D > I > P (most-specific first).
-      # foldLayers expects least-specific first (CSS cascade), so reverse.
-      rawLayers = scopeResult.get nodeId "raw-settings";
-      flatLayers = map (layer: flattenAttrs "" layer) (lib.reverseList rawLayers);
-      composed = record.foldLayers {
+      rawLayers = scopeResult.get nodeId "raw-settings"; # most-specific first
+      rawIds = scopeResult.get nodeId "raw-settings-ids"; # parallel ids, identical null-drop
+      entityLayers = map (l: flattenAttrs "" l) (lib.reverseList rawLayers); # least-specific first
+      entityNames = map (id: lib.head (lib.splitString ":" id)) (lib.reverseList rawIds); # "env" | "host"
+      policyLayer = flattenAttrs "" (policyPatchForHost hostName);
+      traced = record.foldLayersTraced {
         inherit strategies defaults;
-        layers = flatLayers;
+        layers = entityLayers ++ [ policyLayer ]; # policy appended LAST → wins by position
+        layerNames = entityNames ++ [ "policy" ]; # length-aligned with layers
+        defaultLabel = "default";
       };
     in
-    unflattenAttrs composed;
+    {
+      value = unflattenAttrs traced.value;
+      provenance = traced.provenance;
+    };
 
-  composedSettings = lib.genAttrs hostNames composeForHost;
+  composedResults = lib.genAttrs hostNames composeForHost;
+  composedSettings = lib.mapAttrs (_: r: r.value) composedResults;
+  settingsProvenance = lib.mapAttrs (_: r: r.provenance) composedResults;
 
 in
 {
   config._module.args = {
-    inherit composedSettings scopeResult;
+    inherit
+      composedSettings
+      settingsProvenance
+      scopeResult
+      policyResultsByHost
+      ;
+  };
+  # Interim flake outputs so the cascade is verifiable now; a later task adds the
+  # named proof outputs on top. These raw exposures may remain.
+  config.flake = {
+    inherit composedSettings settingsProvenance;
   };
 }
