@@ -11,14 +11,18 @@
 }:
 let
   flat = genAspects.flatten config.aspects;
+  # MUST match composition.nix's leafName — the injected `settings.<leaf>` key has
+  # to line up with the cascade's composedSettings.<host>.<leaf> namespace.
   leafName = path: lib.last (lib.splitString "/" path);
   hostNames = builtins.attrNames config.fleet.hosts;
 
   # The per-(host, aspect) unit: thin glue over genBind.wrap.
-  # classContent is the deferredModule-coerced value ({ imports = [fn]; } for a
-  # parametric aspect, or a plain attrset for a static one). We do NOT guard on
-  # isFunction — wrapCore dispatches; static attrset content passes through
-  # unchanged (wrapped=false). settings is a plain attrset -> no thunk needed.
+  # classContent comes from a deferredModule option, so BOTH a parametric fn and a
+  # static attrset arrive coerced to { imports = [ ... ]; }. We therefore do NOT
+  # guard on isFunction (the top-level value is never a bare function): wrapCore's
+  # wrapImportsModule recurses per-import — a parametric fn import gets settings/host
+  # bound, a static attrset import passes through (wrapped=false). settings is a
+  # plain attrset -> no thunk needed.
   injectAspectSettings =
     {
       host,
@@ -44,7 +48,8 @@ let
     }).module;
 
   # Bulk per-host driver: wrap every aspect's class content (always; static
-  # content passes through with wrapped=false).
+  # content passes through wrapped=false). Aspects with no `nixos` wrap `{}` — a
+  # benign empty-module no-op; a library form would filterAttrs these out.
   assembleHostAspects =
     host:
     lib.mapAttrs' (
