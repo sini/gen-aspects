@@ -48,9 +48,27 @@
           merge = "recursive";
         };
       };
-      nixos = {
-        services.nginx.enable = lib.mkDefault true;
-      };
+      nixos =
+        {
+          settings,
+          host,
+          lib,
+          ...
+        }:
+        {
+          services.nginx = {
+            enable = lib.mkDefault true;
+            config = ''
+              worker_processes ${toString settings.nginx.performance.workers};
+              events {
+                worker_connections ${toString (settings.nginx.performance.worker-connections or 1024)};
+              }
+            '';
+          };
+          networking.firewall.allowedTCPPorts = [
+            (if settings.nginx.listen.ssl-enabled or false then 443 else 80)
+          ];
+        };
     };
 
     app = {

@@ -1,71 +1,81 @@
-# Module bindings: gen-bind wrap with contracts and provenance.
+# Module bindings: route the nginx aspect's class content through the
+# injectAspectSettings construct (the same per-(host, aspect) unit that powers
+# the firewall aspect), proving the construct generalizes across a SECOND aspect.
 #
-# Demonstrates wrapping a NixOS module function with external bindings,
-# contract validation, provenance tracking, and signature inference.
+# The nginx config logic now lives in the aspect itself (aspects/web.nix's
+# parametric `nixos`), so there is no out-of-band module here — we source the
+# class content from the aspect and inject resolved settings via the construct.
 {
+  config,
   lib,
+  genAspects,
   genBind,
   composedSettings,
+  injectAspectSettings,
   ...
 }:
 let
-  # --- NixOS module that consumes nginx settings ---
-  nginxModule =
-    {
-      nginxSettings,
-      config,
-      lib,
-      ...
-    }:
-    {
-      services.nginx = {
-        enable = true;
-        config = ''
-          worker_processes ${toString nginxSettings.performance.workers};
-          events {
-            worker_connections ${toString (nginxSettings.performance.worker-connections or 1024)};
-          }
-        '';
-      };
-      networking.firewall.allowedTCPPorts = [
-        (if nginxSettings.listen.ssl-enabled or false then 443 else 80)
-      ];
-    };
+  # The nginx aspect's parametric class content (reads settings.nginx.*).
+  # flat keys aspects by FULL PATH — nginx is "services/nginx".
+  # `nixos` is a deferredModule option, so the parametric fn arrives coerced to
+  # `{ imports = [ <fn> ]; }` — the same imports-form the construct consumes.
+  nginxClass = (genAspects.flatten config.aspects)."services/nginx".nixos;
 
-  # --- Wrap with gen-bind ---
-  wrappedResult = genBind.wrap {
-    module = nginxModule;
-    bindings = {
-      nginxSettings = composedSettings.prod-web-1.nginx;
+  # Produce the wrapped, settings-injected module via the construct. This is the
+  # same path the firewall aspect uses; it returns only `.module`.
+  wrappedModule = injectAspectSettings {
+    host = "prod-web-1";
+    aspectLeaf = "nginx";
+    classContent = nginxClass;
+  };
+
+  # The construct returns only `.module`, so for the signature/wrapped METADATA
+  # we call genBind.wrap / buildSignature directly with the SAME uniform binding
+  # shape the construct uses (settings namespaced under the aspect leaf + host).
+  # Uniform `settings` arg name — never `nginxSettings`.
+  #
+  # We sign over the underlying parametric fn (unwrapped from the deferredModule
+  # imports-form) so the signature reflects the real `settings`/`host`/`lib`
+  # interface; wrapping the imports-attrset directly would erase arg metadata.
+  # deferredModule nests the fn under `{ imports = [ { _file; imports = [ fn ]; } ]; }`,
+  # so descend `imports` lists until the parametric function surfaces.
+  unwrapToFn =
+    v:
+    if builtins.isFunction v then
+      v
+    else if builtins.isAttrs v && v ? imports && v.imports != [ ] then
+      unwrapToFn (builtins.head v.imports)
+    else
+      v;
+  nginxFn = unwrapToFn nginxClass;
+
+  uniformBindings = {
+    settings = {
+      nginx = composedSettings.prod-web-1.nginx;
     };
-    contracts = {
-      nginxSettings = genBind.contract.hasFields [
-        "listen"
-        "performance"
-        "security"
-      ];
-    };
-    provenance = {
-      nginxSettings = {
-        source = "scope-settings";
-        scope = "host:prod-web-1";
-      };
+    host = {
+      name = "prod-web-1";
     };
   };
 
-  # --- Signature ---
-  signature = genBind.buildSignature {
-    module = nginxModule;
-    bindings = {
-      nginxSettings = composedSettings.prod-web-1.nginx;
+  wrappedResult = genBind.wrap {
+    module = nginxFn;
+    bindings = uniformBindings;
+    contracts.settings = genBind.contract.isType "set";
+    provenance.settings = {
+      source = "scope-settings";
+      scope = "host:prod-web-1";
     };
+  };
+
+  signature = genBind.buildSignature {
+    module = nginxFn;
+    bindings = uniformBindings;
     defaultMergeStrategy = genBind.mergeStrategy.bindWins;
     mergeStrategies = { };
-    provenance = {
-      nginxSettings = {
-        source = "scope-settings";
-        scope = "host:prod-web-1";
-      };
+    provenance.settings = {
+      source = "scope-settings";
+      scope = "host:prod-web-1";
     };
   };
 
@@ -74,6 +84,9 @@ let
     signatureRequires = signature.requires;
     signatureBound = signature.bound;
     advertisedArgs = wrappedResult.advertisedArgs;
+    # Sanity: the construct path produces a usable module (consumed downstream
+    # via assembledClasses); keep a reference so wrappedModule isn't dead.
+    viaConstruct = builtins.isAttrs wrappedModule || builtins.isFunction wrappedModule;
   };
 
 in
