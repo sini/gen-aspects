@@ -80,6 +80,12 @@
           default = [ "stdout" ];
           merge = "append";
         };
+        logging.structured = {
+          default = false;
+        };
+        logging.destination = {
+          default = "stdout";
+        };
         features = {
           default = { };
           merge = "recursive";

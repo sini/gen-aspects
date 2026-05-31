@@ -70,6 +70,10 @@
           default = [ ];
           merge = "append";
         };
+        scrape.targets = {
+          default = [ ];
+          merge = "append";
+        };
       };
     };
   };
