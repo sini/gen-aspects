@@ -29,6 +29,11 @@ let
     classContent = nginxClass;
   };
 
+  # Demo-only metadata path: this exists ONLY to surface signature/wrapped info in
+  # the bindResults verification output. The real injection uses the construct's
+  # `.module` (wrappedModule above / assembledClasses) — do NOT migrate this into
+  # injectAspectSettings.
+  #
   # The construct returns only `.module`, so for the signature/wrapped METADATA
   # we call genBind.wrap / buildSignature directly with the SAME uniform binding
   # shape the construct uses (settings namespaced under the aspect leaf + host).
@@ -49,6 +54,9 @@ let
       v;
   nginxFn = unwrapToFn nginxClass;
 
+  # Mirrors the construct's binding shape; `host` omits the construct's fleet-host
+  # enrichment (`// config.fleet.hosts.<h>`) — fine here since the signature only
+  # reads arg presence, not host fields.
   uniformBindings = {
     settings = {
       nginx = composedSettings.prod-web-1.nginx;
