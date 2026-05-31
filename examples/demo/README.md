@@ -21,7 +21,7 @@ modules/
     base.nix         — base-system, networking, monitoring-base
     web.nix          — services/nginx, services/app (nested)
     data.nix         — services/postgres, services/redis (nested)
-    security.nix     — hardening (guard fn), firewall (guard fn)
+    security.nix     — hardening (plain), firewall (parametric: static settings + settings-consuming nixos)
     users.nix        — define-user
   namespace.nix      — observability namespace: prometheus, grafana, loki
   settings.nix       — per-scope settings overrides (env-level, host-level)
@@ -38,20 +38,20 @@ modules/
 |---------|-------------|
 | **gen-algebra** | `record.foldLayers` merges settings layers with per-field strategies (replace, append, recursive) |
 | **gen-schema** | `mkAspectSchema` registers the aspect kind with collections (settings, tags) and schema extensions (priority, tier) |
-| **gen-aspects** | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, guard functions; flat registry for queries |
+| **gen-aspects** | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, parametric class content; flat registry for queries |
 | **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order |
 | **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph |
 | **gen-select** | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching |
-| **gen-bind** | `wrap` binds composed nginx settings into a NixOS module with contract validation and provenance |
+| **gen-bind** | `wrap` binds resolved per-host settings into a parametric NixOS module (the settings-injection construct) with contract validation and provenance |
 | **gen-derive** | `fixpoint` dispatches policy rules (prod hardening, database backup, dev firewall) with context enrichment |
 
 ## Key patterns demonstrated
 
 ### Aspect shapes
 
-- **Static** — `base-system`, `networking`: plain attrset with tags, settings, nixos class content
+- **Static** — `base-system`, `networking`, `hardening`: plain attrset with tags, settings, nixos class content
 - **Nested** — `services.nginx`, `services.postgres`: auto-nesting creates `services/nginx` identity
-- **Guard** — `hardening`, `firewall`: `{ host, ... }: { ... }` deferred until scope provides args
+- **Parametric** — `firewall`, `services.nginx`: a STATIC settings schema (introspectable by `flatten`/cascade) plus class content written as `{ settings, host, lib, ... }: { ... }` that CONSUMES resolved per-host settings, injected before `evalModules` via the settings-injection construct
 
 ### Settings cascade
 
@@ -97,4 +97,33 @@ prodHardening = fromFunction ({ env, ... }:
   then [ (fx.edge { target = "hardening"; }) ]
   else [ ]
 );
+```
+
+### Settings-injection construct (full loop)
+
+Parametric class content (`{ settings, host, lib, ... }: { ... }`) reads resolved
+settings that don't exist until the cascade runs. The `injectAspectSettings`
+construct (`injection.nix`) closes the loop: for each `(host, aspect)` it binds
+the cascade's `composedSettings.<host>.<leaf>` (+ host) into the class content via
+`genBind.wrap`, producing a ready-to-`evalModules` module (`assembledClasses`).
+
+`outputs.nix` exercises this end-to-end against rendered module values:
+
+```
+fwInjectionMatchesCascade  # firewall.allowed-tcp cascade == rendered allowedTCPPorts
+nginxInjectionResolved     # resolved workers=32 reaches nginx config (worker_processes 32)
+```
+
+### Cascade provenance + policy-overrides-host
+
+`foldLayersTraced` records, per field, which layer contributed each value. The demo
+turns that into discriminating proofs:
+
+```
+loggingLevelProdWeb1        # "error" — policy (folded LAST) beats env's "warn"
+loggingLevelProdWeb1Winner  # "policy"  (replace winner = last contributor)
+workersProdWeb1Winner       # "host"    — negative control: policy doesn't touch workers
+dbBackupSubkeyProvenance    # per-subkey on a recursive field:
+                            #   { schedule="policy"; retention="policy";
+                            #     method="host"; destination="host"; }
 ```

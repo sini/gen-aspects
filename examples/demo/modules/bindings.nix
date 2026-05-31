@@ -11,7 +11,6 @@
   genAspects,
   genBind,
   composedSettings,
-  injectAspectSettings,
   ...
 }:
 let
@@ -21,18 +20,10 @@ let
   # `{ imports = [ <fn> ]; }` — the same imports-form the construct consumes.
   nginxClass = (genAspects.flatten config.aspects)."services/nginx".nixos;
 
-  # Produce the wrapped, settings-injected module via the construct. This is the
-  # same path the firewall aspect uses; it returns only `.module`.
-  wrappedModule = injectAspectSettings {
-    host = "prod-web-1";
-    aspectLeaf = "nginx";
-    classContent = nginxClass;
-  };
-
   # Demo-only metadata path: this exists ONLY to surface signature/wrapped info in
   # the bindResults verification output. The real injection uses the construct's
-  # `.module` (wrappedModule above / assembledClasses) — do NOT migrate this into
-  # injectAspectSettings.
+  # `.module` (via injection.nix's assembledClasses, exercised end-to-end in
+  # outputs.nix) — do NOT migrate this into injectAspectSettings.
   #
   # The construct returns only `.module`, so for the signature/wrapped METADATA
   # we call genBind.wrap / buildSignature directly with the SAME uniform binding
@@ -92,9 +83,6 @@ let
     signatureRequires = signature.requires;
     signatureBound = signature.bound;
     advertisedArgs = wrappedResult.advertisedArgs;
-    # Sanity: the construct path produces a usable module (consumed downstream
-    # via assembledClasses); keep a reference so wrappedModule isn't dead.
-    viaConstruct = builtins.isAttrs wrappedModule || builtins.isFunction wrappedModule;
   };
 
 in
