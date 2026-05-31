@@ -29,6 +29,9 @@ let
     phase = "structural";
   };
 
+  # databaseBackup is two rules: a single rule may not emit actions across two
+  # phases (gen-derive dispatch throws), so the structural enrich and the
+  # configuration patch are separate bindings.
   databaseBackupEnrich = mkRule {
     condition.host = false;
     produce =
@@ -106,6 +109,8 @@ let
         }
       );
     identity = "prod-logging";
+    # rule fire-order only (lower fires earlier); NOT settings-merge precedence
+    # (settings merge by cascade layer position) — do not copy to other rules.
     priority = 10;
     phase = "configuration";
   };
