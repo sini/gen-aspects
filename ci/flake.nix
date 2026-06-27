@@ -12,11 +12,13 @@
     inputs@{ gen, nixpkgs, ... }:
     let
       inherit (nixpkgs) lib;
+      # gen-schema is flake=false here; `import "${inputs.gen-schema}" { inherit lib; }`
+      # runs gen-schema's root default.nix → the genSchema flat value (it auto-pins its
+      # own gen-algebra from gen-schema's flake.lock). The interpolated path form (rather
+      # than `import inputs.<dep>`) keeps the sweep free of flake-functor call literals.
       aspects = import ../lib {
         inherit lib;
-        inputs = {
-          gen-schema = import inputs.gen-schema { inherit lib; };
-        };
+        schema = import "${inputs.gen-schema}" { inherit lib; };
       };
       defaultClasses = {
         classOne = { };

@@ -6,11 +6,11 @@
   ...
 }:
 let
-  genAlgebra = inputs.gen-algebra { inherit lib; };
+  genAlgebra = inputs.gen-algebra.lib;
   genSchema = inputs.gen-schema.lib;
-  genAspects = inputs.gen-aspects { inherit lib; };
-  genScope = inputs.gen-scope { inherit lib; };
-  genGraph = inputs.gen-graph { inherit lib; };
+  genAspects = inputs.gen-aspects.lib;
+  genScope = inputs.gen-scope.lib;
+  genGraph = inputs.gen-graph.lib;
   genSelect = inputs.gen-select.lib;
   genBind = inputs.gen-bind.lib;
   genDerive = inputs.gen-derive.lib;
