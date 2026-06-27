@@ -29,7 +29,7 @@ A pure type library: no resolve, no pipeline, no framework. Provides the structu
 | Traits | The aspect type — one type, dispatch in merge (Palmer 2024) |
 | Classes | Output targets (NixOS, darwin, homeManager module systems) |
 | Collections | Named data aggregation (aspect keys matching registered collection names) |
-| Edges | Composition relationships: includes (forward I), neededBy (reverse I) |
+| Edges | `includes` (forward I) — the one core structural edge, declared inline on each aspect. `neededBy` (reverse I) — a *consumer-declared, predicate-based* reverse reference; its semantics live in the consumer's dispatch layer, not in these types. |
 | Constraints | Pruning rules: meta.guard, meta.drop, meta.substitute |
 
 ## Gen Ecosystem
