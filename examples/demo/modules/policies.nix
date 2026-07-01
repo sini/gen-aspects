@@ -7,16 +7,16 @@
 {
   config,
   lib,
-  genDerive,
+  genDispatch,
+  genGraph,
+  genScope,
   ...
 }:
 let
-  inherit (genDerive) fixpoint;
-
-  policyRules = import ./_policy-rules.nix { inherit lib genDerive; };
+  policyRules = import ./_policy-rules.nix { inherit lib genDispatch genGraph; };
   inherit (policyRules)
     act
-    phases
+    phaseOrder
     rules
     extract
     fromFunctionMatch
@@ -28,17 +28,26 @@ let
     name = "prod-web-1";
   };
 
-  policyResult = fixpoint {
-    inherit rules phases extract;
-    context = {
-      env = sampleEnv;
-      host = sampleHost;
-    };
+  # gen-dispatch is the STEP; gen-scope.circular is the LOOP (Kleene ascent).
+  cfg = {
+    inherit rules extract phaseOrder;
+    id = null;
     match = fromFunctionMatch;
     classify = act.classify;
     combine = ctx: ext: ctx // ext;
-    eq = a: b: builtins.attrNames a == builtins.attrNames b;
   };
+  step = genDispatch.dispatchStep { inherit (genDispatch) dispatch; } cfg;
+
+  policyResult =
+    (genScope.circular {
+      init = genDispatch.dispatchInit {
+        env = sampleEnv;
+        host = sampleHost;
+      };
+      eq = a: b: builtins.attrNames a.context == builtins.attrNames b.context;
+    } step)
+      { }
+      null;
 in
 {
   config._module.args = {

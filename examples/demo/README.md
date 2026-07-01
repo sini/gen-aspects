@@ -27,7 +27,7 @@ modules/
   settings.nix       — per-scope settings overrides (env-level, host-level)
   composition.nix    — scope graph + neron traverse + foldLayers
   queries.nix        — gen-graph traversals + gen-select pattern matching
-  policies.nix       — gen-derive fixpoint dispatch with action vocabulary
+  policies.nix       — gen-dispatch step + gen-scope.circular loop with action vocabulary
   bindings.nix       — gen-bind module wrapping with contracts
   outputs.nix        — flake outputs for verification
 ```
@@ -39,11 +39,11 @@ modules/
 | **gen-algebra** | `record.foldLayersTraced` merges settings layers (per-field replace/append/recursive) and returns a per-field provenance trace alongside the value |
 | **gen-schema** | `mkAspectSchema` registers the aspect kind with collections (settings, tags) and schema extensions (priority, tier) |
 | **gen-aspects** | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, parametric class content; flat registry for queries |
-| **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order |
-| **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph |
+| **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order; `circular` (Kleene ascent) drives the policy dispatch convergence loop |
+| **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch phases |
 | **gen-select** | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching |
 | **gen-bind** | `wrap` binds resolved per-host settings into a parametric NixOS module (the settings-injection construct) with contract validation and provenance |
-| **gen-derive** | `fixpoint` dispatches policy rules (prod hardening, database backup, dev firewall) with context enrichment |
+| **gen-dispatch** | the dispatch STEP: `mkRule`/`mkActions` + `dispatchStep`/`dispatchInit` fire policy rules (prod hardening, database backup, dev firewall) across ordered phases with context enrichment (the LOOP is gen-scope's, the ORDER is gen-graph's) |
 
 ## Key patterns demonstrated
 
@@ -87,9 +87,9 @@ publicFacing = selectWhere (hasTag "public-facing");
 childrenOfCore = selectWhere (genSelect.within (hasTag "core"));
 ```
 
-### Policy fixpoint
+### Policy dispatch (step + loop)
 
-Rules emit typed actions (`edge`, `enrich`, `configure`). `configure` carries an aspect target (`{ aspect; settings; }`) and folds into the cascade as the final layer; `enrich` actions feed back into context for the next iteration. Fixpoint converges when context stabilizes:
+Rules emit typed actions (`edge`, `enrich`, `configure`) over ordered phases. Phase order comes from `gen-graph.phaseOrder` (`structural` before `configuration`); the dispatch STEP (`gen-dispatch.dispatchStep`) fires the matching rules for a pass, and `gen-scope.circular` (Kleene ascent) is the LOOP that drives it to a fixpoint. `configure` carries an aspect target (`{ aspect; settings; }`) and folds into the cascade as the final layer; `enrich` actions feed back into context (via `extract`) for the next pass. Convergence is reached when the context key-set stabilizes. Result lives in `accActions.<phase>`:
 
 ```nix
 prodHardening = mkRule {

@@ -93,9 +93,12 @@ let
 
   # --- Selector helpers ---
 
-  hasTag = tag: genSelect.when (id: _ctx: builtins.elem tag ((flat.${id}).tags or [ ]));
+  # Guard the registry lookup: `within`/`has` selectors evaluate the inner selector on
+  # ancestor/child ids that may be namespace paths (e.g. "observability") which are NOT
+  # aspect keys in `flat`. Absent ids simply don't match.
+  hasTag = tag: genSelect.when (id: _ctx: builtins.elem tag ((flat.${id} or { }).tags or [ ]));
 
-  hasTier = tier: genSelect.when (id: _ctx: (flat.${id}).tier or "unspecified" == tier);
+  hasTier = tier: genSelect.when (id: _ctx: (flat.${id} or { }).tier or "unspecified" == tier);
 
   selectWhere =
     sel: builtins.sort builtins.lessThan (builtins.filter (id: genSelect.matches sel id ctx) flatKeys);

@@ -13,7 +13,7 @@ let
   genGraph = inputs.gen-graph.lib;
   genSelect = inputs.gen-select.lib;
   genBind = inputs.gen-bind.lib;
-  genDerive = inputs.gen-derive.lib;
+  genDispatch = inputs.gen-dispatch.lib;
 
   aspectSchema = genAspects.mkAspectSchema {
     classes = {
@@ -72,7 +72,7 @@ in
         genGraph
         genSelect
         genBind
-        genDerive
+        genDispatch
         aspectSchema
         inputs
         ;

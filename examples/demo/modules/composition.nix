@@ -11,7 +11,8 @@
   genAspects,
   genAlgebra,
   genScope,
-  genDerive,
+  genDispatch,
+  genGraph,
   ...
 }:
 let
@@ -182,37 +183,48 @@ let
 
   # Policy layer: per-host fixpoint dispatch produces `configure` actions that
   # become the FINAL cascade layer (wins by position over env/host settings).
-  policyRules = import ./_policy-rules.nix { inherit lib genDerive; };
+  policyRules = import ./_policy-rules.nix { inherit lib genDispatch genGraph; };
   inherit (policyRules)
     act
-    phases
+    phaseOrder
     rules
     extract
     fromFunctionMatch
     ;
 
+  # The convergence LOOP is gen-resolve's / gen-scope.circular's (Kleene ascent);
+  # gen-dispatch supplies only the STEP (dispatchStep). Pair them: dispatchInit seeds
+  # the circular value { context; fired; accActions; ... }, dispatchStep is one pass.
+  policyCfg = {
+    inherit rules extract phaseOrder;
+    id = null;
+    match = fromFunctionMatch;
+    classify = act.classify;
+    combine = ctx: ext: ctx // ext;
+  };
+  policyStep = genDispatch.dispatchStep { inherit (genDispatch) dispatch; } policyCfg;
+
   dispatchForHost =
     hostName:
     let
       h = config.fleet.hosts.${hostName};
-    in
-    genDerive.fixpoint {
-      inherit rules phases extract;
       context = {
         env = config.fleet.environments.${h.env};
         host = h // {
           name = hostName;
         };
       };
-      match = fromFunctionMatch;
-      classify = act.classify;
-      combine = ctx: ext: ctx // ext;
-      # Convergence by top-level key-set: sound here because the only feedback is
-      # enrich (via extract), which only ever ADDS top-level keys — never changes a
-      # value in place. A ruleset that mutated a value without adding a key would
-      # need a value-aware eq.
-      eq = a: b: builtins.attrNames a == builtins.attrNames b;
-    };
+    in
+    (genScope.circular {
+      init = genDispatch.dispatchInit context;
+      # Convergence by top-level context key-set: sound here because the only feedback
+      # is enrich (via extract), which only ever ADDS top-level keys — never changes a
+      # value in place. A ruleset that mutated a value without adding a key would need a
+      # value-aware eq.
+      eq = a: b: builtins.attrNames a.context == builtins.attrNames b.context;
+    } policyStep)
+      { }
+      null;
   policyResultsByHost = lib.genAttrs hostNames dispatchForHost;
 
   # Collapse one host's configure actions into ONE aspect-namespaced patch:
@@ -230,7 +242,7 @@ let
       // {
         ${a.aspect} = (acc.${a.aspect} or { }) // a.settings;
       }
-    ) { } (policyResultsByHost.${hostName}.actions.configuration or [ ]);
+    ) { } (policyResultsByHost.${hostName}.accActions.configuration or [ ]);
 
   composeForHost =
     hostName:

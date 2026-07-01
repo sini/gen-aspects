@@ -1,12 +1,14 @@
 # Policy action vocabulary + rules (NON-module: imported by relative path, NOT a
 # flake-parts module — the leading underscore excludes it from import-tree ./modules).
-{ lib, genDerive }:
+{
+  lib,
+  genDispatch,
+  genGraph,
+}:
 let
-  inherit (genDerive)
+  inherit (genDispatch)
     mkActions
     mkRule
-    entryAnywhere
-    entryAfter
     fromFunctionMatch
     ;
   act = mkActions {
@@ -16,9 +18,11 @@ let
     ];
     configuration = [ "configure" ];
   };
-  phases = {
-    structural = entryAnywhere { };
-    configuration = entryAfter [ "structural" ] { };
+  # Phase ORDERING is gen-graph's job now (gen-dispatch is the pure dispatch STEP).
+  # `phaseOrder` is a `[ phaseName ]` list; dispatch walks it, threading context.
+  phaseOrder = genGraph.phaseOrder {
+    structural = genGraph.entryAnywhere;
+    configuration = genGraph.entryAfter [ "structural" ];
   };
 
   prodHardening = mkRule {
@@ -30,7 +34,7 @@ let
   };
 
   # databaseBackup is two rules: a single rule may not emit actions across two
-  # phases (gen-derive dispatch throws), so the structural enrich and the
+  # phases (gen-dispatch dispatch throws), so the structural enrich and the
   # configuration patch are separate bindings.
   databaseBackupEnrich = mkRule {
     condition.host = false;
@@ -133,7 +137,7 @@ in
 {
   inherit
     act
-    phases
+    phaseOrder
     rules
     extract
     fromFunctionMatch

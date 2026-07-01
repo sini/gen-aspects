@@ -11,7 +11,7 @@
     gen-graph.url = "github:sini/gen-graph";
     gen-select.url = "github:sini/gen-select";
     gen-bind.url = "github:sini/gen-bind";
-    gen-derive.url = "github:sini/gen-derive";
+    gen-dispatch.url = "github:sini/gen-dispatch";
     import-tree.url = "github:vic/import-tree";
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
