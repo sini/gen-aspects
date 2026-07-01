@@ -36,20 +36,45 @@ A pure type library: no resolve, no pipeline, no framework. Provides the structu
 
 | Library | Role |
 |---------|------|
-| [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (search, record, identity) |
+| [gen-prelude](https://github.com/sini/gen-prelude) | Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils) |
+| [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (record, search monad, either, intensional identity) |
 | [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs) |
-| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect types (traits, classification, dispatch, schema integration) |
-| [gen-graph](https://github.com/sini/gen-graph) | Graph queries (combinators, traversals, fixpoint) |
-| [gen-scope](https://github.com/sini/gen-scope) | Scope graphs (construction, evaluation, resolution) |
+| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect type system (traits, classification, dispatch) |
+| [gen-scope](https://github.com/sini/gen-scope) | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes) |
+| [gen-graph](https://github.com/sini/gen-graph) | Accessor-based graph query combinators (traversal, condensation, phaseOrder) |
 | [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
-| [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject args into NixOS modules) |
-| [gen-derive](https://github.com/sini/gen-derive) | Rule dispatch (stratified phases, fixpoint, conflict resolution) |
+| [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject external args into NixOS modules) |
+| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution) |
+| [gen-resolve](https://github.com/sini/gen-resolve) | Demand-driven RAG evaluator over scope graphs (attribute schedule + convergence loop) |
+| [gen-rebuild](https://github.com/sini/gen-rebuild) | Pure-Nix incremental rebuilder (change propagation, AFFECTED set) |
+| [gen-vars](https://github.com/sini/gen-vars) | Pure-Nix vars/secrets (den-agnostic) |
 
 ## Usage
 
+gen-aspects is a Class D library: it depends on nixpkgs `lib` (`lib.types` + `evalModules`) and on gen-schema. The flake exposes a single `.lib` value output (no `__functor`):
+
+```nix
+# flake.nix
+{
+  inputs.gen-aspects.url = "github:sini/gen-aspects";
+  outputs = { gen-aspects, ... }: {
+    # bind the value directly — lib + gen-schema are wired in by the flake
+    lib.aspects = gen-aspects.lib;
+  };
+}
+```
+
+Without flakes (programmatic — `default.nix` takes `lib`, auto-fetching gen-schema from the pinned `flake.lock`):
+
+```nix
+aspects = import gen-aspects { inherit lib; };
+```
+
+### Example
+
 ```nix
 let
-  aspects = import gen-aspects { inherit lib; };
+  aspects = gen-aspects.lib;
   eval = lib.evalModules {
     modules = [{
       options.aspects = lib.mkOption {
@@ -210,7 +235,7 @@ parentOf = id:
 
 ## Demo
 
-The `examples/demo/` directory exercises all 8 gen libraries together: gen-algebra, gen-schema, gen-aspects, gen-graph, gen-scope, gen-select, gen-bind, and gen-derive. It demonstrates entities, aspects, namespaces, policies, queries, bindings, composition, and settings in a single integrated flake.
+The `examples/demo/` directory exercises all 8 gen libraries together: gen-algebra, gen-schema, gen-aspects, gen-graph, gen-scope, gen-select, gen-bind, and gen-dispatch. It demonstrates entities, aspects, namespaces, policies, queries, bindings, composition, and settings in a single integrated flake.
 
 ## Testing
 
@@ -220,7 +245,7 @@ nix shell nixpkgs#nix-unit -c nix-unit \
   --flake './ci#.tests'
 ```
 
-67 tests covering: class content cleanliness, nested aspect identity, includes/fixpoint, module vs guard function dispatch, multi-def merging, primitive passthrough, deep nesting, extensions, `canTake` introspection, schema integration, and flat registry.
+78 tests across 16 suites (requires nix-unit) covering: class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and flat registry.
 
 ## Theoretical Foundations
 
