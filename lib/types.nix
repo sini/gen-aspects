@@ -19,6 +19,11 @@
 # constructor and no single global apply, so this is not the literal §6 transform).
 # The pipeline resolves them when context is available — they are NOT evaluated by
 # the type system.
+#
+# Defunctionalized guard records (guard.nix, __guard) are passed through as first-order
+# data by the __guard branch below — THAT path IS the Reynolds §6 transform (closed
+# predicate vocabulary + one applyGuard); functionTo wrapping is the non-defunctionalized
+# escape hatch for raw closures.
 { lib }:
 let
   identity = import ./identity.nix { inherit lib; };

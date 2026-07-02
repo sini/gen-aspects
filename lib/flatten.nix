@@ -3,7 +3,8 @@
 #
 # Detection is structural — no hardcoded key lists:
 # - Nested aspects have `name` (from aspectSubmodule), class content and primitives don't
-# - Guard functions (__isWrappedFn) are included as leaf entries but not recursed
+# - Guard leaves — wrapped guard functions (__isWrappedFn) AND defunctionalized guard
+#   records (__guard, guard.nix) — are included as leaf entries but never recursed into
 #
 # Parent relationships are implicit in the path key: "a/b/c" → parent is "a/b".
 #
@@ -11,8 +12,10 @@
 # end, avoiding the O(n²) cost of accumulating with foldl'+//.
 _:
 let
-  isNestedAspect = v: builtins.isAttrs v && v ? name && !(v.__isWrappedFn or false);
-  isGuardFn = v: builtins.isAttrs v && (v.__isWrappedFn or false);
+  # A guard leaf: a wrapped guard function (__isWrappedFn) OR a defunctionalized guard
+  # record (__guard, guard.nix). Both are included as leaf entries, never recursed into.
+  isGuardLeaf = v: builtins.isAttrs v && ((v.__isWrappedFn or false) || (v.__guard or false));
+  isNestedAspect = v: builtins.isAttrs v && v ? name && !(isGuardLeaf v);
 
   collectEntries =
     prefix: aspect:
@@ -30,7 +33,7 @@ let
           }
         ]
         ++ collectEntries pathKey v
-      else if isGuardFn v then
+      else if isGuardLeaf v then
         [
           {
             name = pathKey;

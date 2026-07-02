@@ -203,7 +203,7 @@ parentOf = id:
 
 ## API Reference
 
-The `.lib` value exposes twelve top-level names: the four aspect types, the four identity/introspection utilities, and the four schema-and-registry entry points.
+The `.lib` value exposes eighteen top-level names: the four aspect types, the four identity/introspection utilities plus `guardKey`, the four schema-and-registry entry points, and the five-name guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`).
 
 ```nix
 aspects = gen-aspects.lib;
@@ -249,7 +249,7 @@ aspectsType {
 
 - **`canTake`** — function arg introspection. `canTake.upTo params fn` checks if all required args of `fn` are satisfiable by `params`.
 - **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
-- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`** — identity computation from `meta` + `name`. `key` handles both static aspects (via `meta.aspect-chain`) and wrapped guard functions (via `meta.loc`).
+- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`**, **`guardKey`** — identity computation from `meta` + `name`. `key` routes three ways: static aspects (via `meta.aspect-chain`), wrapped guard functions (via `meta.loc`), and defunctionalized guard records (`__guard` → `guardKey`, a site-independent structural key over the predicate + first-order body).
 
 ### Schema & Registry
 
@@ -268,7 +268,7 @@ nix shell nixpkgs#nix-unit -c nix-unit \
   --flake './ci#.tests'
 ```
 
-78 tests across 16 suites (verified `78/78 successful` via nix-unit): `can-take`, `class-content`, `extensions`, `flat-registry`, `freeform-dispatch`, `guard-identity`, `identity`, `includes`, `lazy-classification`, `meta-modules`, `multi-def`, `multi-def-identity`, `nested-aspects`, `parametric`, `reserved-keys`, and `schema-integration` — covering class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
+109 tests across 17 suites (verified `109/109 successful` via nix-unit): `can-take`, `class-content`, `extensions`, `flat-registry`, `freeform-dispatch`, `guard`, `guard-identity`, `identity`, `includes`, `lazy-classification`, `meta-modules`, `multi-def`, `multi-def-identity`, `nested-aspects`, `parametric`, `reserved-keys`, and `schema-integration` — covering class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, the guard predicate vocabulary + defunctionalized identity (`mkGuardVocab`/`applyGuard`/`guardKey`), lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
 
 ## Theoretical Foundations
 

@@ -347,4 +347,26 @@ in
       expr = guardField == true;
       expected = false;
     };
+
+  # a defunctionalized guard record flattens as a LEAF (like __isWrappedFn), never recursed
+  flake.tests.guard.test-guard-record-flattens-as-leaf =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [ { config.aspects.db = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+      };
+      flat = aspects.flatten eval.config.aspects;
+    in
+    {
+      expr = {
+        hasDb = flat ? "db";
+        dbIsGuard = flat.db.__guard or false;
+        noChildren = !(builtins.any (lib.hasPrefix "db/") (builtins.attrNames flat));
+      };
+      expected = {
+        hasDb = true;
+        dbIsGuard = true;
+        noChildren = true;
+      };
+    };
 }
