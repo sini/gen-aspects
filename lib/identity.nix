@@ -36,8 +36,11 @@ let
         null;
 
   # guardKey: pred is ALWAYS structural (pure data). First-order body -> fully structural key
-  # (site-independent -> dedup). OPAQUE body (bodyKey null) -> SOURCE POSITION so two different
-  # opaque bodies never collide = SOUND (no false merge). meta.loc attached by types.nix (Task 2).
+  # (site-independent -> dedup). For an OPAQUE body (bodyKey null), fall back to SOURCE POSITION.
+  # Once meta.loc is present (attached by types.nix, Task 2) this is SOUND: two different opaque
+  # bodies at different sites never collide. Until then, opaque guards lacking meta.loc share the
+  # "<anon>" fallback; guardKey has no live dedup consumer yet, so that collapse is latent, not a
+  # live bug.
   # Reynolds "Elimination of Higher-Order Functions": the constructor tag (pred.p) is the
   # principled kind identity, replacing source position for the first-order case.
   guardKey =
@@ -62,7 +65,6 @@ in
     pathKey
     isMeaningfulName
     guardKey
-    bodyKey
     ;
   key =
     a:

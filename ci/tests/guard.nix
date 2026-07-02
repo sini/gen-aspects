@@ -225,7 +225,30 @@ in
       expected = false;
     };
 
-  # nested all/any with a FUNCTION body must not throw when keyed (predicate/body split)
+  # structural key flows THROUGH a nested first-order guard body (bodyKey -> guardKey -> "guard:…")
+  flake.tests.guard.test-guardkey-nested-body-structural =
+    let
+      mk =
+        a:
+        aspects.guard (aspects.pred.host "cortex") (
+          aspects.guard (aspects.pred.class "nixos") { inherit a; }
+        );
+    in
+    {
+      expr = {
+        siteIndep = aspects.guardKey (mk 1) == aspects.guardKey (mk 1);
+        discriminates = aspects.guardKey (mk 1) == aspects.guardKey (mk 2);
+        structural = lib.hasPrefix "guard:" (aspects.guardKey (mk 1));
+      };
+      expected = {
+        siteIndep = true;
+        discriminates = false;
+        structural = true;
+      };
+    };
+
+  # nested all/any with a FUNCTION body must not throw when keyed (predicate/body split) AND
+  # must take the source-position (opaque) branch — hasPrefix still fails if guardKey throws.
   flake.tests.guard.test-guardkey-nested-no-throw =
     let
       g = aspects.guard (aspects.pred.all [
@@ -234,12 +257,12 @@ in
       ]) ({ config, ... }: { });
     in
     {
-      expr = (builtins.tryEval (builtins.stringLength (aspects.guardKey g) > 0)).success;
+      expr = lib.hasPrefix "guard-loc:" (aspects.guardKey g);
       expected = true;
     };
 
   # a first-order body CONTAINING a nested guard whose body is a function must go opaque
-  # (no toJSON crash) — hasFn recurses into nested guards.
+  # (no toJSON crash, source-position branch) — hasFn recurses into nested guards.
   flake.tests.guard.test-guardkey-nested-guard-fn-body =
     let
       g = aspects.guard (aspects.pred.host "cortex") {
@@ -247,7 +270,7 @@ in
       };
     in
     {
-      expr = (builtins.tryEval (builtins.isString (aspects.guardKey g))).success;
+      expr = lib.hasPrefix "guard-loc:" (aspects.guardKey g);
       expected = true;
     };
 }
