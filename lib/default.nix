@@ -7,6 +7,7 @@ let
   identity = import ./identity.nix { inherit lib; };
   canTakeModule = import ./can-take.nix { inherit lib; };
   flatten = import ./flatten.nix { inherit lib; };
+  guardModule = import ./guard.nix { inherit lib; };
   schemaModule = import ./schema.nix {
     inherit lib;
     genSchema = schema;
@@ -39,4 +40,11 @@ in
   # New API
   inherit (schemaModule) mkAspectSchema;
   inherit flatten;
+  inherit (guardModule)
+    mkGuardVocab
+    toArgData
+    pred
+    guard
+    ;
+  applyGuard = (guardModule.mkGuardVocab { }).applyGuard;
 }
