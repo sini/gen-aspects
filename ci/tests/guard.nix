@@ -1,7 +1,12 @@
 # Test: guard-predicate vocabulary — predicates are first-order data, one applyGuard dispatches.
 # Theory: Reynolds "Elimination of Higher-Order Functions" (defunctionalize the guard space)
 # as formalized by Danvy & Nielsen 2001 (O1-O7).
-{ lib, aspects, ... }:
+{
+  lib,
+  aspects,
+  mkSchemaEval,
+  ...
+}:
 let
   v = aspects.mkGuardVocab { };
   ctxCortex = {
@@ -272,5 +277,74 @@ in
     {
       expr = lib.hasPrefix "guard-loc:" (aspects.guardKey g);
       expected = true;
+    };
+
+  # end-to-end: a guard record survives merge as inert data
+  flake.tests.guard.test-guard-record-passes-through =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [ { config.aspects.db = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+      };
+    in
+    {
+      expr = eval.config.aspects.db.__guard or false;
+      expected = true;
+    };
+
+  # end-to-end site-independence: same guard (first-order body) at two sites -> equal key
+  flake.tests.guard.test-guard-record-key-site-independent =
+    let
+      gv = aspects.mkGuardVocab { };
+      mk =
+        name:
+        (mkSchemaEval {
+          modules = [ { config.aspects.${name} = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+        }).config.aspects.${name};
+    in
+    {
+      expr = aspects.key (mk "aaa") == aspects.key (mk "bbb");
+      expected = true;
+    };
+
+  # end-to-end opaque-body soundness (completes Task 1 M2): two guards with FUNCTION bodies at
+  # different sites -> DIFFERENT keys, because guardKey falls back to source-position via meta.loc
+  flake.tests.guard.test-guard-opaque-body-site-distinct =
+    let
+      gv = aspects.mkGuardVocab { };
+      mk =
+        name:
+        (mkSchemaEval {
+          modules = [ { config.aspects.${name} = gv.vocab.whenHost "cortex" ({ config, ... }: { }); } ];
+        }).config.aspects.${name};
+    in
+    {
+      expr = aspects.key (mk "aaa") == aspects.key (mk "bbb");
+      expected = false;
+    };
+
+  # multi-def limitation (documented, not fixed — feedback_no_deferral): a guard record defined
+  # TWICE under one key takes the merge `length != 1` path, which folds the two attrs guard
+  # records into an aspect submodule rather than passing either through. ACTUAL observed behavior
+  # (2026-07-02): it does NOT throw, but `__guard` is folded as a freeform bool key and becomes a
+  # `lib.mkMerge [ true true ]` wrapper ({ _type = "merge"; ... }) — NOT the clean `true` a real
+  # guard record carries. So the result is not a usable guard record. Single-def is the real usage.
+  # TODO(guard): multi-def guard records not supported (single-def only) — see lib/types.nix branch.
+  flake.tests.guard.test-guard-multidef-limitation =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+        ];
+      };
+      guardField = eval.config.aspects.dup.__guard or false;
+    in
+    {
+      # single-def would give `true`; multi-def folds into the submodule -> a mkMerge attrset,
+      # so the guard-record shape is lost (guardField == true is FALSE).
+      expr = guardField == true;
+      expected = false;
     };
 }

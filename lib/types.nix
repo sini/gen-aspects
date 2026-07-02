@@ -73,6 +73,21 @@ let
           in
           if builtins.isAttrs v && (v.__isWrappedFn or false) then
             v
+          # TODO(guard): multi-def guard records not supported (single-def only) — a guard
+          # record defined twice under one key loses guard-record shape (multi-def folds via
+          # the `length defs != 1` path above; see ci/tests/guard.nix multidef limitation).
+          else if builtins.isAttrs v && (v.__guard or false) then
+            # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
+            # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
+            # not hashed by guardKey).
+            v
+            // {
+              name = lib.last loc;
+              meta = (v.meta or { }) // {
+                loc = loc;
+                file = (builtins.head defs).file or "<unknown>";
+              };
+            }
           else if builtins.isFunction v && isModuleFn v then
             (aspectSubmodule cnf).merge loc defs
           else if builtins.isFunction v then
