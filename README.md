@@ -40,7 +40,7 @@ Dependency class: **Class D** (nixpkgs-lib-tethered). gen-aspects depends on nix
 
 gen-aspects gives you the *types*, not a framework. An **aspect** is a submodule carrying structural identity (`name`, `key`, `meta`, `includes`) plus freeform, class-separated content. You register your target module systems as **classes** (`nixos`, `homeManager`, `darwin`); each class becomes a clean `deferredModule` option so content stays free of the structural keys.
 
-One flat type (`aspectType`) dispatches by value shape at merge time (Palmer 2024): attrsets and module functions become aspect submodules, context-dependent guard functions are defunctionalized into inspectable first-order data, and primitives pass through unchanged. The library computes stable identity keys and, via `flatten`, a flat path-keyed registry suitable for graph queries.
+One flat type (`aspectType`) dispatches by value shape at merge time (Palmer 2024): attrsets and module functions become aspect submodules, context-dependent guard functions are wrapped as inspectable, tagged functors, and primitives pass through unchanged. The library computes stable identity keys and, via `flatten`, a flat path-keyed registry suitable for graph queries.
 
 Everything downstream — evaluation, scheduling, conflict resolution, dispatch policy — is the consumer's job. gen-aspects supplies the type surface and the identity keys; the pipeline lives in [gen-resolve](https://github.com/sini/gen-resolve) / [gen-dispatch](https://github.com/sini/gen-dispatch) / [den](https://github.com/sini/den).
 
@@ -276,13 +276,13 @@ nix shell nixpkgs#nix-unit -c nix-unit \
 |-------|-------------|-----------|
 | Palmer et al. (2024) "Intensional Functions" | Implements | Flat dispatch via one type in merge §2, identity §2.2; identity keys enable consumer-side dedup |
 | Lorenzen et al. (2025) "First-Order Laziness" | Informed by | `deferredModule` inspectable before forcing (via Nix native laziness, not Lorenzen's mechanism) §1-2.3 |
-| Reynolds (1972) "Definitional Interpreters" | Implements | Guard function defunctionalization — closures become tagged data |
+| Reynolds (1972) "Definitional Interpreters" | Analogy | Guard functions wrapped as tagged, still-callable functors (`functionTo`); the arrow is preserved inside `__functor`, not eliminated — analogy, not an implementation |
 
 **Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable consumer-side diamond dedup (Lemma 5.12 + Theorem 1, closure consistency); gen-aspects supplies the keys, the dedup lives in the consumer.
 
 **Lorenzen et al. (2025) "First-Order Laziness"** (informed by) — Class content as `deferredModule` is inspectable before forcing, evaluated only when the consuming NixOS evaluation imports it (§1-2.3). This property comes from Nix native laziness plus nixpkgs `deferredModule`, NOT from Lorenzen's mechanism (first-order named constructors, defunctionalized deferred operations, in-place memoization). The citation is provenance for the laziness idea, not an implementation of the paper.
 
-**Reynolds (1972) "Definitional Interpreters"** — Guard functions wrapped via `functionTo` are Reynolds defunctionalization: closures become tagged data (`__isWrappedFn`, `__functionArgs`) with explicit dispatch (`__functor`).
+**Reynolds (1972) "Definitional Interpreters"** (analogy) — Guard functions wrapped via `functionTo` become tagged, inspectable, still-callable functors (`__isWrappedFn` marker, `name`/`meta` from `loc`) resolved later by the pipeline. This is *analogous to*, not an implementation of, Reynolds defunctionalization (§6): the function is preserved and re-invoked via `__functor`, not replaced by a first-order record (one constructor per guard form) dispatched through a single global `apply`. A faithful §6 transform of the guard space — a closed guard-constructor vocabulary keyed by `(tag, argData)` — is future work.
 
 ## License
 

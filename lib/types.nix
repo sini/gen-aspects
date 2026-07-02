@@ -14,8 +14,11 @@
 # the consuming NixOS/homeManager evaluation imports it.
 #
 # Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
-# (Reynolds 1972 defunctionalization). The pipeline resolves them when context
-# is available — they are NOT evaluated by the type system.
+# (inspectable functor wrapping; cf. Reynolds 1972 defunctionalization by ANALOGY —
+# the closure is preserved inside __functor, not eliminated; there is no per-form
+# constructor and no single global apply, so this is not the literal §6 transform).
+# The pipeline resolves them when context is available — they are NOT evaluated by
+# the type system.
 { lib }:
 let
   identity = import ./identity.nix { inherit lib; };
@@ -73,7 +76,8 @@ let
           else if builtins.isFunction v && isModuleFn v then
             (aspectSubmodule cnf).merge loc defs
           else if builtins.isFunction v then
-            # Guard function — wrap for pipeline resolution (Reynolds defunctionalization).
+            # Guard function — wrap as inspectable functor for pipeline resolution
+            # (analogy to Reynolds defunctionalization, not the literal transform).
             # Palmer §5.1: name + meta from loc for tracing/diagramming.
             (lib.types.functionTo (aspectSubmodule cnf)).merge (loc ++ [ "<function body>" ]) defs
             // {
