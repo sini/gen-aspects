@@ -202,4 +202,52 @@ in
       expr = (builtins.tryEval (gv.applyGuard { host.name = "y"; } g)).success;
       expected = false;
     };
+
+  # site-independence: same predicate + first-order body at two "sites" -> equal key
+  flake.tests.guard.test-guardkey-site-independent =
+    let
+      g1 = aspects.guard (aspects.pred.host "cortex") { a = 1; };
+      g2 = aspects.guard (aspects.pred.host "cortex") { a = 1; };
+    in
+    {
+      expr = aspects.guardKey g1 == aspects.guardKey g2;
+      expected = true;
+    };
+
+  # bodyKey discriminates differing first-order bodies
+  flake.tests.guard.test-guardkey-body-discriminates =
+    let
+      g1 = aspects.guard (aspects.pred.host "cortex") { a = 1; };
+      g2 = aspects.guard (aspects.pred.host "cortex") { a = 2; };
+    in
+    {
+      expr = aspects.guardKey g1 == aspects.guardKey g2;
+      expected = false;
+    };
+
+  # nested all/any with a FUNCTION body must not throw when keyed (predicate/body split)
+  flake.tests.guard.test-guardkey-nested-no-throw =
+    let
+      g = aspects.guard (aspects.pred.all [
+        (aspects.pred.host "cortex")
+        (aspects.pred.class "nixos")
+      ]) ({ config, ... }: { });
+    in
+    {
+      expr = (builtins.tryEval (builtins.stringLength (aspects.guardKey g) > 0)).success;
+      expected = true;
+    };
+
+  # a first-order body CONTAINING a nested guard whose body is a function must go opaque
+  # (no toJSON crash) — hasFn recurses into nested guards.
+  flake.tests.guard.test-guardkey-nested-guard-fn-body =
+    let
+      g = aspects.guard (aspects.pred.host "cortex") {
+        sub = aspects.guard (aspects.pred.class "nixos") ({ config, ... }: { });
+      };
+    in
+    {
+      expr = (builtins.tryEval (builtins.isString (aspects.guardKey g))).success;
+      expected = true;
+    };
 }

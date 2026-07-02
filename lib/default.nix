@@ -36,6 +36,7 @@ in
     pathKey
     key
     isMeaningfulName
+    guardKey
     ;
   # New API
   inherit (schemaModule) mkAspectSchema;
