@@ -46,5 +46,6 @@ in
     pred
     guard
     ;
+  # base (form-less) vocab; consumers with cnf.guardForms use (mkGuardVocab cnf).applyGuard
   applyGuard = (guardModule.mkGuardVocab { }).applyGuard;
 }

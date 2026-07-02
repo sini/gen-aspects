@@ -5,7 +5,7 @@
 # closure. Raw closures remain the non-defunctionalized escape hatch (functionTo, see types.nix).
 { lib }:
 let
-  # O1/OQ4: first-order enforcement + type tagging (Palmer Typeable guard) --------
+  # O1: first-order enforcement + type tagging (Palmer Typeable guard) --------
   tagVal =
     v:
     if builtins.isString v then
@@ -80,6 +80,7 @@ let
       p = "always";
       a = { };
     };
+    custom = formName: a: mkP formName a; # constructor for a cnf.guardForms form
   };
 
   guard = pr: body: {
@@ -95,9 +96,28 @@ in
     cnf:
     let
       getPath = path: ctx: lib.attrByPath path null ctx;
-      # A consumer form is { eval = ctx: argData: bool; reads = [ [attrPath] ... ]; } (reads
-      # is metadata for read-set analysis; not consulted at eval time).
-      userForms = cnf.guardForms or { };
+      # Custom forms (O7 extension). Each MUST be { eval = ctx: argData: bool; reads = [ [attrPath] ... ]; }.
+      # `reads` is required (load-bearing for read-set congruence, OQ-A) though not consulted at dispatch —
+      # it is for downstream read-set analysis. A custom form may NOT shadow a core form.
+      coreFormNames = [
+        "host"
+        "class"
+        "user"
+        "tagEq"
+        "eq"
+        "all"
+        "any"
+        "always"
+      ];
+      checkedUserForms = builtins.mapAttrs (
+        name: form:
+        if builtins.elem name coreFormNames then
+          throw "gen-aspects.guard: custom form '${name}' collides with a core predicate form"
+        else if !(form ? eval && form ? reads) then
+          throw "gen-aspects.guard: custom form '${name}' must be { eval; reads; }"
+        else
+          form
+      ) (cnf.guardForms or { });
       # O2: ONE global dispatcher, case-analysis on the predicate tag.
       evalPred =
         ctx: pr:
@@ -112,7 +132,7 @@ in
             any = builtins.any (evalPred ctx) pr.a.preds;
             always = true;
           }
-          // builtins.mapAttrs (_: form: form.eval ctx pr.a) userForms;
+          // builtins.mapAttrs (_: form: form.eval ctx pr.a) checkedUserForms;
         in
         core.${pr.p} or (throw "gen-aspects.guard: unknown predicate form '${pr.p}'");
       fires = ctx: g: evalPred ctx g.pred;
