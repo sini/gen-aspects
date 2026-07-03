@@ -2,20 +2,28 @@
 
 A single integrated flake exercising all 8 gen libraries together. Models a web deployment fleet with environments (prod, staging, dev), hosts, services, and observability — demonstrating aspects, schema extensions, scope-based settings composition, graph queries, selector patterns, policy dispatch, and module bindings.
 
+The gen definition tree (`gen-modules/`) is composed **purely** by [gen-flake](https://github.com/sini/gen-flake) — gen-merge's byte-mode `evalModuleTree`, not flake-parts' nixpkgs `lib.evalModules`. gen-flake injects the resolved config **values** into the flake-parts eval as the `genValues` module arg; the readers (`modules/*`) run the settings cascade + graph/selector/policy/bind demos over those values. No gen *type* ever enters the flake-parts options tree — the value-injection invariant that lets a gen aspect schema coexist with flake-parts (the old `options.schema`/`options.aspects`/`options.namespaces` embeds threw under the pure re-host).
+
 ## Running
 
 ```bash
-nix eval --json .#aspectNames | jq   # list all aspects
-nix eval --json .#aspectCount        # total aspect count
-nix eval --json .#nginxWorkersProdWeb1  # composed setting: 32
-nix eval --json .#nginxWorkersDev       # composed setting: 1
+# While gen-flake is consumed via a local path pin, pass --allow-dirty-locks:
+nix eval --json .#aspectNames --allow-dirty-locks | jq   # list all aspects
+nix eval --json .#aspectCount --allow-dirty-locks        # total aspect count
+nix eval --json .#nginxWorkersProdWeb1 --allow-dirty-locks  # composed setting: 32
+nix eval --json .#nginxWorkersDev --allow-dirty-locks       # composed setting: 1
+
+# Full evaluation — proves no gen type enters the flake-parts options tree:
+nix flake check --allow-dirty-locks
 ```
 
 ## Structure
 
 ```
-modules/
-  setup.nix          — instantiate all 8 gen libraries, wire aspect schema
+flake.nix            — flake-parts + gen-flake + reader-side gen libs; gen.tree = ./gen-modules
+gen-modules/         — the gen definition tree, composed PURELY by gen-flake (evalModuleTree)
+  setup.nix          — options.schema + options.aspects (the typed surface) + schema extensions
+  _aspect-schema.nix — shared mkAspectSchema cnf (helper; _-prefixed, not a tree module)
   entities.nix       — fleet structure: environments + hosts
   aspects/
     base.nix         — base-system, networking, monitoring-base
@@ -25,12 +33,19 @@ modules/
     users.nix        — define-user
   namespace.nix      — observability namespace: prometheus, grafana, loki
   settings.nix       — per-scope settings overrides (env-level, host-level)
-  composition.nix    — scope graph + neron traverse + foldLayers
-  queries.nix        — gen-graph traversals + gen-select pattern matching
+modules/             — the flake-parts (reader) side; reads genValues, NOT composed into the tree
+  composition.nix    — scope graph + neron traverse + foldLayers (over genValues)
+  queries.nix        — gen-graph traversals + gen-select pattern matching (over genValues)
   policies.nix       — gen-dispatch step + gen-scope.circular loop with action vocabulary
   bindings.nix       — gen-bind module wrapping with contracts
-  outputs.nix        — flake outputs for verification
+  injection.nix      — per-(host, aspect) settings-injection construct → assembledClasses (class terminal)
+  _policy-rules.nix  — shared policy action vocabulary + rules (helper; _-prefixed, not a module)
+  outputs.nix        — flake outputs for verification (reads genValues + reader results)
 ```
+
+### Class-content terminal
+
+The `nixos` class content is assembled by a **reader terminal** (`injection.nix` + `outputs.nix`), not gen-flake's `mkSystems`: the demo injects reader-computed per-`(host, aspect)` resolved settings (the `composedSettings` cascade) into each aspect's parametric `nixos` via `genBind.wrap`, then renders precise values through a stub `evalModules`. `mkSystems`'s `wrapAll` binds only the resolved `host` instance and builds a full `nixpkgs.lib.nixosSystem`, which has no hook for that richer settings binding. gen-flake's flakeModule still emits `flake.nixosConfigurations = mkSystems { … }`, but the fleet lives under `fleet.hosts` (not the top-level `hosts` compose projects over) so that projection is empty here — harmless.
 
 ## What each library does here
 

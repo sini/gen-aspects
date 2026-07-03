@@ -1,8 +1,11 @@
 # Expose verification outputs for the demo.
+#
+# READER side (gen-flake value-injection): the demo's encoded invariants render over the injected
+# `genValues.aspects` (the gen tree's resolved config) and the cascade/query/policy/bind results
+# threaded from sibling reader modules via `_module.args` — no flake-parts `config.*` gen option tree.
 {
-  config,
   lib,
-  genAspects,
+  genValues,
   composedSettings,
   settingsProvenance,
   scopeResult,
@@ -91,8 +94,8 @@ in
   flake = {
     aspectCount = builtins.length (builtins.attrNames flat);
     aspectNames = lib.sort (a: b: a < b) (builtins.attrNames flat);
-    hasTags = (config.aspects.base-system.tags or [ ]) != [ ];
-    hasNestedSettings = (config.aspects.networking.settings or { }) != { };
+    hasTags = (genValues.aspects.base-system.tags or [ ]) != [ ];
+    hasNestedSettings = (genValues.aspects.networking.settings or { }) != { };
 
     # --- aspect shape (replaces hasGuard) ---
     firewallIsPlain = !(flat.firewall.__isWrappedFn or false); # true

@@ -5,9 +5,12 @@
 # The nginx config logic now lives in the aspect itself (aspects/web.nix's
 # parametric `nixos`), so there is no out-of-band module here — we source the
 # class content from the aspect and inject resolved settings via the construct.
+#
+# READER side (gen-flake value-injection): the aspect class content comes from the injected
+# `genValues.aspects` (the gen tree's resolved config), not a flake-parts `config.aspects` option tree.
 {
-  config,
   lib,
+  genValues,
   genAspects,
   genBind,
   composedSettings,
@@ -18,7 +21,7 @@ let
   # flat keys aspects by FULL PATH — nginx is "services/nginx".
   # `nixos` is a deferredModule option, so the parametric fn arrives coerced to
   # `{ imports = [ <fn> ]; }` — the same imports-form the construct consumes.
-  nginxClass = (genAspects.flatten config.aspects)."services/nginx".nixos;
+  nginxClass = (genAspects.flatten genValues.aspects)."services/nginx".nixos;
 
   # Demo-only metadata path: this exists ONLY to surface signature/wrapped info in
   # the bindResults verification output. The real injection uses the construct's
@@ -46,7 +49,7 @@ let
   nginxFn = unwrapToFn nginxClass;
 
   # Mirrors the construct's binding shape; `host` omits the construct's fleet-host
-  # enrichment (`// config.fleet.hosts.<h>`) — fine here since the signature only
+  # enrichment (`// genValues.fleet.hosts.<h>`) — fine here since the signature only
   # reads arg presence, not host fields.
   uniformBindings = {
     settings = {

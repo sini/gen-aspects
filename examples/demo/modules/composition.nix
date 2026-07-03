@@ -1,13 +1,18 @@
 # Settings composition: gen-scope neron traverse + gen-algebra foldLayers.
 #
+# READER side of the gen-flake value-injection split: the aspect/fleet/scopeSettings definitions are
+# composed PURELY in the gen tree (./gen-modules) and injected here as `genValues`. This module reads
+# `genValues.{aspects,fleet,scopeSettings}` (was `config.*`) and runs the settings cascade on the
+# flake-parts side, threading the results to sibling reader modules via `config._module.args`.
+#
 # Pipeline:
 # 1. Extract settings schemas from all aspects (defaults + merge strategies)
 # 2. Build scope graph: env nodes as roots, host nodes with P-edges to env
 # 3. Neron traverse collects settings layers ordered D > I > P (host > env)
 # 4. foldLayers merges with per-field strategies; result unflattened to nested attrsets
 {
-  config,
   lib,
+  genValues,
   genAspects,
   genAlgebra,
   genScope,
@@ -20,7 +25,7 @@ let
 
   # --- 1. Extract settings schemas from all aspects ---
 
-  flat = genAspects.flatten config.aspects;
+  flat = genAspects.flatten genValues.aspects;
 
   # Detect a settings leaf: an attrset with a `default` field.
   isSettingsLeaf = v: builtins.isAttrs v && v ? default;
@@ -71,14 +76,14 @@ let
 
   # --- 2. Build scope graph ---
 
-  envNames = builtins.attrNames config.fleet.environments;
-  hostNames = builtins.attrNames config.fleet.hosts;
+  envNames = builtins.attrNames genValues.fleet.environments;
+  hostNames = builtins.attrNames genValues.fleet.hosts;
 
   envNodeIds = map (e: "env:${e}") envNames;
   hostNodeIds = map (h: "host:${h}") hostNames;
 
   # P-edges: host:<name> → env:<envName>
-  parentEdges = map (h: genScope.edge "host:${h}" "env:${config.fleet.hosts.${h}.env}") hostNames;
+  parentEdges = map (h: genScope.edge "host:${h}" "env:${genValues.fleet.hosts.${h}.env}") hostNames;
 
   roots = genScope.buildNodes {
     parentGraph = genScope.overlays parentEdges;
@@ -88,8 +93,8 @@ let
         map (e: {
           name = "env:${e}";
           value = {
-            settings = config.scopeSettings.${"env:${e}"} or { };
-            tier = config.fleet.environments.${e}.tier;
+            settings = genValues.scopeSettings.${"env:${e}"} or { };
+            tier = genValues.fleet.environments.${e}.tier;
           };
         }) envNames
       )
@@ -99,9 +104,9 @@ let
           map (h: {
             name = "host:${h}";
             value = {
-              settings = config.scopeSettings.${"host:${h}"} or { };
-              role = config.fleet.hosts.${h}.role;
-              env = config.fleet.hosts.${h}.env;
+              settings = genValues.scopeSettings.${"host:${h}"} or { };
+              role = genValues.fleet.hosts.${h}.role;
+              env = genValues.fleet.hosts.${h}.env;
             };
           }) hostNames
         );
@@ -207,9 +212,9 @@ let
   dispatchForHost =
     hostName:
     let
-      h = config.fleet.hosts.${hostName};
+      h = genValues.fleet.hosts.${hostName};
       context = {
-        env = config.fleet.environments.${h.env};
+        env = genValues.fleet.environments.${h.env};
         host = h // {
           name = hostName;
         };

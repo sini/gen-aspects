@@ -4,9 +4,12 @@
 # `_policy-rules.nix` helper. This module keeps only the legacy single-sample
 # fixpoint dispatch (sample context: prod-web-1) that feeds the existing
 # `policyIterations` / `policyActionCounts` outputs.
+#
+# READER side (gen-flake value-injection): reads the injected `genValues.fleet` (the gen tree's
+# resolved config) instead of a flake-parts `config.fleet` option tree.
 {
-  config,
   lib,
+  genValues,
   genDispatch,
   genGraph,
   genScope,
@@ -23,8 +26,8 @@ let
     ;
 
   # Sample context: prod-web-1
-  sampleEnv = config.fleet.environments.prod;
-  sampleHost = config.fleet.hosts.prod-web-1 // {
+  sampleEnv = genValues.fleet.environments.prod;
+  sampleHost = genValues.fleet.hosts.prod-web-1 // {
     name = "prod-web-1";
   };
 

@@ -1,8 +1,11 @@
 # Graph traversals and pattern matching over the combined aspect registry.
 # Demonstrates gen-graph and gen-select on a flattened aspect tree.
+#
+# READER side (gen-flake value-injection): reads the injected `genValues.{aspects,namespaces}` (the
+# gen tree's resolved config) instead of a flake-parts `config.*` option tree.
 {
-  config,
   lib,
+  genValues,
   genAspects,
   genGraph,
   genSelect,
@@ -11,7 +14,7 @@
 let
   # --- Flatten main + namespace aspects into a unified registry ---
 
-  mainFlat = genAspects.flatten config.aspects;
+  mainFlat = genAspects.flatten genValues.aspects;
 
   nsFlat = lib.concatMapAttrs (
     nsName: ns:
@@ -22,7 +25,7 @@ let
       name = "${nsName}/${k}";
       value = v;
     }) raw
-  ) config.namespaces;
+  ) genValues.namespaces;
 
   flat = mainFlat // nsFlat;
   flatKeys = builtins.attrNames flat;

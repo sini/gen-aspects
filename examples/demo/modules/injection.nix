@@ -1,20 +1,24 @@
 # Per-(host, aspect) resolved-settings -> class-content injection.
 # Generalizes bindings.nix's manual gen-bind wiring into a first-class construct.
 # Promotion target (later, out of scope): gen-aspects.lib.injectAspectSettings / assembleHost.
+#
+# READER side (gen-flake value-injection): reads the injected `genValues.{aspects,fleet}` (the gen
+# tree's resolved config) instead of a flake-parts `config.*` option tree. The assembled per-(host,
+# aspect) class content is the demo's class-content TERMINAL (see flake.nix note on mkSystems).
 {
-  config,
   lib,
+  genValues,
   genAspects,
   genBind,
   composedSettings,
   ...
 }:
 let
-  flat = genAspects.flatten config.aspects;
+  flat = genAspects.flatten genValues.aspects;
   # MUST match composition.nix's leafName — the injected `settings.<leaf>` key has
   # to line up with the cascade's composedSettings.<host>.<leaf> namespace.
   leafName = path: lib.last (lib.splitString "/" path);
-  hostNames = builtins.attrNames config.fleet.hosts;
+  hostNames = builtins.attrNames genValues.fleet.hosts;
 
   # The per-(host, aspect) unit: thin glue over genBind.wrap.
   # classContent comes from a deferredModule option, so BOTH a parametric fn and a
@@ -38,7 +42,7 @@ let
         host = {
           name = host;
         }
-        // (config.fleet.hosts.${host} or { });
+        // (genValues.fleet.hosts.${host} or { });
       };
       contracts.settings = genBind.contract.isType "set";
       provenance.settings = {

@@ -1,14 +1,22 @@
 # Observability namespace: prometheus, grafana, loki.
-# Demonstrates mkNamespaceType for aspect namespacing.
+# Demonstrates mkNamespaceType for aspect namespacing — declared PURELY in the gen tree (gen-flake
+# value-injection); the resolved values cross to the reader as `genValues.namespaces`. The aspect-schema
+# `cnf` is shared with setup.nix via ./_aspect-schema.nix so the namespaced aspect grammar matches.
+# The `namespaces` option is declared with a gen-merge type (`genMerge.types.lazyAttrsOf`) so the whole
+# surface stays native to `evalModuleTree` — no nixpkgs `lib.types.attrsOf` wrapping a gen submodule.
 {
   config,
   lib,
-  aspectSchema,
+  genAspects,
+  genMerge,
   ...
 }:
+let
+  aspectSchema = import ./_aspect-schema.nix { inherit genAspects lib; };
+in
 {
-  options.namespaces = lib.mkOption {
-    type = lib.types.attrsOf (aspectSchema.mkNamespaceType { });
+  options.namespaces = genMerge.mkOption {
+    type = genMerge.types.lazyAttrsOf (aspectSchema.mkNamespaceType { });
     default = { };
     description = "Named aspect namespaces.";
   };
