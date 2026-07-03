@@ -10,7 +10,12 @@
 # system's name-based option-vs-freeform split, which inspects attr NAMES only and
 # never forces VALUES. A `throw` in a freeform leaf is the type-level analogue of
 # the self-output fixpoint re-entry: if classification forced it, the test throws.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 let
   # Stands in for `attrValues self.outputs.overlays`: any forcing during
   # structural classification would re-enter the fixpoint (here: throw).
@@ -33,9 +38,9 @@ let
     ];
   };
 
-  nixosEval = lib.evalModules {
+  nixosEval = genMerge.evalModuleTree {
     modules = [
-      { options.networking.hostName = lib.mkOption { type = lib.types.str; }; }
+      { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
       eval.config.aspects.web.nixos
     ];
   };

@@ -1,6 +1,11 @@
 # Test: freeform key dispatch — primitives pass through, nested aspects get identity,
 # registered classes get deferredModule.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 {
   flake.tests.freeform-dispatch.test-primitive-string-passthrough =
     let
@@ -65,10 +70,10 @@
           { config.aspects.infra.networking.dns.classOne.nameservers = [ "1.1.1.1" ]; }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
           {
-            options.nameservers = lib.mkOption { type = lib.types.listOf lib.types.str; };
+            options.nameservers = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; };
           }
           eval.config.aspects.infra.networking.dns.classOne
         ];

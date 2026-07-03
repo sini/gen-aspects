@@ -10,7 +10,7 @@
 #
 # Collects entries as a list (O(n) via concatMap) then single listToAttrs at the
 # end, avoiding the O(n²) cost of accumulating with foldl'+//.
-_:
+# Dep-free (builtins only) → a bare value (gen convention: no `{ }:` when argument-less).
 let
   # A guard leaf: a wrapped guard function (__isWrappedFn) OR a defunctionalized guard
   # record (__guard, guard.nix). Both are included as leaf entries, never recursed into.

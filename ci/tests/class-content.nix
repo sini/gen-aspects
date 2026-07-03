@@ -1,5 +1,10 @@
 # Test: registered class content is clean (deferredModule, no structural keys).
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 {
   flake.tests.class-content.test-class-is-deferred-module =
     let
@@ -24,9 +29,9 @@
   flake.tests.class-content.test-class-content-evaluates-cleanly =
     let
       eval = mkSchemaEval { modules = [ { config.aspects.myAspect.classOne.setting = "hello"; } ]; };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.setting = lib.mkOption { type = lib.types.str; }; }
+          { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
           eval.config.aspects.myAspect.classOne
         ];
       };
@@ -44,9 +49,9 @@
           { config.aspects.myAspect.classOne.names = [ "bob" ]; }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.names = lib.mkOption { type = lib.types.listOf lib.types.str; }; }
+          { options.names = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; }; }
           eval.config.aspects.myAspect.classOne
         ];
       };
@@ -72,9 +77,9 @@
           }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.greeting = lib.mkOption { type = lib.types.str; }; }
+          { options.greeting = genMerge.mkOption { type = genMerge.types.str; }; }
           eval.config.aspects.myAspect.classOne
         ];
       };

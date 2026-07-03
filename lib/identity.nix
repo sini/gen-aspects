@@ -1,12 +1,12 @@
 # Aspect identity: path-based key for dedup.
-{ lib }:
+{ prelude }:
 let
   aspectPath = a: (a.meta.aspect-chain or [ ]) ++ [ (a.name or "<anon>") ];
 
-  pathKey = path: lib.concatStringsSep "/" path;
+  pathKey = path: prelude.concatStringsSep "/" path;
 
   isMeaningfulName =
-    name: name != "<anon>" && name != "<function body>" && !(lib.hasPrefix "[definition " name);
+    name: name != "<anon>" && name != "<function body>" && !(prelude.hasPrefix "[definition " name);
 
   # hasFn: does the value (recursively) contain a function anywhere? Forces structure.
   # REQUIRED because builtins.toJSON on a function is an UNCATCHABLE error (verified:

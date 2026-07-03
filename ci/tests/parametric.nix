@@ -1,7 +1,12 @@
 # Test: module functions vs guard functions.
 # Module functions ({ config, ... }:) are evaluated by the submodule.
 # Guard functions ({ host, ... }:) are wrapped via functionTo for pipeline resolution.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 {
   flake.tests.parametric.test-module-function-aspect =
     let
@@ -35,9 +40,9 @@
           }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.setting = lib.mkOption { type = lib.types.str; }; }
+          { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
           eval.config.aspects.myAspect.classOne
         ];
       };

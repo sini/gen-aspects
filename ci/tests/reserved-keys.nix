@@ -13,7 +13,12 @@
 # NOTE on merge discipline: den's reserved passthrough is last-def-wins; declaring
 # the option as `lazyAttrsOf` here deep-merges instead. Verbatim read-back holds
 # either way; pick the option type per intended semantics (see den-hoag ISSUES #13d).
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 let
   withSettings =
     modules:
@@ -23,9 +28,9 @@ let
       };
       aspectModules = [
         {
-          options.settings = lib.mkOption {
+          options.settings = genMerge.mkOption {
             description = "Reserved free-form metadata (den.reservedKeys analogue)";
-            type = lib.types.lazyAttrsOf lib.types.anything;
+            type = genMerge.types.lazyAttrsOf genMerge.types.anything;
             default = { };
           };
         }
@@ -42,9 +47,9 @@ let
     }
   ];
 
-  nixosEval = lib.evalModules {
+  nixosEval = genMerge.evalModuleTree {
     modules = [
-      { options.networking.hostName = lib.mkOption { type = lib.types.str; }; }
+      { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
       eval.config.aspects.igloo.nixos
     ];
   };

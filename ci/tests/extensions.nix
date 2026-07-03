@@ -1,6 +1,11 @@
 # Test: pipeline-provided aspect extensions via cnf.aspectModules.
 # Den uses this to add excludes, policies, and other pipeline options.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 let
   mkEval =
     modules:
@@ -8,14 +13,14 @@ let
       classes.classOne = { };
       aspectModules = [
         {
-          options.excludes = lib.mkOption {
+          options.excludes = genMerge.mkOption {
             description = "Aspects to exclude from resolution";
-            type = lib.types.listOf lib.types.str;
+            type = genMerge.types.listOf genMerge.types.str;
             default = [ ];
           };
-          options.priority = lib.mkOption {
+          options.priority = genMerge.mkOption {
             description = "Resolution priority";
-            type = lib.types.int;
+            type = genMerge.types.int;
             default = 100;
           };
         }
@@ -89,9 +94,9 @@ in
           };
         }
       ];
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.setting = lib.mkOption { type = lib.types.str; }; }
+          { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
           eval.config.aspects.foo.classOne
         ];
       };

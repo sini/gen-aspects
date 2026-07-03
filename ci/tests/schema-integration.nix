@@ -1,6 +1,7 @@
 # Schema integration: verify gen-schema's kind-level infrastructure
 # works with aspectType via mkType delegation.
 {
+  genMerge,
   lib,
   aspects,
   mkSchemaEval,
@@ -25,8 +26,8 @@ let
       (
         { ... }:
         {
-          config.schema.aspect.options.priority = lib.mkOption {
-            type = lib.types.int;
+          config.schema.aspect.options.priority = genMerge.mkOption {
+            type = genMerge.types.int;
             default = 50;
           };
         }
@@ -98,9 +99,9 @@ in
     expr =
       let
         classVal = classEval.config.aspects.myAspect.classOne;
-        classResult = lib.evalModules {
+        classResult = genMerge.evalModuleTree {
           modules = [
-            { options.networking.hostName = lib.mkOption { type = lib.types.str; }; }
+            { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
             classVal
           ];
         };

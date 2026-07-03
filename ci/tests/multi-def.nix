@@ -1,5 +1,10 @@
 # Test: multi-definition merging behavior at the type level.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 {
   flake.tests.multi-def.test-attrset-multi-def-lists-merge =
     let
@@ -9,9 +14,9 @@
           { config.aspects.foo.classOne.names = [ "bob" ]; }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.names = lib.mkOption { type = lib.types.listOf lib.types.str; }; }
+          { options.names = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; }; }
           eval.config.aspects.foo.classOne
         ];
       };
@@ -32,11 +37,11 @@
           { config.aspects.foo.classOne.y = "from-b"; }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
           {
-            options.x = lib.mkOption { type = lib.types.str; };
-            options.y = lib.mkOption { type = lib.types.str; };
+            options.x = genMerge.mkOption { type = genMerge.types.str; };
+            options.y = genMerge.mkOption { type = genMerge.types.str; };
           }
           eval.config.aspects.foo.classOne
         ];

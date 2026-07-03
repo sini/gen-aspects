@@ -2,6 +2,7 @@
 # Theory: Reynolds "Elimination of Higher-Order Functions" (defunctionalize the guard space)
 # as formalized by Danvy & Nielsen 2001 (O1-O7).
 {
+  genMerge,
   lib,
   aspects,
   mkSchemaEval,
@@ -327,7 +328,7 @@ in
   # TWICE under one key takes the merge `length != 1` path, which folds the two attrs guard
   # records into an aspect submodule rather than passing either through. ACTUAL observed behavior
   # (2026-07-02): it does NOT throw, but `__guard` is folded as a freeform bool key and becomes a
-  # `lib.mkMerge [ true true ]` wrapper ({ _type = "merge"; ... }) — NOT the clean `true` a real
+  # `genMerge.mkMerge [ true true ]` wrapper ({ _type = "merge"; ... }) — NOT the clean `true` a real
   # guard record carries. So the result is not a usable guard record. Single-def is the real usage.
   # TODO(guard): multi-def guard records not supported (single-def only) — see lib/types.nix branch.
   flake.tests.guard.test-guard-multidef-limitation =

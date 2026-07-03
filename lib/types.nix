@@ -1,8 +1,8 @@
-# gen-aspects type system.
+# gen-aspects type system — re-hosted on gen-merge (was nixpkgs lib.types/evalModules).
 #
 # Palmer et al. (2024) "Intensional Functions" §2: one type, dispatch in merge.
 # aspectType dispatches by value shape — attrsets and module functions to
-# aspectSubmodule, guard functions to functionTo (deferred for pipeline resolution),
+# aspectSubmodule, guard functions to a functor wrap (deferred for pipeline resolution),
 # primitives pass through.
 #
 # Class content uses explicit deferredModule options (from cnf.classes).
@@ -13,21 +13,25 @@
 # constructor (deferredModule) — inspectable before forcing, evaluated only when
 # the consuming NixOS/homeManager evaluation imports it.
 #
-# Guard functions ({ host, ... }: { ... }) are preserved via functionTo wrapping
-# (inspectable functor wrapping; cf. Reynolds 1972 defunctionalization by ANALOGY —
+# Guard functions ({ host, ... }: { ... }) are preserved via a functor wrap
+# (inspectable `__functor` wrapping; cf. Reynolds 1972 defunctionalization by ANALOGY —
 # the closure is preserved inside __functor, not eliminated; there is no per-form
 # constructor and no single global apply, so this is not the literal §6 transform).
+# Re-host note: the wrap is now a hand-built functor (gen-merge has no `functionTo`);
+# it reproduces the old `(lib.types.functionTo aspectSubmodule).merge … // { __isWrappedFn; … }`
+# functor byte-for-byte (isAttrs + callable via __functor, tagged __isWrappedFn/name/meta).
 # The pipeline resolves them when context is available — they are NOT evaluated by
 # the type system.
 #
 # Defunctionalized guard records (guard.nix, __guard) are passed through as first-order
 # data by the __guard branch below — THAT path IS the Reynolds §6 transform (closed
-# predicate vocabulary + one applyGuard); functionTo wrapping is the non-defunctionalized
+# predicate vocabulary + one applyGuard); the functor wrap is the non-defunctionalized
 # escape hatch for raw closures.
-{ lib }:
+{ prelude, merge }:
 let
-  identity = import ./identity.nix { inherit lib; };
-  canTake = import ./can-take.nix { inherit lib; };
+  identity = import ./identity.nix { inherit prelude; };
+  canTake = import ./can-take.nix { inherit prelude; };
+  t = merge.types;
 
   # Module functions take known module args — evaluated by the submodule.
   # Guard functions take context args (host/user/etc.) — wrapped for later.
@@ -43,20 +47,43 @@ let
   };
   mkIsModuleFn = cnf: canTake.upTo (cnf.moduleArgs or defaultModuleArgs);
 
+  # Raw-closure guard wrap — a hand-built functor reproducing nixpkgs `functionTo`'s merge
+  # result tagged as a wrapped fn. When the pipeline applies it to a context, each def's guard
+  # closure is applied and the results merge through the aspectSubmodule (deferred resolution).
+  wrapGuardFn = cnf: loc: defs: {
+    __functor =
+      _: fnArgs:
+      (aspectSubmodule cnf).merge (loc ++ [ "<function body>" ]) (
+        map (d: {
+          inherit (d) file;
+          value = d.value fnArgs;
+        }) defs
+      );
+    # nixpkgs `functionTo` sets `__functionArgs` (via setFunctionArgs) = the union of the guard
+    # closures' formals, so downstream `functionArgs`/`lib.isFunction` see the guard's arg shape.
+    __functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
+    __isWrappedFn = true;
+    name = prelude.last loc;
+    meta = {
+      inherit loc;
+      file = (builtins.head defs).file or "<unknown>";
+    };
+  };
+
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   aspectType =
     cnf:
     let
       isModuleFn = mkIsModuleFn cnf;
     in
-    lib.types.mkOptionType {
+    merge.mkOptionType {
       name = "aspect";
       check = _: true;
       merge =
         loc: defs:
         if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
-            lib.mkMerge (map (d: d.value) defs)
+            merge.mkMerge (map (d: d.value) defs)
           else
             (aspectSubmodule cnf).merge loc (
               map (
@@ -87,9 +114,9 @@ let
             # not hashed by guardKey).
             v
             // {
-              name = lib.last loc;
+              name = prelude.last loc;
               meta = (v.meta or { }) // {
-                loc = loc;
+                inherit loc;
                 file = (builtins.head defs).file or "<unknown>";
               };
             }
@@ -99,23 +126,15 @@ let
             # Guard function — wrap as inspectable functor for pipeline resolution
             # (analogy to Reynolds defunctionalization, not the literal transform).
             # Palmer §5.1: name + meta from loc for tracing/diagramming.
-            (lib.types.functionTo (aspectSubmodule cnf)).merge (loc ++ [ "<function body>" ]) defs
-            // {
-              __isWrappedFn = true;
-              name = lib.last loc;
-              meta = {
-                loc = loc;
-                file = (builtins.head defs).file or "<unknown>";
-              };
-            }
+            wrapGuardFn cnf loc defs
           else if builtins.isAttrs v then
             (aspectSubmodule cnf).merge loc defs
           else
-            (lib.last defs).value;
+            (prelude.last defs).value;
     };
 
   # Recursion-safe binding: either doesn't force subtypes during construction.
-  aspectOrFn = cnf: lib.types.either (aspectType cnf) (aspectSubmodule cnf);
+  aspectOrFn = cnf: merge.either (aspectType cnf) (aspectSubmodule cnf);
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
@@ -125,54 +144,54 @@ let
   aspectSubmodule =
     cnf:
     let
-      classOptions = lib.genAttrs (builtins.attrNames (cnf.classes or { })) (
+      classOptions = prelude.genAttrs (builtins.attrNames (cnf.classes or { })) (
         _:
-        lib.mkOption {
+        merge.mkOption {
           description = "Class content (deferred module)";
           default = { };
-          type = lib.types.deferredModule;
+          type = t.deferredModule;
         }
       );
     in
-    lib.types.submodule (
+    merge.submodule (
       { name, config, ... }:
       {
-        freeformType = lib.types.lazyAttrsOf (aspectType cnf);
+        freeformType = t.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
         imports = cnf.aspectModules or [ ];
 
         options = {
-          name = lib.mkOption {
+          name = merge.mkOption {
             description = "Aspect name";
             default = name;
-            type = lib.types.str;
+            type = t.str;
           };
 
-          description = lib.mkOption {
+          description = merge.mkOption {
             description = "Aspect description";
             default = "Aspect ${name}";
-            type = lib.types.str;
+            type = t.str;
           };
 
-          key = lib.mkOption {
+          key = merge.mkOption {
             internal = true;
             readOnly = true;
-            type = lib.types.str;
+            type = t.str;
             default = identity.key config;
           };
 
-          meta = lib.mkOption {
+          meta = merge.mkOption {
             description = "Aspect metadata";
             default = { };
-            type = lib.types.submodule {
-              freeformType = lib.types.lazyAttrsOf lib.types.raw;
+            type = merge.submodule {
+              freeformType = t.lazyAttrsOf t.raw;
               imports = cnf.metaModules or [ ];
             };
           };
 
-          includes = lib.mkOption {
+          includes = merge.mkOption {
             description = "Aspects to include";
-            type = lib.types.listOf (aspectOrFn cnf);
+            type = t.listOf (aspectOrFn cnf);
             default = [ ];
           };
         }
@@ -183,10 +202,10 @@ let
   # Top-level aspect container. Provides fixpoint: aspects can reference siblings.
   aspectsType =
     cnf:
-    lib.types.submodule (
+    merge.submodule (
       { config, ... }:
       {
-        freeformType = lib.types.lazyAttrsOf (aspectType cnf);
+        freeformType = t.lazyAttrsOf (aspectType cnf);
         config._module.args.aspects = config;
       }
     );

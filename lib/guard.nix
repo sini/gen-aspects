@@ -3,8 +3,23 @@
 # md:874/1318) as formalized by Danvy & Nielsen 2001 (obligations O1-O7). A guard = predicate +
 # body; the predicate is pure first-order data, so identity (identity.nix guardKey) never hashes a
 # closure. Raw closures remain the non-defunctionalized escape hatch (functionTo, see types.nix).
-{ lib }:
+{ prelude }:
 let
+  # Vendored attrByPath (gen-prelude has no attrByPath): walk `path` into `set`, `default` if absent.
+  attrByPath =
+    path: default: set:
+    let
+      go =
+        p: s:
+        if p == [ ] then
+          s
+        else if builtins.isAttrs s && s ? ${builtins.head p} then
+          go (builtins.tail p) s.${builtins.head p}
+        else
+          default;
+    in
+    go path set;
+
   # O1: first-order enforcement + type tagging (Palmer Typeable guard) --------
   tagVal =
     v:
@@ -95,7 +110,7 @@ in
   mkGuardVocab =
     cnf:
     let
-      getPath = path: ctx: lib.attrByPath path null ctx;
+      getPath = path: ctx: attrByPath path null ctx;
       # Custom forms (O7 extension). Each MUST be { eval = ctx: argData: bool; reads = [ [attrPath] ... ]; }.
       # `reads` is required (load-bearing for read-set congruence, OQ-A) though not consulted at dispatch —
       # it is for downstream read-set analysis. A custom form may NOT shadow a core form.
@@ -160,7 +175,7 @@ in
         ctx: g:
         if g.__guard or false then
           (if fires ctx g then g.body else null)
-        else if lib.isFunction g || (g.__isWrappedFn or false) then
+        else if prelude.isFunction g || (g.__isWrappedFn or false) then
           g ctx
         else
           throw "gen-aspects.guard: applyGuard: not a guard record or callable";

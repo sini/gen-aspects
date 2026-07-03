@@ -1,7 +1,9 @@
 # gen-schema integration: mkAspectSchema wraps aspectType for gen-schema's
 # kind-level infrastructure (collections, introspection, extension).
+# Re-hosted: genSchema is the pure (gen-merge-backed) gen-schema; types/mkOption come from gen-merge.
 {
-  lib,
+  prelude,
+  merge,
   genSchema,
   aspectType,
   mkIsModuleFn,
@@ -11,6 +13,9 @@
   isMeaningfulName,
   canTake,
 }:
+let
+  t = merge.types;
+in
 {
   mkAspectSchema =
     cnf:
@@ -29,7 +34,7 @@
             # (e.g. options.priority = mkOption {...}). These defs extend each
             # aspect instance with the declared options.
             defsModules = map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
-            allModules = defsModules ++ lib.optional (kindModule != null) kindModule;
+            allModules = defsModules ++ prelude.optional (kindModule != null) kindModule;
           in
           # Return a merged VALUE (not a type). This is what config.schema.aspect
           # evaluates to. __functor makes it importable as a module.
@@ -44,7 +49,7 @@
             inherit kind;
           }
           // collections
-          // lib.optionalAttrs (defsModules != [ ]) {
+          // prelude.optionalAttrs (defsModules != [ ]) {
             __defsModule = {
               imports = defsModules;
             };
@@ -58,10 +63,10 @@
         {
           providerPrefix ? [ ],
         }:
-        lib.mkOption {
+        merge.mkOption {
           description = "Aspects";
           default = { };
-          type = lib.types.lazyAttrsOf (aspectType (cnf // { inherit providerPrefix; }));
+          type = t.lazyAttrsOf (aspectType (cnf // { inherit providerPrefix; }));
         };
 
       # mkAspectModule is a NixOS module that declares options.aspects and
@@ -75,10 +80,10 @@
         }:
         { config, ... }:
         {
-          options.aspects = lib.mkOption {
+          options.aspects = merge.mkOption {
             description = "Aspects";
             default = { };
-            type = lib.types.lazyAttrsOf (
+            type = t.lazyAttrsOf (
               aspectType (
                 cnf
                 // {
@@ -88,7 +93,7 @@
                   # from user defs on the schema kind entry (e.g. options.priority).
                   aspectModules =
                     (cnf.aspectModules or [ ])
-                    ++ lib.optional (
+                    ++ prelude.optional (
                       config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
                     ) config.schema.aspect.__defsModule;
                 }
@@ -99,22 +104,22 @@
 
       mkNamespaceType =
         { }:
-        lib.types.submodule (
+        merge.submodule (
           { name, ... }:
           {
-            options.schema = lib.mkOption {
+            options.schema = merge.mkOption {
               description = "Namespace schema";
               default = { };
-              type = lib.types.submodule {
-                freeformType = lib.types.lazyAttrsOf lib.types.deferredModule;
+              type = merge.submodule {
+                freeformType = t.lazyAttrsOf t.deferredModule;
               };
             };
-            options.classes = lib.mkOption {
+            options.classes = merge.mkOption {
               description = "Class declarations";
               default = { };
-              type = lib.types.lazyAttrsOf lib.types.raw;
+              type = t.lazyAttrsOf t.raw;
             };
-            freeformType = lib.types.lazyAttrsOf (aspectType (cnf // { providerPrefix = [ name ]; }));
+            freeformType = t.lazyAttrsOf (aspectType (cnf // { providerPrefix = [ name ]; }));
           }
         );
 

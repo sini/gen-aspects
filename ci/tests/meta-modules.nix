@@ -1,6 +1,11 @@
 # Test: extensible meta submodule via cnf.metaModules.
 # Consumers can declare typed meta options without hardcoding them in gen-aspects.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 let
   mkEval =
     modules:
@@ -8,14 +13,14 @@ let
       classes.classOne = { };
       metaModules = [
         {
-          options.guard = lib.mkOption {
+          options.guard = genMerge.mkOption {
             description = "Guard predicate for conditional aspects";
-            type = lib.types.bool;
+            type = genMerge.types.bool;
             default = false;
           };
-          options.priority = lib.mkOption {
+          options.priority = genMerge.mkOption {
             description = "Resolution priority";
-            type = lib.types.int;
+            type = genMerge.types.int;
             default = 100;
           };
         }

@@ -1,5 +1,10 @@
 # Test: unregistered freeform keys become nested aspects with full identity.
-{ lib, mkSchemaEval, ... }:
+{
+  genMerge,
+  lib,
+  mkSchemaEval,
+  ...
+}:
 {
   flake.tests.nested-aspects.test-nested-has-structural-keys =
     let
@@ -32,9 +37,9 @@
           { config.aspects.parent.child.classOne.foo = "bar"; }
         ];
       };
-      classEval = lib.evalModules {
+      classEval = genMerge.evalModuleTree {
         modules = [
-          { options.foo = lib.mkOption { type = lib.types.str; }; }
+          { options.foo = genMerge.mkOption { type = genMerge.types.str; }; }
           eval.config.aspects.parent.child.classOne
         ];
       };

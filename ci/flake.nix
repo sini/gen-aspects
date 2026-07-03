@@ -1,24 +1,31 @@
 {
   inputs = {
     gen.url = "github:sini/gen";
-    gen-schema = {
-      url = "github:sini/gen-schema";
-      flake = false;
-    };
+    gen-prelude.url = "github:sini/gen-prelude";
+    gen-merge.url = "github:sini/gen-merge";
+    gen-schema.url = "github:sini/gen-schema";
+    # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
+    # test modules use for assertions. The library itself (../lib) is nixpkgs-lib-free
+    # (ci/tests/purity.nix enforces this); it is driven via gen-merge's evalModuleTree, not evalModules.
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
   };
 
   outputs =
-    inputs@{ gen, nixpkgs, ... }:
+    inputs@{
+      gen,
+      gen-prelude,
+      gen-merge,
+      gen-schema,
+      nixpkgs,
+      ...
+    }:
     let
       inherit (nixpkgs) lib;
-      # gen-schema is flake=false here; `import "${inputs.gen-schema}" { inherit lib; }`
-      # runs gen-schema's root default.nix → the genSchema flat value (it auto-pins its
-      # own gen-algebra from gen-schema's flake.lock). The interpolated path form (rather
-      # than `import inputs.<dep>`) keeps the sweep free of flake-functor call literals.
+      genMerge = gen-merge.lib;
       aspects = import ../lib {
-        inherit lib;
-        schema = import "${inputs.gen-schema}" { inherit lib; };
+        prelude = gen-prelude.lib;
+        merge = genMerge;
+        schema = gen-schema.lib;
       };
       defaultClasses = {
         classOne = { };
@@ -42,7 +49,7 @@
               ;
           };
         in
-        lib.evalModules {
+        genMerge.evalModuleTree {
           modules = [
             { options.schema = schema.schemaOption; }
             (schema.mkAspectModule { })
@@ -54,6 +61,6 @@
       inherit inputs;
       name = "gen-aspects";
       testModules = ./tests;
-      specialArgs = { inherit aspects mkSchemaEval; };
+      specialArgs = { inherit aspects mkSchemaEval genMerge; };
     };
 }
