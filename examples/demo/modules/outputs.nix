@@ -74,7 +74,7 @@ in
     # realize's `bindings` hook → assert the rendered module value. v1 delta vs the reader terminal: a
     # host's system COMPOSES all its aspects, so the firewall ports UNION the cascade firewall ports with
     # nginx's public port (443) on web/all hosts. ---
-    inherit fwPortsDevAll fwPortsProdWeb1; # [8080 8443 9090 3000 443] / [443]
+    inherit fwPortsDevAll fwPortsProdWeb1; # dev-all = cascade ∪ {443}; prod-web-1 = [443]
     fwEnableDevAll = devAllSys.networking.firewall.enable; # true (firewall aspect, mkDefault)
     # The cascade firewall ports survive the compose (subset), and nginx contributes exactly its port.
     fwCascadePortsPreserved =
