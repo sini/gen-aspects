@@ -1,10 +1,8 @@
-# Module bindings: route the nginx aspect's class content through the
-# injectAspectSettings construct (the same per-(host, aspect) unit that powers
-# the firewall aspect), proving the construct generalizes across a SECOND aspect.
-#
-# The nginx config logic now lives in the aspect itself (aspects/web.nix's
-# parametric `nixos`), so there is no out-of-band module here — we source the
-# class content from the aspect and inject resolved settings via the construct.
+# Module bindings METADATA probe: sign the nginx aspect's parametric class content with gen-bind, to
+# surface signature/wrapped introspection (the `bindResults` output). The end-to-end settings injection
+# itself runs through realize's `bindings` hook (modules/terminal.nix); this module only exercises
+# gen-bind's `buildSignature`/`wrap` on the same binding SHAPE, so the demo can assert what a binding
+# advertises without going through the terminal.
 #
 # READER side (gen-flake value-injection): the aspect class content comes from the injected
 # `genValues.aspects` (the gen tree's resolved config), not a flake-parts `config.aspects` option tree.
@@ -24,14 +22,14 @@ let
   nginxClass = (genAspects.flatten genValues.aspects)."services/nginx".nixos;
 
   # Demo-only metadata path: this exists ONLY to surface signature/wrapped info in
-  # the bindResults verification output. The real injection uses the construct's
-  # `.module` (via injection.nix's assembledClasses, exercised end-to-end in
-  # outputs.nix) — do NOT migrate this into injectAspectSettings.
+  # the bindResults verification output. The real injection runs through realize's
+  # bindings hook (modules/terminal.nix → `realized`, asserted in outputs.nix) — do
+  # NOT fold this metadata probe into that path.
   #
-  # The construct returns only `.module`, so for the signature/wrapped METADATA
-  # we call genBind.wrap / buildSignature directly with the SAME uniform binding
-  # shape the construct uses (settings namespaced under the aspect leaf + host).
-  # Uniform `settings` arg name — never `nginxSettings`.
+  # For the signature/wrapped METADATA we call genBind.wrap / buildSignature
+  # directly with the SAME uniform binding shape the terminal uses (settings
+  # namespaced under the aspect leaf + host). Uniform `settings` arg name — never
+  # `nginxSettings`.
   #
   # We sign over the underlying parametric fn (unwrapped from the deferredModule
   # imports-form) so the signature reflects the real `settings`/`host`/`lib`

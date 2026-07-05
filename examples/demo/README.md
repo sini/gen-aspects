@@ -7,7 +7,7 @@ The gen definition tree (`gen-modules/`) is composed **purely** by [gen-flake](h
 ## Running
 
 ```bash
-# While gen-flake is consumed via a local path pin, pass --allow-dirty-locks:
+# --allow-dirty-locks is only needed while iterating with an uncommitted flake.lock:
 nix eval --json .#aspectNames --allow-dirty-locks | jq   # list all aspects
 nix eval --json .#aspectCount --allow-dirty-locks        # total aspect count
 nix eval --json .#nginxWorkersProdWeb1 --allow-dirty-locks  # composed setting: 32
@@ -20,7 +20,7 @@ nix flake check --allow-dirty-locks
 ## Structure
 
 ```
-flake.nix            — flake-parts + gen-flake + reader-side gen libs; gen.tree = ./gen-modules
+flake.nix            — flake-parts + gen-flake (compose+realize, DIRECT) + reader-side gen libs
 gen-modules/         — the gen definition tree, composed PURELY by gen-flake (evalModuleTree)
   setup.nix          — options.schema + options.aspects (the typed surface) + schema extensions
   _aspect-schema.nix — shared mkAspectSchema cnf (helper; _-prefixed, not a tree module)
@@ -37,15 +37,22 @@ modules/             — the flake-parts (reader) side; reads genValues, NOT com
   composition.nix    — scope graph + neron traverse + foldLayers (over genValues)
   queries.nix        — gen-graph traversals + gen-select pattern matching (over genValues)
   policies.nix       — gen-dispatch step + gen-scope.circular loop with action vocabulary
-  bindings.nix       — gen-bind module wrapping with contracts
-  injection.nix      — per-(host, aspect) settings-injection construct → assembledClasses (class terminal)
+  bindings.nix       — gen-bind signature/wrapped METADATA probe (bindResults)
+  terminal.nix       — the nixos-class TERMINAL: realize + the bindings hook → realized (per-host systems)
   _policy-rules.nix  — shared policy action vocabulary + rules (helper; _-prefixed, not a module)
   outputs.nix        — flake outputs for verification (reads genValues + reader results)
 ```
 
-### Class-content terminal
+### Class-content terminal — `realize` + the `bindings` hook
 
-The `nixos` class content is assembled by a **reader terminal** (`injection.nix` + `outputs.nix`), not gen-flake's `mkSystems`: the demo injects reader-computed per-`(host, aspect)` resolved settings (the `composedSettings` cascade) into each aspect's parametric `nixos` via `genBind.wrap`, then renders precise values through a stub `evalModules`. `mkSystems`'s `wrapAll` binds only the resolved `host` instance and builds a full `nixpkgs.lib.nixosSystem`, which has no hook for that richer settings binding. gen-flake's flakeModule still emits `flake.nixosConfigurations = mkSystems { … }`, but the fleet lives under `fleet.hosts` (not the top-level `hosts` compose projects over) so that projection is empty here — harmless.
+The `nixos` class content is built by gen-flake v1's `realize` (`terminal.nix`). Because the demo needs two knobs the `flakeModules.default` ergonomics module does not surface, it drives gen-flake's lower-level API directly:
+
+- `compose { selectHosts; }` — the fleet lives under `fleet.hosts`, not the top-level `hosts` the default projection reads, and `projectHosts` needs each host tagged with the aspects its role runs (the fleet schema carries only env/role, so `selectHosts` synthesizes membership: web/all hosts run `firewall` + `services/nginx`, database hosts run `firewall` only).
+- `realize { bindings; }` — the reader-computed per-`(host, aspect)` settings cascade (`composedSettings`) is passed as a first-class **binding**. v0's `mkSystems` `wrapAll` bound only the resolved `host` instance, with no hook for that richer settings binding — so this demo used to hand-roll a "reader terminal" (per-aspect `genBind.wrap` + a stub `evalModules`). v1's `realize` takes a `bindings` hook, so the terminal itself wraps the class content.
+
+The terminal here is a pure **DATA terminal** (the design's "attrset builder — no nixpkgs"): it wraps a host's class deferredModules with `genBind.wrapAll` and renders them through a bare `lib.evalModules` over stub options, so the demo asserts exact resolved values without a full NixOS eval. `realize` folds it per host into `realized.nixos.<host>` = the host's composed config.
+
+**Intentional v1 delta.** The reader terminal rendered each aspect in isolation; `realize` composes ALL of a host's aspects into ONE system. So `networking.firewall.allowedTCPPorts` on a web/all host now UNIONs the firewall cascade with nginx's public port (443) — the correct behaviour for a composed host system. The assertions moved from per-aspect equality to whole-system checks (cascade ports preserved as a subset; nginx contributes exactly its port; database hosts, running firewall only, carry no 443).
 
 ## What each library does here
 
@@ -57,7 +64,7 @@ The `nixos` class content is assembled by a **reader terminal** (`injection.nix`
 | **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order; `circular` (Kleene ascent) drives the policy dispatch convergence loop |
 | **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch phases |
 | **gen-select** | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching |
-| **gen-bind** | `wrap` binds resolved per-host settings into a parametric NixOS module (the settings-injection construct) with contract validation and provenance |
+| **gen-bind** | `wrapAll` binds the resolved per-host settings into the parametric NixOS modules at the terminal (via realize's `bindings` hook); `wrap`/`buildSignature` also drive the standalone binding-metadata probe (`bindings.nix`) with contract validation and provenance |
 | **gen-dispatch** | the dispatch STEP: `mkRule`/`mkActions` + `dispatchStep`/`dispatchInit` fire policy rules (prod hardening, database backup, dev firewall) across ordered phases with context enrichment (the LOOP is gen-scope's, the ORDER is gen-graph's) |
 
 ## Key patterns demonstrated
@@ -66,7 +73,7 @@ The `nixos` class content is assembled by a **reader terminal** (`injection.nix`
 
 - **Static** — `base-system`, `networking`, `hardening`: plain attrset with tags, settings, nixos class content
 - **Nested** — `services.nginx`, `services.postgres`: auto-nesting creates `services/nginx` identity
-- **Parametric** — `firewall`, `services.nginx`: a STATIC settings schema (introspectable by `flatten`/cascade) plus class content written as `{ settings, host, lib, ... }: { ... }` that CONSUMES resolved per-host settings, injected before `evalModules` via the settings-injection construct
+- **Parametric** — `firewall`, `services.nginx`: a STATIC settings schema (introspectable by `flatten`/cascade) plus class content written as `{ settings, host, lib, ... }: { ... }` that CONSUMES resolved per-host settings, injected at the terminal via realize's `bindings` hook
 
 ### Settings cascade
 
@@ -116,18 +123,20 @@ prodHardening = mkRule {
 };
 ```
 
-### Settings-injection construct (full loop)
+### Settings injection via realize's `bindings` hook (full loop)
 
 Parametric class content (`{ settings, host, lib, ... }: { ... }`) reads resolved
-settings that don't exist until the cascade runs. The `injectAspectSettings`
-construct (`injection.nix`) closes the loop: for each `(host, aspect)` it binds
-the cascade's `composedSettings.<host>.<leaf>` (+ host) into the class content via
-`genBind.wrap`, producing a ready-to-`evalModules` module (`assembledClasses`).
+settings that don't exist until the cascade runs. `terminal.nix` closes the loop:
+it passes the cascade's `composedSettings.<host>` (+ host) as realize's per-host
+`bindings`, and `realize` folds each host's class deferredModules through the DATA
+terminal (`genBind.wrapAll` + `lib.evalModules`) into `realized.nixos.<host>`.
 
-`outputs.nix` exercises this end-to-end against rendered module values:
+`outputs.nix` exercises this end-to-end against the rendered, COMPOSED system:
 
 ```
-fwInjectionMatchesCascade  # firewall.allowed-tcp cascade == rendered allowedTCPPorts
+fwCascadePortsPreserved    # firewall.allowed-tcp cascade survives (subset of) the composed ports
+nginxPortAddDevAll         # [443] — nginx contributes exactly its public port to the union
+dbHasNoNginxPort           # true — a database host runs firewall only (membership drives the build)
 nginxInjectionResolved     # resolved workers=32 reaches nginx config (worker_processes 32)
 ```
 

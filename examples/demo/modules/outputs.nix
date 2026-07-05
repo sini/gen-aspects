@@ -14,7 +14,7 @@
   policyResult,
   policyResultsByHost,
   bindResults,
-  assembledClasses,
+  realized,
   ...
 }:
 let
@@ -27,68 +27,19 @@ let
     prov: field:
     builtins.foldl' (acc: e: acc // builtins.mapAttrs (_k: _v: e.layer) e.value) { } prov.${field};
 
-  # Stub options so a bare evalModules can render the class content (a bare
-  # evalModules has no `networking`/`services` options and would throw).
-  fwStubOptions =
-    { lib, ... }:
-    {
-      options.networking.firewall.enable = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-      };
-      options.networking.firewall.allowedTCPPorts = lib.mkOption {
-        type = lib.types.listOf lib.types.int;
-        default = [ ];
-      };
-      options.networking.firewall.allowedUDPPorts = lib.mkOption {
-        type = lib.types.listOf lib.types.int;
-        default = [ ];
-      };
-      options.networking.firewall.logRefusedConnections = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-      };
-    };
-  evalFw =
-    host:
-    (lib.evalModules {
-      modules = [
-        fwStubOptions
-        assembledClasses.${host}.firewall
-      ];
-    }).config;
-
-  nginxStubOptions =
-    { lib, ... }:
-    {
-      options.services.nginx.enable = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-      };
-      options.services.nginx.config = lib.mkOption {
-        type = lib.types.lines;
-        default = "";
-      };
-      options.networking.firewall.allowedTCPPorts = lib.mkOption {
-        type = lib.types.listOf lib.types.int;
-        default = [ ];
-      };
-    };
-  nginxConfigProdWeb1 =
-    (lib.evalModules {
-      modules = [
-        nginxStubOptions
-        assembledClasses.prod-web-1.nginx
-      ];
-    }).config.services.nginx.config;
-
-  # The append-strategy cascade values and the rendered firewall ports, bound
-  # here so the full-loop equality below can compare them (sibling flake attrs
-  # can't reference each other without rec/let).
+  # The append-strategy cascade values (the resolved settings, BEFORE the terminal renders them).
   fwTcpDevAll = composedSettings.dev-all.firewall.allowed-tcp; # [8080 8443 9090 3000]
   fwTcpProdWeb1 = composedSettings.prod-web-1.firewall.allowed-tcp; # []
-  fwPortsDevAll = (evalFw "dev-all").networking.firewall.allowedTCPPorts; # [8080 8443 9090 3000]
-  fwPortsProdWeb1 = (evalFw "prod-web-1").networking.firewall.allowedTCPPorts; # []
+
+  # The REALIZED per-host nixos systems (realize + the bindings hook; modules/terminal.nix). Each is the
+  # host's firewall (+ nginx, on web/all hosts) class content COMPOSED into one config — contrast the
+  # old reader terminal, which rendered one aspect in isolation.
+  devAllSys = realized.nixos.dev-all;
+  prodWeb1Sys = realized.nixos.prod-web-1;
+  prodDb1Sys = realized.nixos.prod-db-1;
+
+  fwPortsDevAll = devAllSys.networking.firewall.allowedTCPPorts; # cascade fw ++ nginx 443
+  fwPortsProdWeb1 = prodWeb1Sys.networking.firewall.allowedTCPPorts; # [] ++ nginx 443 = [443]
 in
 {
   flake = {
@@ -119,14 +70,26 @@ in
     dbBackupSubkeyProvenance = recursiveSubkeyProvenance settingsProvenance.prod-db-1 "postgres.backup";
     # => { schedule="policy"; retention="policy"; method="host"; destination="host"; }
 
-    # --- (iv) FIREWALL FULL LOOP: resolved+appended settings injected into the
-    # PARAMETRIC nixos via the construct → assert the rendered module value ---
-    inherit fwPortsDevAll fwPortsProdWeb1; # [8080 8443 9090 3000] / []
-    fwEnableDevAll = (evalFw "dev-all").networking.firewall.enable; # true
-    fwInjectionMatchesCascade = fwPortsDevAll == fwTcpDevAll && fwPortsProdWeb1 == fwTcpProdWeb1; # true
+    # --- (iv) FIREWALL FULL LOOP: the cascade-resolved settings injected into the PARAMETRIC nixos via
+    # realize's `bindings` hook → assert the rendered module value. v1 delta vs the reader terminal: a
+    # host's system COMPOSES all its aspects, so the firewall ports UNION the cascade firewall ports with
+    # nginx's public port (443) on web/all hosts. ---
+    inherit fwPortsDevAll fwPortsProdWeb1; # [8080 8443 9090 3000 443] / [443]
+    fwEnableDevAll = devAllSys.networking.firewall.enable; # true (firewall aspect, mkDefault)
+    # The cascade firewall ports survive the compose (subset), and nginx contributes exactly its port.
+    fwCascadePortsPreserved =
+      lib.subtractLists fwPortsDevAll fwTcpDevAll == [ ] # cascade ⊆ merged (dev-all)
+      && lib.subtractLists fwPortsProdWeb1 fwTcpProdWeb1 == [ ]; # cascade ⊆ merged (prod-web-1)
+    nginxPortAddDevAll = lib.subtractLists fwTcpDevAll fwPortsDevAll; # [443] (merged − cascade)
+    nginxPortAddProdWeb1 = lib.subtractLists fwTcpProdWeb1 fwPortsProdWeb1; # [443]
+
+    # DISCRIMINATING (membership drives the build): a database host runs firewall ONLY (no nginx), so its
+    # ports carry no 443 and its nginx config is empty.
+    dbHasNoNginxPort = !(builtins.elem 443 prodDb1Sys.networking.firewall.allowedTCPPorts); # true
+    dbNginxConfigEmpty = prodDb1Sys.services.nginx.config == ""; # true
 
     # --- (v) NGINX FULL LOOP (second aspect): resolved settings reach nginx ---
-    nginxInjectionResolved = lib.hasInfix "worker_processes 32" nginxConfigProdWeb1; # true
+    nginxInjectionResolved = lib.hasInfix "worker_processes 32" prodWeb1Sys.services.nginx.config; # true
 
     # --- per-host policy dispatch smoke ---
     policyActionCountsByHost = lib.mapAttrs (

@@ -1,26 +1,24 @@
 {
   description = "gen-aspects demo: aspect-oriented web deployment via gen-flake value-injection";
 
-  # Value-injection migration (gen-flake). The gen definition tree (./gen-modules — aspect schema +
-  # aspect/fleet/namespace/scopeSettings definitions) is composed PURELY by gen-flake's
-  # `flakeModules.default` — gen-merge's byte-mode `evalModuleTree`, NOT flake-parts' nixpkgs
-  # `lib.evalModules`. The resolved config VALUES are injected as the `genValues` module arg; NO gen
-  # TYPE enters the flake-parts options tree (the old `options.schema`/`options.aspects`/
-  # `options.namespaces` embeds made flake-parts walk a gen type via `substSubModules`/`getSubOptions`
-  # and throw under the pure re-host). The `modules/*` READERS render over `genValues`.
+  # Value-injection migration (gen-flake v1). The gen definition tree (./gen-modules — aspect schema +
+  # aspect/fleet/namespace/scopeSettings definitions) is composed PURELY via gen-merge's byte-mode
+  # `evalModuleTree` (NOT flake-parts' nixpkgs `lib.evalModules`). The resolved config VALUES are
+  # injected as the `genValues` module arg; NO gen TYPE enters the flake-parts options tree (the old
+  # `options.schema`/`options.aspects`/`options.namespaces` embeds made flake-parts walk a gen type via
+  # `substSubModules`/`getSubOptions` and throw under the pure re-host). The `modules/*` READERS render
+  # over `genValues`.
   #
-  # TERMINAL (class content). This demo assembles its `nixos` class content via a documented READER
-  # terminal, NOT gen-flake's `mkSystems`. Rationale: the demo's terminal injects reader-COMPUTED
-  # per-(host, aspect) resolved settings (the `composedSettings` cascade from gen-scope/gen-algebra/
-  # gen-dispatch, run on the flake-parts side) into each aspect's parametric `nixos` via
-  # `genBind.wrap` (modules/injection.nix → `assembledClasses`), then renders precise values through a
-  # tiny stub `evalModules` (modules/outputs.nix). `mkSystems`'s `wrapAll` binds only the resolved
-  # `host` instance (+ `nodes` via specialArgs) and builds a full `nixpkgs.lib.nixosSystem`; it has no
-  # hook for the richer settings binding this demo needs, and the demo asserts exact rendered values
-  # without a full NixOS eval. gen-flake's `flakeModules.default` still emits
-  # `flake.nixosConfigurations = mkSystems { … }`, but the fleet lives under `fleet.hosts` (not the
-  # top-level `hosts` compose projects over), so that projection is empty here — harmless, matching the
-  # gen-schema demo. See the gen-flake README "reader terminal" escape hatch.
+  # DIRECT compose/realize (not `flakeModules.default`). The other demos consume the flakeModule for
+  # its one-line ergonomics, but this demo drives gen-flake's lower-level API directly, because it needs
+  # two v1 knobs the flakeModule does not surface:
+  #   * `compose { selectHosts; }` — the fleet lives under `fleet.hosts`, not the top-level `hosts` the
+  #     default projection reads, and compose's `projectHosts` needs each host tagged with the aspects
+  #     it runs (the fleet schema carries only env/role, so membership is synthesized in `selectHosts`).
+  #   * `realize { bindings; }` — the TERMINAL. v0's mkSystems `wrapAll` bound only `{ host }`, so the
+  #     reader-computed per-(host, aspect) settings cascade had to be hand-wrapped in a "reader
+  #     terminal". v1's `realize` takes a first-class `bindings` hook, so that cascade is now a per-host
+  #     binding and the terminal (`modules/terminal.nix`, a pure DATA terminal) does the wrapping.
   outputs =
     inputs:
     inputs.flake-parts.lib.mkFlake { inherit inputs; } (
@@ -29,29 +27,52 @@
         inputs,
         ...
       }:
-      {
-        # gen-flake injects a `perSystem` (to spread `genValues` into per-system args), so flake-parts
-        # requires `systems`. The demo produces no per-system outputs; one system suffices.
-        systems = [ "x86_64-linux" ];
+      let
+        genFlake = inputs.gen-flake.lib;
 
+        # The ONE pure compose of the gen definition tree (gen-merge's byte-mode `evalModuleTree`; NO
+        # nixpkgs). `specialArgs.lib` is the extra arg the relocated definitions reach for (their kind
+        # definitions use nixpkgs `lib.mkOption`/`lib.types`); gen-flake threads genMerge/genSchema/
+        # genAspects itself.
+        composed = genFlake.compose {
+          tree = ./gen-modules;
+          specialArgs = { inherit lib; };
+          # Project the `fleet.hosts` registry, tagging each host with the aspects its role runs.
+          # `projectHosts` reads `inst.aspects` to gather each class's deferredModules; web/all hosts run
+          # the firewall + nginx parametric aspects, database hosts run firewall only.
+          selectHosts =
+            values:
+            lib.mapAttrs (
+              _name: host:
+              host
+              // {
+                aspects =
+                  if host.role == "database" then
+                    [ "firewall" ]
+                  else
+                    [
+                      "firewall"
+                      "services/nginx"
+                    ];
+              }
+            ) values.fleet.hosts;
+        };
+      in
+      {
         imports = [
-          inputs.gen-flake.flakeModules.default
           (inputs.import-tree ./modules)
         ];
 
-        # PURE composition of the gen definition tree. gen-flake threads its own
-        # gen-merge/gen-schema/gen-aspects into every tree module; the demo adds `lib` (the relocated
-        # definitions use nixpkgs `lib.mkOption`/`lib.types`). Passed via `gen.specialArgs` so the pure
-        # `evalModuleTree` sees it (it auto-provides only `config`/`options`).
-        gen.tree = ./gen-modules;
-        gen.specialArgs = {
-          inherit lib;
-        };
-
-        # READER-side gen LIBRARIES (distinct from the injected VALUES). The `modules/*` readers run
-        # the settings cascade + graph/selector/policy/bind demos over the injected `genValues` with
-        # these. Injected into the flake's top-level module args alongside gen-flake's `genValues`.
+        # QUERY surface — inject the resolved VALUES as `genValues` (what `injectArgs` /
+        # `flakeModules.default` would do), plus the compose result (`genComposed`, whose `.hosts` is the
+        # per-host build projection) and the constructed gen-flake lib (`genFlake`, for `realize`) the
+        # terminal reader folds. The reader-side gen LIBRARIES are the rendering tools the `modules/*`
+        # readers run over `genValues` (distinct from the injected VALUES).
         _module.args = {
+          genValues = composed.values;
+          genComposed = composed;
+          inherit genFlake;
+
           genAspects = inputs.gen-aspects.lib;
           genAlgebra = inputs.gen-algebra.lib;
           genScope = inputs.gen-scope.lib;
@@ -64,9 +85,9 @@
     );
 
   inputs = {
-    # gen-flake — the pure composition boundary. Consumed LOCAL (unpublished) via a path pin. It
-    # threads the published pure stack (gen-aspects@64c3c25 / gen-schema / gen-merge / …) into the
-    # tree, so relocated definition modules receive `{ genAspects, genMerge, ... }` as today.
+    # gen-flake — the pure composition boundary (v1). Pinned via its published github rev. It threads
+    # the published pure stack (gen-aspects / gen-schema / gen-merge / …) into the tree, so relocated
+    # definition modules receive `{ genAspects, genMerge, ... }` as today.
     gen-flake.url = "github:sini/gen-flake";
 
     # Reuse the EXACT gen-aspects instance gen-flake threads into the pure tree, so the reader-side
