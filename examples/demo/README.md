@@ -24,7 +24,7 @@ flake.nix            — flake-parts + gen-flake (compose+realize, DIRECT) + rea
 gen-modules/         — the gen definition tree, composed PURELY by gen-flake (evalModuleTree)
   setup.nix          — options.schema + options.aspects (the typed surface) + schema extensions
   _aspect-schema.nix — shared mkAspectSchema cnf (helper; _-prefixed, not a tree module)
-  entities.nix       — fleet structure: environments + hosts
+  entities.nix       — fleet structure: environments + hosts (marked `pureModule` — warm-reusable)
   aspects/
     base.nix         — base-system, networking, monitoring-base
     web.nix          — services/nginx, services/app (nested)
@@ -39,6 +39,7 @@ modules/             — the flake-parts (reader) side; reads genValues, NOT com
   policies.nix       — gen-dispatch step + gen-scope.circular loop with action vocabulary
   bindings.nix       — gen-bind signature/wrapped METADATA probe (bindResults)
   terminal.nix       — the nixos-class TERMINAL: realize + the bindings hook → realized (per-host systems)
+  override-trace.nix — warm override showcase: composed.override → the memoization trace (pureModule fleet reused)
   _policy-rules.nix  — shared policy action vocabulary + rules (helper; _-prefixed, not a module)
   outputs.nix        — flake outputs for verification (reads genValues + reader results)
 ```
@@ -152,4 +153,30 @@ workersProdWeb1Winner       # "host"    — negative control: policy doesn't tou
 dbBackupSubkeyProvenance    # per-subkey on a recursive field:
                             #   { schedule="policy"; retention="policy";
                             #     method="host"; destination="host"; }
+```
+
+### Warm override + memoization trace
+
+`composed.override edits` re-composes the tree. When `edits` carries ONLY `modules` (a modules-only
+append), gen-flake fires gen-merge's WARM path: it SPLICES the previous eval's declared leaves the edit
+provably cannot touch and re-merges only the rest, byte-identically to a cold re-compose (the standing
+cold-parity oracle pins warm ≡ cold on both values and provenance). `override-trace.nix` overrides the
+composed tree by appending one host-level settings layer and projects the result's `trace` (the engine's
+`warmDecision`), documented under [gen-flake](https://github.com/sini/gen-flake#warm-override--trace)
+`Warm override + trace` and [gen-merge](https://github.com/sini/gen-merge#warm-re-eval-memoized-override)
+`Warm re-eval`.
+
+The reuse turns on the `pureModule` marker: `gen-modules/entities.nix` wraps the fleet inventory in
+`genMerge.pureModule` (it reads only `lib` from `specialArgs`, never `config`/`options` — the
+[pureModule contract](https://github.com/sini/gen-merge#the-puremodule-contract)), so the engine may
+splice its leaves unchanged. Every other tree module is a function reading `config` (dirty by default),
+so it re-merges:
+
+```
+overrideTrace.mode        # "warm"
+overrideTrace.reused      # ["fleet.environments" "fleet.hosts"] — the marked fleet, SPLICED
+overrideTrace.remerged    # { aspects; namespaces; schema; scopeSettings; } — the dirty modules + the edited leaf
+overrideModeWarm          # true  — a modules-only edit fires the warm path
+overrideFleetReused       # true  — fleet.hosts ∈ reused (the pureModule's leaves)
+overrideSettingsRemerged  # true  — the settings edit lands on scopeSettings
 ```
