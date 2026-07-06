@@ -20,8 +20,9 @@
 }:
 let
   # The override edit: append a host-level settings override (bump prod-web-2's nginx workers). A plain
-  # attrset module (no function head) ⇒ classified CLEAN, but EDITED (in the appended tail) ⇒ its
-  # `scopeSettings` def re-merges. `edits` carries ONLY `modules`, so `override` fires the warm path.
+  # attrset module (no function head) ⇒ classified CLEAN, and EDITED (in the appended tail). `edits`
+  # carries ONLY `modules`, so `override` fires the warm path. (This def does NOT drive scopeSettings'
+  # re-merge — settings.nix, a dirty function module, DECLARES scopeSettings, so it re-merges regardless.)
   settingsEdit = {
     config.scopeSettings."host:prod-web-2" = {
       nginx.performance.workers = 48;
@@ -34,9 +35,11 @@ in
   config.flake = {
     # The memoization decision, projected verbatim (gen-flake threads the engine's `warmDecision`).
     # Real shape here: mode="warm"; reused=["fleet.environments" "fleet.hosts"] (the marked fleet,
-    # SPLICED); remerged={aspects,namespaces,schema,scopeSettings} (the dirty function modules + the
-    # edited settings leaf); modules.clean=["<gen-merge>"] (the marked-pure fleet entry — modules with
-    # no source path are labelled "<gen-merge>", incl. the inline edit).
+    # SPLICED); remerged={aspects,namespaces,schema,scopeSettings} (the dirty function modules — e.g.
+    # scopeSettings re-merges as `dirty-decl settings.nix`, NOT because the edit touched it);
+    # modules.clean=["<gen-merge>"] is the marked-pure fleet entry. NB "<gen-merge>" is the label for ANY
+    # module without a source path (the marked-pure inner fn AND the inline edit both), so it recurs
+    # across clean/dirty/edited — it does not always denote the fleet.
     overrideTrace = {
       inherit (trace)
         mode
@@ -51,7 +54,7 @@ in
     overrideModeWarm = trace.mode == "warm"; # true — a modules-only edit fires the warm path
     overrideFleetReused =
       builtins.elem "fleet.hosts" trace.reused && builtins.elem "fleet.environments" trace.reused; # true
-    overrideSettingsRemerged = trace.remerged ? scopeSettings; # true — the edit lands on scopeSettings
+    overrideSettingsRemerged = trace.remerged ? scopeSettings; # true — scopeSettings is dirty-decl (settings.nix), re-merges regardless of the edit
     overrideMarkedPureClean = trace.modules.clean != [ ]; # true — the marked-pure fleet is the sole clean entry
   };
 }

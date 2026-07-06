@@ -6,8 +6,9 @@
 # formal resolves from `specialArgs`. Marking it lets a WARM override (a modules-only append) SPLICE the
 # fleet registry leaves (`fleet.hosts` / `fleet.environments`) unchanged from the previous eval instead
 # of re-merging them (the trace showcase in modules/override-trace.nix reads them out of `reused`). The
-# outer wrapper is a function (dirty by default) but declares/defines nothing itself, so it adds nothing
-# to the warm path's dirty footprint — only the marked inner entry carries the fleet leaves.
+# outer wrapper is a function, so it classifies dirty (it appears in the trace's `modules.dirty`); but it
+# declares/defines no leaf of its own, so nothing re-merges on its account — the fleet leaves ride the
+# marked inner entry into `reused`.
 { genMerge, ... }:
 {
   imports = [

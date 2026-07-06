@@ -175,8 +175,9 @@ so it re-merges:
 ```
 overrideTrace.mode        # "warm"
 overrideTrace.reused      # ["fleet.environments" "fleet.hosts"] — the marked fleet, SPLICED
-overrideTrace.remerged    # { aspects; namespaces; schema; scopeSettings; } — the dirty modules + the edited leaf
+overrideTrace.remerged    # { aspects; namespaces; schema; scopeSettings; } — the dirty function modules (scopeSettings is dirty-decl settings.nix, not driven by the edit)
 overrideModeWarm          # true  — a modules-only edit fires the warm path
 overrideFleetReused       # true  — fleet.hosts ∈ reused (the pureModule's leaves)
-overrideSettingsRemerged  # true  — the settings edit lands on scopeSettings
+overrideSettingsRemerged  # true  — scopeSettings re-merges as dirty-decl (settings.nix), regardless of the edit
+overrideMarkedPureClean   # true  — the pureModule marking took effect (fleet is the sole clean entry)
 ```
