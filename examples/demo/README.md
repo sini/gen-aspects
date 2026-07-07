@@ -63,10 +63,10 @@ The terminal here is a pure **DATA terminal** (the design's "attrset builder —
 | **gen-schema** | `mkAspectSchema` registers the aspect kind with collections (settings, tags) and schema extensions (priority, tier) |
 | **gen-aspects** | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, parametric class content; flat registry for queries |
 | **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order; `circular` (Kleene ascent) drives the policy dispatch convergence loop |
-| **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch phases |
+| **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch groups |
 | **gen-select** | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching |
 | **gen-bind** | `wrapAll` binds the resolved per-host settings into the parametric NixOS modules at the terminal (via realize's `bindings` hook); `wrap`/`buildSignature` also drive the standalone binding-metadata probe (`bindings.nix`) with contract validation and provenance |
-| **gen-dispatch** | the dispatch STEP: `mkRule`/`mkActions` + `dispatchStep`/`dispatchInit` fire policy rules (prod hardening, database backup, dev firewall) across ordered phases with context enrichment (the LOOP is gen-scope's, the ORDER is gen-graph's) |
+| **gen-dispatch** | the pure dispatch STEP: `mkRule`/`mkActions` + `dispatch` fire policy rules (prod hardening, database backup, dev firewall) across ordered groups with context enrichment; the caller threads the domain state through repeated one-shot dispatch (the LOOP is gen-scope's, the ORDER is gen-graph's) |
 
 ## Key patterns demonstrated
 
@@ -112,7 +112,7 @@ childrenOfCore = selectWhere (genSelect.within (hasTag "core"));
 
 ### Policy dispatch (step + loop)
 
-Rules emit typed actions (`edge`, `enrich`, `configure`) over ordered phases. Phase order comes from `gen-graph.phaseOrder` (`structural` before `configuration`); the dispatch STEP (`gen-dispatch.dispatchStep`) fires the matching rules for a pass, and `gen-scope.circular` (Kleene ascent) is the LOOP that drives it to a fixpoint. `configure` carries an aspect target (`{ aspect; settings; }`) and folds into the cascade as the final layer; `enrich` actions feed back into context (via `extract`) for the next pass. Convergence is reached when the context key-set stabilizes. Result lives in `accActions.<phase>`:
+Rules emit typed actions (`edge`, `enrich`, `configure`) over ordered groups. Group order comes from `gen-graph.phaseOrder` (`structural` before `configuration`); the pure dispatch STEP (`gen-dispatch.dispatch`) fires the matching rules for a pass, and `gen-scope.circular` (Kleene ascent) is the LOOP that drives it to a fixpoint — the step threads the plain domain state (context), each pass being one one-shot dispatch whose output context is the next iterate. `configure` carries an aspect target (`{ aspect; settings; }`) and folds into the cascade as the final layer; `enrich` actions feed back into context (via `extract`) so later passes see them. Convergence is reached when the context key-set stabilizes, and the policy actions are read off the converged context by one post-convergence dispatch (`result.actions.<group>`) — a function of the fixpoint, not the iteration path:
 
 ```nix
 prodHardening = mkRule {
@@ -120,7 +120,7 @@ prodHardening = mkRule {
   produce = _id: ctx:
     lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; });
   identity = "prod-hardening";
-  phase = "structural";
+  group = "structural";
 };
 ```
 

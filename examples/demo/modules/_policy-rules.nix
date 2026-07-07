@@ -1,9 +1,11 @@
-# Policy action vocabulary + rules (NON-module: imported by relative path, NOT a
-# flake-parts module — the leading underscore excludes it from import-tree ./modules).
+# Policy action vocabulary + rules + the blessed convergence composition (NON-module:
+# imported by relative path, NOT a flake-parts module — the leading underscore excludes
+# it from import-tree ./modules).
 {
   lib,
   genDispatch,
   genGraph,
+  genScope,
 }:
 let
   inherit (genDispatch)
@@ -18,9 +20,9 @@ let
     ];
     configuration = [ "configure" ];
   };
-  # Phase ORDERING is gen-graph's job now (gen-dispatch is the pure dispatch STEP).
-  # `phaseOrder` is a `[ phaseName ]` list; dispatch walks it, threading context.
-  phaseOrder = genGraph.phaseOrder {
+  # Group ORDERING is gen-graph's job now (gen-dispatch is the pure dispatch STEP).
+  # `groupOrder` is a `[ groupName ]` list; dispatch walks it, threading context.
+  groupOrder = genGraph.phaseOrder {
     structural = genGraph.entryAnywhere;
     configuration = genGraph.entryAfter [ "structural" ];
   };
@@ -30,11 +32,11 @@ let
     produce =
       _id: ctx: lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; });
     identity = "prod-hardening";
-    phase = "structural";
+    group = "structural";
   };
 
   # databaseBackup is two rules: a single rule may not emit actions across two
-  # phases (gen-dispatch dispatch throws), so the structural enrich and the
+  # groups (gen-dispatch dispatch throws), so the structural enrich and the
   # configuration patch are separate bindings.
   databaseBackupEnrich = mkRule {
     condition.host = false;
@@ -47,7 +49,7 @@ let
         }
       );
     identity = "database-backup-enrich";
-    phase = "structural";
+    group = "structural";
   };
 
   databaseBackupConfig = mkRule {
@@ -64,7 +66,7 @@ let
         }
       );
     identity = "database-backup-config";
-    phase = "configuration";
+    group = "configuration";
   };
 
   nodeExporter = mkRule {
@@ -76,7 +78,7 @@ let
       })
     ];
     identity = "node-exporter";
-    phase = "configuration";
+    group = "configuration";
   };
 
   devRelaxedFirewall = mkRule {
@@ -95,7 +97,7 @@ let
         }
       );
     identity = "dev-relaxed-firewall";
-    phase = "configuration";
+    group = "configuration";
   };
 
   prodLogging = mkRule {
@@ -116,7 +118,7 @@ let
     # rule fire-order only (lower fires earlier); NOT settings-merge precedence
     # (settings merge by cascade layer position) — do not copy to other rules.
     priority = 10;
-    phase = "configuration";
+    group = "configuration";
   };
 
   rules = [
@@ -133,13 +135,49 @@ let
     lib.foldl' (acc: a: if a.__action == "enrich" then acc // { ${a.key} = a.value; } else acc) { } (
       actions.structural or [ ]
     );
+
+  # The dispatch config sans context — once a context is applied, `dispatch` is a pure
+  # function of it (a given context always yields the same actions).
+  cfg = {
+    inherit rules extract groupOrder;
+    id = null;
+    match = fromFunctionMatch;
+    classify = act.classify;
+    combine = ctx: ext: ctx // ext;
+  };
+
+  # The blessed loop⊥step composition (see the "Convergence" section of gen-dispatch's
+  # README). gen-dispatch is a pure STEP; gen-scope.circular is the LOOP. We thread the
+  # PLAIN domain state (context): each pass is one one-shot `dispatch` whose output
+  # context is the next iterate, `enrich` widens context via extract/combine, and
+  # convergence is the context key-set reaching a fixpoint (sound because enrich only ever
+  # ADDS keys). The policy actions are then a function of the CONVERGED context — one
+  # post-convergence dispatch — never the iteration path. Recompute-at-fixpoint cannot
+  # double-emit, so no cross-pass accumulator rides the circular value.
+  resolve =
+    context:
+    let
+      step =
+        _self: _id: ctx:
+        (genDispatch.dispatch (cfg // { context = ctx; })).context;
+      converged =
+        (genScope.circular {
+          init = context;
+          eq = a: b: builtins.attrNames a == builtins.attrNames b;
+        } step)
+          { }
+          null;
+    in
+    genDispatch.dispatch (cfg // { context = converged; });
 in
 {
   inherit
     act
-    phaseOrder
+    groupOrder
     rules
     extract
     fromFunctionMatch
+    cfg
+    resolve
     ;
 }

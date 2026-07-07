@@ -93,7 +93,7 @@ in
 
     # --- per-host policy dispatch smoke ---
     policyActionCountsByHost = lib.mapAttrs (
-      _: r: lib.mapAttrs (_: builtins.length) r.accActions
+      _: r: lib.mapAttrs (_: builtins.length) r.actions
     ) policyResultsByHost;
 
     # Settings cascade verification
@@ -127,9 +127,9 @@ in
       childrenOfCore
       ;
 
-    # Policy dispatch (gen-dispatch STEP driven by gen-scope.circular's LOOP:
-    # actions accumulate across passes into `accActions`, keyed by phase).
-    policyActionCounts = lib.mapAttrs (_: builtins.length) policyResult.accActions;
+    # Policy dispatch (gen-dispatch STEP driven by gen-scope.circular's LOOP: the actions
+    # are read off the converged context by one post-convergence dispatch, keyed by group).
+    policyActionCounts = lib.mapAttrs (_: builtins.length) policyResult.actions;
 
     # gen-bind wrapping
     inherit (bindResults)

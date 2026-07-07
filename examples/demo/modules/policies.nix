@@ -16,14 +16,15 @@
   ...
 }:
 let
-  policyRules = import ./_policy-rules.nix { inherit lib genDispatch genGraph; };
-  inherit (policyRules)
-    act
-    phaseOrder
-    rules
-    extract
-    fromFunctionMatch
-    ;
+  policyRules = import ./_policy-rules.nix {
+    inherit
+      lib
+      genDispatch
+      genGraph
+      genScope
+      ;
+  };
+  inherit (policyRules) resolve;
 
   # Sample context: prod-web-1
   sampleEnv = genValues.fleet.environments.prod;
@@ -31,26 +32,13 @@ let
     name = "prod-web-1";
   };
 
-  # gen-dispatch is the STEP; gen-scope.circular is the LOOP (Kleene ascent).
-  cfg = {
-    inherit rules extract phaseOrder;
-    id = null;
-    match = fromFunctionMatch;
-    classify = act.classify;
-    combine = ctx: ext: ctx // ext;
+  # gen-dispatch is the pure STEP; gen-scope.circular is the LOOP (Kleene ascent).
+  # `_policy-rules.resolve` threads the plain domain state to a fixpoint and reads the
+  # policy actions off the converged context (one post-convergence dispatch).
+  policyResult = resolve {
+    env = sampleEnv;
+    host = sampleHost;
   };
-  step = genDispatch.dispatchStep { inherit (genDispatch) dispatch; } cfg;
-
-  policyResult =
-    (genScope.circular {
-      init = genDispatch.dispatchInit {
-        env = sampleEnv;
-        host = sampleHost;
-      };
-      eq = a: b: builtins.attrNames a.context == builtins.attrNames b.context;
-    } step)
-      { }
-      null;
 in
 {
   config._module.args = {

@@ -187,49 +187,32 @@ let
   # --- 4. Compose settings per host ---
 
   # Policy layer: per-host fixpoint dispatch produces `configure` actions that
-  # become the FINAL cascade layer (wins by position over env/host settings).
-  policyRules = import ./_policy-rules.nix { inherit lib genDispatch genGraph; };
-  inherit (policyRules)
-    act
-    phaseOrder
-    rules
-    extract
-    fromFunctionMatch
-    ;
-
-  # The convergence LOOP is gen-resolve's / gen-scope.circular's (Kleene ascent);
-  # gen-dispatch supplies only the STEP (dispatchStep). Pair them: dispatchInit seeds
-  # the circular value { context; fired; accActions; ... }, dispatchStep is one pass.
-  policyCfg = {
-    inherit rules extract phaseOrder;
-    id = null;
-    match = fromFunctionMatch;
-    classify = act.classify;
-    combine = ctx: ext: ctx // ext;
+  # become the FINAL cascade layer (wins by position over env/host settings). The
+  # convergence LOOP is gen-resolve's / gen-scope.circular's (Kleene ascent); gen-dispatch
+  # supplies only the pure STEP. `_policy-rules.resolve` threads the plain domain state
+  # (context) through repeated one-shot dispatch and reads the policy actions off the
+  # fixpoint — see the "Convergence" section of gen-dispatch's README.
+  policyRules = import ./_policy-rules.nix {
+    inherit
+      lib
+      genDispatch
+      genGraph
+      genScope
+      ;
   };
-  policyStep = genDispatch.dispatchStep { inherit (genDispatch) dispatch; } policyCfg;
+  inherit (policyRules) resolve;
 
   dispatchForHost =
     hostName:
     let
       h = genValues.fleet.hosts.${hostName};
-      context = {
-        env = genValues.fleet.environments.${h.env};
-        host = h // {
-          name = hostName;
-        };
-      };
     in
-    (genScope.circular {
-      init = genDispatch.dispatchInit context;
-      # Convergence by top-level context key-set: sound here because the only feedback
-      # is enrich (via extract), which only ever ADDS top-level keys — never changes a
-      # value in place. A ruleset that mutated a value without adding a key would need a
-      # value-aware eq.
-      eq = a: b: builtins.attrNames a.context == builtins.attrNames b.context;
-    } policyStep)
-      { }
-      null;
+    resolve {
+      env = genValues.fleet.environments.${h.env};
+      host = h // {
+        name = hostName;
+      };
+    };
   policyResultsByHost = lib.genAttrs hostNames dispatchForHost;
 
   # Collapse one host's configure actions into ONE aspect-namespaced patch:
@@ -247,7 +230,7 @@ let
       // {
         ${a.aspect} = (acc.${a.aspect} or { }) // a.settings;
       }
-    ) { } (policyResultsByHost.${hostName}.accActions.configuration or [ ]);
+    ) { } (policyResultsByHost.${hostName}.actions.configuration or [ ]);
 
   composeForHost =
     hostName:
