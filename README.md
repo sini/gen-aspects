@@ -206,7 +206,7 @@ parentOf = id:
 
 ## API Reference
 
-The `.lib` value exposes eighteen top-level names: the four aspect types, the four identity/introspection utilities plus `guardKey`, the four schema-and-registry entry points, and the five-name guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`).
+The `.lib` value exposes nineteen top-level names: the four aspect types, `wrapFn`, the four identity/introspection utilities plus `guardKey`, the four schema-and-registry entry points, and the five-name guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`).
 
 ```nix
 aspects = gen-aspects.lib;
@@ -221,6 +221,8 @@ aspects = gen-aspects.lib;
 - **`aspectType cnf`** — Palmer flat dispatch. One type, dispatch in merge. Attrsets and module functions → `aspectSubmodule`. Guard functions → `functionTo` wrapper. Primitives → passthrough.
 
 - **`aspectOrFn cnf`** — `either aspectType aspectSubmodule`. Recursion-safe binding for `includes` and nested aspect positions.
+
+- **`wrapFn cnf name fn`** — wrap a single raw closure `ctx: <aspect>` as an inspectable `__isWrappedFn` functor: the API sibling of the guard-function wrap that `aspectType` applies automatically. A native bare-fn include rides the option-type merge; a **programmatically generated** include (built off the type, e.g. a bridge that raw-absorbs a foreign surface) bypasses that merge and must call `wrapFn` explicitly — the same rationale (Palmer's three eliminators over a value the type never intercepted) that makes a generated guard record first-order data. A `wrapFn`'d include is equivalent to a type-merge-wrapped bare fn (same formals; same merged content per context).
 
 ### Configuration (`cnf`)
 

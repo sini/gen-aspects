@@ -47,28 +47,81 @@ let
   };
   mkIsModuleFn = cnf: canTake.upTo (cnf.moduleArgs or defaultModuleArgs);
 
-  # Raw-closure guard wrap — a hand-built functor reproducing nixpkgs `functionTo`'s merge
-  # result tagged as a wrapped fn. When the pipeline applies it to a context, each def's guard
-  # closure is applied and the results merge through the aspectSubmodule (deferred resolution).
-  wrapGuardFn = cnf: loc: defs: {
-    __functor =
-      _: fnArgs:
-      (aspectSubmodule cnf).merge (loc ++ [ "<function body>" ]) (
-        map (d: {
-          inherit (d) file;
-          value = d.value fnArgs;
-        }) defs
-      );
-    # nixpkgs `functionTo` sets `__functionArgs` (via setFunctionArgs) = the union of the guard
-    # closures' formals, so downstream `functionArgs`/`lib.isFunction` see the guard's arg shape.
-    __functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
-    __isWrappedFn = true;
-    name = prelude.last loc;
-    meta = {
-      inherit loc;
-      file = (builtins.head defs).file or "<unknown>";
+  # The `__isWrappedFn` functor record — ONE construction site for the inspectable raw-closure wrap
+  # (Reynolds 1972 by analogy, per the header: the closure is preserved inside `__functor`, not
+  # eliminated). Both callers below build THIS record; they differ only in the APPLICATOR (how the
+  # context args become a merged aspect) and in the formals/name/meta sources. Keeping the shape in
+  # one place is the R11 no-drift argument: constructor and readers (flatten/identity/guard,
+  # resolved-aspects) live in one lib, so the tag's shape can never skew across callers.
+  mkWrapped =
+    {
+      apply,
+      functionArgs,
+      name,
+      meta,
+    }:
+    {
+      __functor = _: fnArgs: apply fnArgs;
+      # nixpkgs `functionTo` sets `__functionArgs` (via setFunctionArgs) so downstream
+      # `functionArgs`/`lib.isFunction` see the closure's arg shape; reproduced here.
+      __functionArgs = functionArgs;
+      __isWrappedFn = true;
+      inherit name meta;
     };
-  };
+
+  # Raw-closure guard wrap — a hand-built functor reproducing nixpkgs `functionTo`'s merge result
+  # tagged as a wrapped fn. The DEF-LIST caller: invoked by the aspect TYPE's merge, so it wraps the
+  # module system's def-list (a guard fn defined possibly across several files). When the pipeline
+  # applies it to a context, each def's guard closure is applied and the results merge through the
+  # aspectSubmodule (deferred resolution).
+  wrapGuardFn =
+    cnf: loc: defs:
+    mkWrapped {
+      apply =
+        fnArgs:
+        (aspectSubmodule cnf).merge (loc ++ [ "<function body>" ]) (
+          map (d: {
+            inherit (d) file;
+            value = d.value fnArgs;
+          }) defs
+        );
+      functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
+      name = prelude.last loc;
+      meta = {
+        inherit loc;
+        file = (builtins.head defs).file or "<unknown>";
+      };
+    };
+
+  # PUBLIC: wrap a SINGLE raw closure `ctx: <aspect>` as an inspectable aspect include — the
+  # single-closure sibling of `wrapGuardFn`. A NATIVE author never needs it: a bare guard fn written
+  # into an aspect rides the option-type merge (aspectType below), which applies `wrapGuardFn` for
+  # them. But a PROGRAMMATICALLY-GENERATED include (constructed off the option type, e.g. a bridge
+  # that raw-absorbs a foreign surface) bypasses that merge, so the wrap must be callable as API —
+  # the same rationale that makes a generated guard record a first-order value rather than a closure
+  # the type must intercept. The applied closure's result merges through the aspectSubmodule exactly
+  # as `wrapGuardFn`'s def-list path does, so a `wrapFn`'d include is byte-equivalent to a
+  # type-merge-wrapped bare fn (ci/tests/wrap-fn.nix). `name` sites the wrap for tracing (Palmer §5.1).
+  wrapFn =
+    cnf: name: fn:
+    mkWrapped {
+      apply =
+        fnArgs:
+        (aspectSubmodule cnf).merge
+          [ name "<function body>" ]
+          [
+            {
+              file = "<wrapFn>";
+              value = fn fnArgs;
+            }
+          ];
+      functionArgs = builtins.functionArgs fn;
+      inherit name;
+      meta = {
+        loc = [ name ];
+        file = "<wrapFn>";
+      };
+    };
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   aspectType =
@@ -219,5 +272,6 @@ in
     aspectOrFn
     mkIsModuleFn
     canTake
+    wrapFn
     ;
 }
