@@ -131,6 +131,25 @@ in
 
 **Module functions** like `{ config, ... }: { ... }` or `{ aspect, ... }: { ... }` are evaluated immediately by the submodule — they have access to `_module.args.aspect` (self-reference) and standard module args.
 
+## Aspect identity (A-IDENT)
+
+Every aspect carries an **intrinsic path identity** — its `.key` is a function of *where it sits in the aspect tree*, computed at merge and never reconstructed downstream. `aspectSubmodule` reads its own option path (the `prefix` gen-merge threads into every module body, equal to the merge `loc`) and stamps `meta.aspect-chain`; `key` then computes `pathKey(meta.aspect-chain ++ [name]) = pathKey(prefix)`.
+
+The rule (VERBATIM):
+
+> **A-IDENT (intrinsic path identity).** Let an aspect container hold a tree of nested aspects. For every nested aspect `a` at container-relative path `p = [k₀ … kₙ]` (the sequence of freeform keys from the container root down to `a`, EXCLUDING the module-system mount prefix and EXCLUDING registered class/structural keys), gen-aspects stamps, intrinsically on the value: `a.name = kₙ` and `a.meta.aspect-chain = [k₀ … kₙ₋₁]`. Its identity key is `key(a) = pathKey(a.meta.aspect-chain ++ [a.name]) = pathKey(p)`.
+> **Collision law:** two aspects share a key **iff** they occupy the same container-relative path.
+> **Corollary (no name-only collapse):** distinct paths ⇒ distinct keys; in particular `key(hardware.cpu.intel) = "hardware/cpu/intel" ≠ "hardware/gpu/intel" = key(hardware.gpu.intel)`.
+> **Parametric exception (unchanged):** a wrapped closure include (`__isWrappedFn`, and guard functions/records) is identified by its definition site `meta.loc` (already path-bearing) plus its arguments — its identity is parametric but KNOWN; A-IDENT unifies plain aspects to the SAME path-bearing key discipline, it does not alter the wrapped/guard branches.
+
+**Key form — mount-ABSOLUTE.** The stamped `prefix` is the module-system `loc`, which *includes* the mount segment the aspects container is mounted under (`aspects/…` in these tests, `den/aspects/…` in [den](https://github.com/sini/den)). So `key` carries that mount segment. This form was chosen deliberately (over a container-relative one) because:
+
+- **It unifies the plain and guard namespaces.** The guard branch already keys off `meta.loc` (mount-absolute, e.g. `aspects/theme/fonts`). Making plain aspects mount-absolute too puts *both* in ONE namespace, so a plain aspect and a guard function at the same path key identically and dedup — exactly what the collision law requires.
+- **It avoids mount-strip fragility.** A container-relative key would have to subtract the mount depth, which differs per consumer (den mounts deeper) — mount-dependent and brittle.
+- **It is registry/namespace-ready.** The mount prefix is a proto-namespace; when the future aspect-registry / cross-flake origin qualifier lands, the key becomes `pathKey(origin ++ path)` — the qualifier extends the key *additively*, no re-key churn.
+
+**One identity, two views.** `flatten`'s walk key is the SAME identity, expressed container-relative (no mount): `key(a) == mount ++ flattenKey(a)` (e.g. `.key = "aspects/apps/media/spicetify"` vs flatten key `"apps/media/spicetify"`). A constant mount prefix shifts every key equally, so the dedup equivalence classes coincide — `flatten` and `.key` are two surfaces of one path identity, not two divergent surfaces.
+
 ## Schema Integration
 
 gen-aspects depends on [gen-schema](https://github.com/sini/gen-schema) and provides `mkAspectSchema` to bridge aspect types with gen-schema's kind-level infrastructure (collections, introspection, schema extensions).
@@ -254,7 +273,7 @@ aspectsType {
 
 - **`canTake`** — function arg introspection. `canTake.upTo params fn` checks if all required args of `fn` are satisfiable by `params`.
 - **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
-- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`**, **`guardKey`** — identity computation from `meta` + `name`. `key` routes three ways: static aspects (via `meta.aspect-chain`), wrapped guard functions (via `meta.loc`), and defunctionalized guard records (`__guard` → `guardKey`, a site-independent structural key over the predicate + first-order body).
+- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`**, **`guardKey`** — identity computation from `meta` + `name`. `key` routes three ways: static aspects (via `meta.aspect-chain`, stamped intrinsically at merge from the option path — [A-IDENT](#aspect-identity-a-ident)), wrapped guard functions (via `meta.loc`), and defunctionalized guard records (`__guard` → `guardKey`, a site-independent structural key over the predicate + first-order body). All three are mount-absolute, so plain and guard keys share one namespace.
 
 ### Schema & Registry
 
@@ -273,7 +292,7 @@ nix shell nixpkgs#nix-unit -c nix-unit \
   --flake './ci#.tests'
 ```
 
-109 tests across 17 suites (verified `109/109 successful` via nix-unit): `can-take`, `class-content`, `extensions`, `flat-registry`, `freeform-dispatch`, `guard`, `guard-identity`, `identity`, `includes`, `lazy-classification`, `meta-modules`, `multi-def`, `multi-def-identity`, `nested-aspects`, `parametric`, `reserved-keys`, and `schema-integration` — covering class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, the guard predicate vocabulary + defunctionalized identity (`mkGuardVocab`/`applyGuard`/`guardKey`), lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
+115 tests across 17 suites (verified `115/115 successful` via nix-unit): `can-take`, `class-content`, `extensions`, `flat-registry`, `freeform-dispatch`, `guard`, `guard-identity`, `identity`, `includes`, `lazy-classification`, `meta-modules`, `multi-def`, `multi-def-identity`, `nested-aspects`, `parametric`, `reserved-keys`, and `schema-integration` — covering class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, the guard predicate vocabulary + defunctionalized identity (`mkGuardVocab`/`applyGuard`/`guardKey`), lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
 
 ## Theoretical Foundations
 
