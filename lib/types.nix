@@ -207,24 +207,30 @@ let
       );
     in
     merge.submodule (
-      { name, config, prefix ? [ ], ... }:
+      {
+        name,
+        config,
+        prefix ? [ ],
+        ...
+      }:
       {
         freeformType = t.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
         imports = cnf.aspectModules or [ ];
 
         # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
-        # gen-merge threads into every module body (= the merge `loc`, mount-ABSOLUTE) — IS the
-        # identity. `name` is already `last prefix`; the chain is everything above it. Stamped
-        # here so `key` (= pathKey(chain ++ [name]) = pathKey(prefix), identity.nix:69-76) is
-        # path-bearing AT MERGE, born in the type — never reconstructed downstream. Distinct
-        # paths ⇒ distinct keys (fixes the name-only collapse: hardware.cpu.intel ≠
-        # hardware.gpu.intel). Mount-absolute chain UNIFIES with the guard branch (also loc-keyed,
-        # types.nix:171) and slots the future registry/namespace origin qualifier in additively.
+        # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
+        # top container (`aspectsRoot`) re-roots the mount away, so `prefix` here is
+        # CONTAINER-RELATIVE (2b, owner ruling): `[ apps media spicetify ]`, no mount segment.
+        # `name` is already `last prefix`; the chain is everything above it. Stamped here so `key`
+        # (= pathKey(chain ++ [name]) = pathKey(prefix), identity.nix:69-76) is path-bearing AT
+        # MERGE, born in the type — never reconstructed downstream. Distinct paths ⇒ distinct keys
+        # (fixes the name-only collapse: hardware.cpu.intel ≠ hardware.gpu.intel). The relative
+        # chain UNIFIES with the guard branch (also loc-keyed and re-rooted, types.nix:171),
+        # is origin-invariant (§3a: the container root is the proto-namespace root; an origin
+        # qualifier prepends additively), and byte-matches den-hoag's root-relative `__provider`.
         # mkDefault so a user-set meta.aspect-chain still wins.
-        config.meta.aspect-chain = merge.mkDefault (
-          if prefix == [ ] then [ ] else prelude.init prefix
-        );
+        config.meta.aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
 
         options = {
           name = merge.mkOption {
@@ -265,13 +271,58 @@ let
       }
     );
 
+  # aspectsRoot — the top aspect-container element type. A `lazyAttrsOf aspectType` that
+  # RE-ROOTS: each first-level aspect is merged at `prefix = [ key ]` (NOT `containerLoc ++
+  # [ key ]`), so the module-system mount segment (the option this container is mounted under —
+  # `aspects`, or `den/aspects` in den) is dropped and A-IDENT identity is CONTAINER-RELATIVE
+  # (2b, owner ruling 2026-07-13). Descendants keep accumulating relative through
+  # `aspectSubmodule`'s own freeform (`lazyAttrsOf (aspectType cnf)`, still additive), so a deep
+  # aspect keys as `apps/media/spicetify` — origin-invariant (§3a north-star: the container root
+  # IS the proto-namespace root; an origin qualifier prepends additively) and byte-matching
+  # den-hoag's root-relative `__provider` reconstruction. The reset is a per-container `mergeDefs
+  # [ key ]` — no mount-depth arithmetic (portable across consumers), a uniform reset that keeps
+  # plain and guard aspects in ONE relative namespace (collision law: plain+guard at the same
+  # path dedup). MUST wrap only the TOP container, never `aspectSubmodule`'s nested freeform
+  # (which must stay additive, else every level would reset to `[ ]` → name-only collapse).
+  aspectsRoot =
+    cnf:
+    let
+      elemType = aspectType cnf;
+    in
+    merge.mkOptionType {
+      name = "aspectsRoot";
+      inherit elemType;
+      nestedTypes = { inherit elemType; };
+      merge =
+        loc: defs:
+        let
+          keys = builtins.attrNames (prelude.foldl' (acc: d: acc // d.value) { } defs);
+        in
+        builtins.listToAttrs (
+          map (k: {
+            name = k;
+            # re-root at [ k ]: drop the container `loc` (the mount) so children are relative.
+            value = merge.mergeDefs [ k ] elemType (
+              builtins.concatMap (
+                d:
+                prelude.optional (d.value ? ${k}) {
+                  inherit (d) file;
+                  value = d.value.${k};
+                }
+              ) defs
+            );
+          }) keys
+        );
+    };
+
   # Top-level aspect container. Provides fixpoint: aspects can reference siblings.
+  # Freeform is `aspectsRoot` (re-rooting) so nested identity is container-relative (A-IDENT 2b).
   aspectsType =
     cnf:
     merge.submodule (
       { config, ... }:
       {
-        freeformType = t.lazyAttrsOf (aspectType cnf);
+        freeformType = aspectsRoot cnf;
         config._module.args.aspects = config;
       }
     );
@@ -282,6 +333,7 @@ in
     aspectType
     aspectSubmodule
     aspectsType
+    aspectsRoot
     aspectOrFn
     mkIsModuleFn
     canTake

@@ -6,6 +6,7 @@
   merge,
   genSchema,
   aspectType,
+  aspectsRoot,
   mkIsModuleFn,
   aspectPath,
   pathKey,
@@ -66,7 +67,8 @@ in
         merge.mkOption {
           description = "Aspects";
           default = { };
-          type = t.lazyAttrsOf (aspectType (cnf // { inherit providerPrefix; }));
+          # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
+          type = aspectsRoot (cnf // { inherit providerPrefix; });
         };
 
       # mkAspectModule is a NixOS module that declares options.aspects and
@@ -83,21 +85,20 @@ in
           options.aspects = merge.mkOption {
             description = "Aspects";
             default = { };
-            type = t.lazyAttrsOf (
-              aspectType (
-                cnf
-                // {
-                  inherit providerPrefix;
-                  # Lazily inject schema-declared option modules into every instance.
-                  # config.schema.aspect.__defsModule carries the merged module built
-                  # from user defs on the schema kind entry (e.g. options.priority).
-                  aspectModules =
-                    (cnf.aspectModules or [ ])
-                    ++ prelude.optional (
-                      config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
-                    ) config.schema.aspect.__defsModule;
-                }
-              )
+            # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
+            type = aspectsRoot (
+              cnf
+              // {
+                inherit providerPrefix;
+                # Lazily inject schema-declared option modules into every instance.
+                # config.schema.aspect.__defsModule carries the merged module built
+                # from user defs on the schema kind entry (e.g. options.priority).
+                aspectModules =
+                  (cnf.aspectModules or [ ])
+                  ++ prelude.optional (
+                    config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
+                  ) config.schema.aspect.__defsModule;
+              }
             );
           };
         };
@@ -119,7 +120,8 @@ in
               default = { };
               type = t.lazyAttrsOf t.raw;
             };
-            freeformType = t.lazyAttrsOf (aspectType (cnf // { providerPrefix = [ name ]; }));
+            # aspectsRoot (re-rooting) → aspect identity is relative to the namespace's aspect root (A-IDENT 2b).
+            freeformType = aspectsRoot (cnf // { providerPrefix = [ name ]; });
           }
         );
 

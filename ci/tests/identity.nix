@@ -11,10 +11,10 @@
       eval = mkSchemaEval { modules = [ { config.aspects.networking.classOne = { }; } ]; };
     in
     {
-      # A-IDENT: key is path-bearing (mount-absolute). A root aspect's chain is empty,
-      # so its key is just the mount + its own name.
+      # A-IDENT (2b, container-relative): a root aspect's chain is empty, so its key is just
+      # its own name — the mount segment is re-rooted away by aspectsRoot.
       expr = eval.config.aspects.networking.key;
-      expected = "aspects/networking";
+      expected = "networking";
     };
 
   flake.tests.identity.test-nested-aspect-key =
@@ -27,9 +27,9 @@
     in
     {
       # nested via freeform → aspectType → aspectSubmodule.
-      # A-IDENT: key carries the full container-path (mount-absolute), no longer name-only.
+      # A-IDENT (2b): key carries the full container-RELATIVE path, no longer name-only.
       expr = eval.config.aspects.infra.networking.key;
-      expected = "aspects/infra/networking";
+      expected = "infra/networking";
     };
 
   # A-IDENT witness: two distinct aspects sharing a leaf name at DISTINCT paths must get
@@ -51,8 +51,8 @@
         collide = cpu == gpu;
       };
       expected = {
-        cpu = "aspects/hardware/cpu/intel";
-        gpu = "aspects/hardware/gpu/intel";
+        cpu = "hardware/cpu/intel";
+        gpu = "hardware/gpu/intel";
         collide = false;
       };
     };

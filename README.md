@@ -133,7 +133,7 @@ in
 
 ## Aspect identity (A-IDENT)
 
-Every aspect carries an **intrinsic path identity** — its `.key` is a function of *where it sits in the aspect tree*, computed at merge and never reconstructed downstream. `aspectSubmodule` reads its own option path (the `prefix` gen-merge threads into every module body, equal to the merge `loc`) and stamps `meta.aspect-chain`; `key` then computes `pathKey(meta.aspect-chain ++ [name]) = pathKey(prefix)`.
+Every aspect carries an **intrinsic path identity** — its `.key` is a function of *where it sits in the aspect tree*, computed at merge and never reconstructed downstream. The top aspect container (`aspectsRoot`) re-roots its children so that below it the `prefix` gen-merge threads into every module body is **container-relative** (the module-system mount segment is dropped); `aspectSubmodule` reads that `prefix` and stamps `meta.aspect-chain`; `key` then computes `pathKey(meta.aspect-chain ++ [name]) = pathKey(prefix)`.
 
 The rule (VERBATIM):
 
@@ -142,13 +142,13 @@ The rule (VERBATIM):
 > **Corollary (no name-only collapse):** distinct paths ⇒ distinct keys; in particular `key(hardware.cpu.intel) = "hardware/cpu/intel" ≠ "hardware/gpu/intel" = key(hardware.gpu.intel)`.
 > **Parametric exception (unchanged):** a wrapped closure include (`__isWrappedFn`, and guard functions/records) is identified by its definition site `meta.loc` (already path-bearing) plus its arguments — its identity is parametric but KNOWN; A-IDENT unifies plain aspects to the SAME path-bearing key discipline, it does not alter the wrapped/guard branches.
 
-**Key form — mount-ABSOLUTE.** The stamped `prefix` is the module-system `loc`, which *includes* the mount segment the aspects container is mounted under (`aspects/…` in these tests, `den/aspects/…` in [den](https://github.com/sini/den)). So `key` carries that mount segment. This form was chosen deliberately (over a container-relative one) because:
+**Key form — container-RELATIVE.** The stamped `prefix` is the merge `loc` *re-rooted at the aspect container*: the top container `aspectsRoot` merges each first-level aspect at `prefix = [key]` (dropping the module-system mount segment the container is mounted under — `aspects` in these tests, `den/aspects` in [den](https://github.com/sini/den)), and descendants accumulate relative from there. So `key(apps.media.spicetify) = "apps/media/spicetify"`, no mount. This form was chosen (over mount-absolute) because:
 
-- **It unifies the plain and guard namespaces.** The guard branch already keys off `meta.loc` (mount-absolute, e.g. `aspects/theme/fonts`). Making plain aspects mount-absolute too puts *both* in ONE namespace, so a plain aspect and a guard function at the same path key identically and dedup — exactly what the collision law requires.
-- **It avoids mount-strip fragility.** A container-relative key would have to subtract the mount depth, which differs per consumer (den mounts deeper) — mount-dependent and brittle.
-- **It is registry/namespace-ready.** The mount prefix is a proto-namespace; when the future aspect-registry / cross-flake origin qualifier lands, the key becomes `pathKey(origin ++ path)` — the qualifier extends the key *additively*, no re-key churn.
+- **It is origin-invariant.** An aspect's key is a function of its position *within its aspect tree*, independent of where the consumer mounts that tree. This is the property the future aspect-registry / cross-flake origin work needs (an imported aspect keys by its definition origin, not the consumer's mount point — spec §3a north-star): the container root IS the proto-namespace root, and an origin qualifier prepends *additively* (`pathKey(origin ++ path)`).
+- **It matches den-hoag's identity form.** den-hoag's `__provider` reconstruction is already root-relative (`apps/media/spicetify`), so consuming the native relative `.key` is byte-for-byte the same key — the lowest-churn path to retiring the shadow layer.
+- **It keeps plain and guard unified.** The re-root is a *uniform* reset applied to every value the container merges (not a depth-based strip), so the guard branch (keyed off `meta.loc`, also re-rooted) lands in the SAME relative namespace as plain aspects — a plain aspect and a guard function at the same path key identically and dedup, as the collision law requires.
 
-**One identity, two views.** `flatten`'s walk key is the SAME identity, expressed container-relative (no mount): `key(a) == mount ++ flattenKey(a)` (e.g. `.key = "aspects/apps/media/spicetify"` vs flatten key `"apps/media/spicetify"`). A constant mount prefix shifts every key equally, so the dedup equivalence classes coincide — `flatten` and `.key` are two surfaces of one path identity, not two divergent surfaces.
+**One identity, two views (exact).** `flatten`'s walk key and `.key` are now the SAME identity, LITERALLY equal: both are container-relative (`flatten` walks from the container root; `.key` is re-rooted there), so `key(a) == flattenKey(a)` (e.g. both `"apps/media/spicetify"`). Not two surfaces modulo a prefix — one identity, two exactly-agreeing views (unit-tested in `flat-registry` `test-key-agrees-with-flatten`).
 
 ## Schema Integration
 
@@ -225,7 +225,7 @@ parentOf = id:
 
 ## API Reference
 
-The `.lib` value exposes nineteen top-level names: the four aspect types, `wrapFn`, the four identity/introspection utilities plus `guardKey`, the four schema-and-registry entry points, and the five-name guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`).
+The `.lib` value exposes twenty top-level names: the five aspect types (incl. `aspectsRoot`, the re-rooting container), `wrapFn`, the four identity/introspection utilities plus `guardKey`, the four schema-and-registry entry points, and the five-name guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`).
 
 ```nix
 aspects = gen-aspects.lib;
@@ -273,7 +273,7 @@ aspectsType {
 
 - **`canTake`** — function arg introspection. `canTake.upTo params fn` checks if all required args of `fn` are satisfiable by `params`.
 - **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
-- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`**, **`guardKey`** — identity computation from `meta` + `name`. `key` routes three ways: static aspects (via `meta.aspect-chain`, stamped intrinsically at merge from the option path — [A-IDENT](#aspect-identity-a-ident)), wrapped guard functions (via `meta.loc`), and defunctionalized guard records (`__guard` → `guardKey`, a site-independent structural key over the predicate + first-order body). All three are mount-absolute, so plain and guard keys share one namespace.
+- **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`**, **`guardKey`** — identity computation from `meta` + `name`. `key` routes three ways: static aspects (via `meta.aspect-chain`, stamped intrinsically at merge from the option path — [A-IDENT](#aspect-identity-a-ident)), wrapped guard functions (via `meta.loc`), and defunctionalized guard records (`__guard` → `guardKey`, a site-independent structural key over the predicate + first-order body). All three are container-relative (re-rooted by `aspectsRoot`), so plain and guard keys share one namespace.
 
 ### Schema & Registry
 

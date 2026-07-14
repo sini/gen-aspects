@@ -63,9 +63,10 @@
       wrapper = eval.config.aspects.fonts;
     in
     {
-      # identity.key on a wrapped guard returns loc-based key
+      # identity.key on a wrapped guard returns loc-based key (container-relative under A-IDENT 2b —
+      # re-rooted by aspectsRoot, same form as a plain aspect at this path).
       expr = aspects.key wrapper;
-      expected = "aspects/fonts";
+      expected = "fonts";
     };
 
   flake.tests.guard-identity.test-guard-nested-identity-key =
@@ -84,9 +85,9 @@
       wrapper = eval.config.aspects.theme.fonts;
     in
     {
-      # nested guard: loc includes full module path
+      # nested guard: loc includes full module path (container-relative under A-IDENT 2b).
       expr = aspects.key wrapper;
-      expected = "aspects/theme/fonts";
+      expected = "theme/fonts";
     };
 
   flake.tests.guard-identity.test-static-vs-guard-keys-differ =
@@ -106,17 +107,17 @@
     in
     {
       # static uses aspectPath (meta.aspect-chain ++ name), guard uses meta.loc — and after
-      # A-IDENT BOTH are mount-absolute, so plain and guard aspects now live in ONE unified
-      # namespace (spec §2 "Recommend UNIFY"): a plain aspect and a guard fn at the same path
-      # key identically and dedup, as the collision law requires. Previously static was name-only
-      # ("staticOne") while guard was loc-based ("aspects/guardOne") — a namespace split now closed.
+      # A-IDENT (2b) BOTH are container-relative, so plain and guard aspects live in ONE unified
+      # namespace (spec §2 UNIFY): a plain aspect and a guard fn at the same path key identically
+      # and dedup, as the collision law requires. Previously static was name-only while guard was
+      # mount-loc-based — that namespace split is now closed, at relative form.
       expr = {
         static = aspects.key eval.config.aspects.staticOne;
         guard = aspects.key eval.config.aspects.guardOne;
       };
       expected = {
-        static = "aspects/staticOne";
-        guard = "aspects/guardOne";
+        static = "staticOne";
+        guard = "guardOne";
       };
     };
 

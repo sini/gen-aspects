@@ -60,11 +60,11 @@ in
   };
 
   # identity.key for the child is its stable positional key, not an anonymous one.
-  # A-IDENT: that positional key is now path-bearing (mount-absolute), == the flatten
-  # walk key for the same node prefixed by the mount ("aspects/" ++ "apps/dev/security/gpg").
+  # A-IDENT (2b): that positional key is path-bearing and container-RELATIVE — literally
+  # equal to the flatten walk key for the same node ("apps/dev/security/gpg").
   flake.tests.multi-def-identity.test-identity-key-is-positional = {
     expr = aspects.key eval.config.aspects.apps.dev.security.gpg;
-    expected = "aspects/apps/dev/security/gpg";
+    expected = "apps/dev/security/gpg";
   };
 
   # No anonymous identities anywhere in the registry.

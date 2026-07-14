@@ -19,7 +19,7 @@ let
   schemaModule = import ./schema.nix {
     inherit prelude merge;
     genSchema = schema;
-    inherit (types) aspectType mkIsModuleFn;
+    inherit (types) aspectType aspectsRoot mkIsModuleFn;
     inherit (identity)
       aspectPath
       pathKey
@@ -35,6 +35,7 @@ in
     aspectType
     aspectSubmodule
     aspectsType
+    aspectsRoot
     aspectOrFn
     mkIsModuleFn
     canTake
