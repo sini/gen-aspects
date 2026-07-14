@@ -207,11 +207,24 @@ let
       );
     in
     merge.submodule (
-      { name, config, ... }:
+      { name, config, prefix ? [ ], ... }:
       {
         freeformType = t.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
         imports = cnf.aspectModules or [ ];
+
+        # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
+        # gen-merge threads into every module body (= the merge `loc`, mount-ABSOLUTE) — IS the
+        # identity. `name` is already `last prefix`; the chain is everything above it. Stamped
+        # here so `key` (= pathKey(chain ++ [name]) = pathKey(prefix), identity.nix:69-76) is
+        # path-bearing AT MERGE, born in the type — never reconstructed downstream. Distinct
+        # paths ⇒ distinct keys (fixes the name-only collapse: hardware.cpu.intel ≠
+        # hardware.gpu.intel). Mount-absolute chain UNIFIES with the guard branch (also loc-keyed,
+        # types.nix:171) and slots the future registry/namespace origin qualifier in additively.
+        # mkDefault so a user-set meta.aspect-chain still wins.
+        config.meta.aspect-chain = merge.mkDefault (
+          if prefix == [ ] then [ ] else prelude.init prefix
+        );
 
         options = {
           name = merge.mkOption {

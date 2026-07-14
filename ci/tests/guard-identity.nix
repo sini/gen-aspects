@@ -105,13 +105,17 @@
       };
     in
     {
-      # static uses aspectPath, guard uses loc — both produce stable strings
+      # static uses aspectPath (meta.aspect-chain ++ name), guard uses meta.loc — and after
+      # A-IDENT BOTH are mount-absolute, so plain and guard aspects now live in ONE unified
+      # namespace (spec §2 "Recommend UNIFY"): a plain aspect and a guard fn at the same path
+      # key identically and dedup, as the collision law requires. Previously static was name-only
+      # ("staticOne") while guard was loc-based ("aspects/guardOne") — a namespace split now closed.
       expr = {
         static = aspects.key eval.config.aspects.staticOne;
         guard = aspects.key eval.config.aspects.guardOne;
       };
       expected = {
-        static = "staticOne";
+        static = "aspects/staticOne";
         guard = "aspects/guardOne";
       };
     };
