@@ -138,4 +138,22 @@ in
     expr = builtins.any (k: k == "networking/nixos") (builtins.attrNames flat);
     expected = false;
   };
+
+  # A-IDENT "one identity, two views" (spec §2): flatten's walk key and the node's intrinsic
+  # `.key` are the SAME identity. flatten keys are container-relative; `.key` is mount-absolute
+  # (unified with the guard branch). They agree exactly modulo the constant mount prefix:
+  #   node.key == "aspects/" ++ flattenKey
+  # i.e. every flatten entry v satisfies `v.key == "aspects/" ++ <its walk key>`. A constant
+  # prefix preserves all equalities/inequalities, so the dedup equivalence classes are identical
+  # — flatten and `.key` are two surfaces of ONE path identity, no divergence.
+  flake.tests.flat-registry.test-key-agrees-with-flatten = {
+    expr = lib.mapAttrs (
+      walkKey: v: v.key == "aspects/" + walkKey
+    ) (lib.filterAttrs (_: v: v ? key) deepFlat);
+    expected = {
+      "infra" = true;
+      "infra/networking" = true;
+      "infra/networking/dns" = true;
+    };
+  };
 }
