@@ -98,7 +98,10 @@ let
     modules = [{
       options.aspects = lib.mkOption {
         type = aspects.aspectsType {
-          classes = { nixos = {}; homeManager = {}; };
+          keySemantics = {
+            nixos = { category = "class"; };
+            homeManager = { category = "class"; };
+          };
         };
         default = {};
       };
@@ -125,7 +128,13 @@ in
 
 **Aspects** are submodules with structural identity (`name`, `key`, `meta`, `includes`) and freeform content. Every non-structural, non-class key becomes a nested aspect with its own identity.
 
-**Classes** are registered content buckets (`nixos`, `homeManager`, `darwin`). When registered via `cnf.classes`, class keys become explicit `deferredModule` options — clean content with no structural keys injected. This is the module system's own option/freeform separation, not a custom dispatch mechanism.
+**Key semantics** declare, per aspect key, a `category ∈ { class, channel, facet }` through `cnf.keySemantics`. `aspectSubmodule` builds each declared key's option generically from this one surface:
+
+- `class` (e.g. `nixos`, `homeManager`, `darwin`) → an explicit `deferredModule` option — clean content buckets with no structural keys injected.
+- `channel` → a raw passthrough (`mkOption { type = raw; }`); the value rides verbatim, and is *not* turned into a nested aspect. A channel may supply its own `option` to override the raw default.
+- `facet` → the entry's own `option` (a bare `mkOption`) or a full `module` (mounted via `imports`) — for typed instance fields like `neededBy` / `settings` / `id`.
+
+An **undeclared** key falls through the freeform fallback to a nested aspect (it gets identity). This is the module system's own option/freeform separation driven by one declared map, not a custom dispatch mechanism — the bounded category set and its meaning live in gen-aspects; gen-schema records `category` opaquely. There is no hardcoded `classes` arm: a class is simply a `keySemantics` entry with `category = "class"`. The category is validated eagerly (an unknown category throws a named error at construction).
 
 **Guard functions** like `{ host, ... }: { nixos = ...; }` are context-dependent aspects that should not be evaluated eagerly. They're detected via `canTake` (all required args must be known module args) and wrapped via `functionTo` for pipeline resolution later.
 
@@ -193,7 +202,7 @@ Schema-declared options propagate to aspect instances via `mkAspectModule`. When
 }
 ```
 
-`mkAspectModule` lazily injects `config.schema.aspect.__defsModule` into each aspect's `aspectModules`, so schema extensions are available without manual wiring.
+`mkAspectModule` lazily injects `config.schema.aspect.__defsModule` into each aspect's `aspectModules`, so schema extensions are available without manual wiring. This `__defsModule` seam is why `aspectSubmodule` mounts `imports = facetModules ++ (cnf.aspectModules or [])` — `aspectModules` must stay live even though per-key channels are now declared through `keySemantics` rather than injected as modules.
 
 ## Flat Registry
 
@@ -235,7 +244,7 @@ aspects = gen-aspects.lib;
 
 - **`aspectsType cnf`** — top-level container. Submodule with `freeformType = lazyAttrsOf (aspectType cnf)` and fixpoint (`_module.args.aspects = config`).
 
-- **`aspectSubmodule cnf`** — aspect entry. Submodule with structural options (`name`, `description`, `key`, `meta`, `includes`), explicit `deferredModule` options per registered class, and freeform for nested aspects.
+- **`aspectSubmodule cnf`** — aspect entry. Submodule with structural options (`name`, `description`, `key`, `meta`, `includes`), one option per declared `cnf.keySemantics` key built generically from its category (class → `deferredModule`, channel → `raw`, facet → the entry's `option`/`module`), and freeform for undeclared (nested) aspects.
 
 - **`aspectType cnf`** — Palmer flat dispatch. One type, dispatch in merge. Attrsets and module functions → `aspectSubmodule`. Guard functions → `functionTo` wrapper. Primitives → passthrough.
 
@@ -247,15 +256,25 @@ aspects = gen-aspects.lib;
 
 ```nix
 aspectsType {
-  # Registered class names → explicit deferredModule options (clean content)
-  classes = { nixos = {}; homeManager = {}; };
+  # Per-key semantics — one surface for class/channel/facet dispatch.
+  # class  → deferredModule (clean content buckets)
+  # channel → raw passthrough (value rides verbatim; may carry its own `option`)
+  # facet  → the entry's `option` (bare mkOption) or `module` (mounted via imports)
+  keySemantics = {
+    nixos    = { category = "class"; };
+    firewall = { category = "channel"; };
+    neededBy = { category = "facet"; option = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; }; };
+  };
 
   # Known module args for module/guard function detection
   # Default: { lib, config, options, pkgs, modulesPath, aspect }
   moduleArgs = { lib = true; config = true; /* ... */ };
 
-  # Additional NixOS modules imported into every aspect entry
-  # Use for pipeline-specific options (excludes, policies, etc.)
+  # Additional NixOS modules imported into every aspect entry.
+  # Use for pipeline-specific options (excludes, policies, etc.).
+  # ALSO the `__defsModule` seam: mkAspectModule injects
+  # config.schema.aspect.__defsModule here, so schema-declared instance
+  # options propagate — keep aspectModules mounted (see Schema extensions).
   aspectModules = [
     ({ config, ... }: {
       options.excludes = lib.mkOption { default = []; type = lib.types.listOf lib.types.str; };
