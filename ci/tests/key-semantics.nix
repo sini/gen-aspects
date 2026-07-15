@@ -1,4 +1,4 @@
-# Test: generic per-key dispatch over cnf.keySemantics (Shape B).
+# Test: generic per-key dispatch over cnf.keySemantics.
 #
 # aspectSubmodule builds each declared aspect key's option FROM keySemantics:
 #   class   → deferredModule option (lazy class content)

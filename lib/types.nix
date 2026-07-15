@@ -226,7 +226,7 @@ let
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
-  # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics (Shape B):
+  # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
   #   class   → deferredModule option (lazy class content; inspectable before forcing)
   #   channel → raw passthrough (mkOption { type = raw; default = null; }); value rides verbatim
   #   facet   → the entry's own bare `option`, or a full `module` mounted via imports
@@ -287,9 +287,9 @@ let
       {
         freeformType = t.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
-        # ★ __defsModule seam: facet modules first, then aspectModules (which gen-schema's
+        # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
         # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
-        # schema-declared instance-option propagation (schema-integration/priority suites).
+        # schema-declared instance-option propagation.
         imports = facetModules ++ (cnf.aspectModules or [ ]);
 
         # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
