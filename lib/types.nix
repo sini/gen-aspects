@@ -123,6 +123,41 @@ let
       };
     };
 
+  # PUBLIC (N-GATE): the OPT-IN self-gating wrapped fn. Distinct from `mkWrapped`/`wrapGuardFn` — the
+  # native guard path applies UNCONDITIONALLY and THROWS on a missing required coord (its contract, pinned
+  # by ci/tests/gated-wrap.nix test-native-guard-still-throws); `wrapGatedFn`'s applicator SELF-GATES:
+  # every required coord (a no-default formal, `can-take.nix:10`) present ⇒ `onResult (fn (intersectAttrs
+  # functionArgs fnArgs))`; a required coord MISSING ⇒ `{ }` (INERT, no throw — merges harmlessly through
+  # `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
+  # consumer's fire path is a closure whose own `builtins.functionArgs` is `{ fnArgs = false; }`, so the
+  # gate must read the inner fn's real formals — the override); `onResult` — a result hook (DEFAULT
+  # identity) a consumer threads its post-fire processing through (den-hoag's class-key grounding rides
+  # here, keeping den vocab OUT of gen-aspects). SELF-CONTAINED — built directly (NOT via `mkWrapped`,
+  # whose required `name`/`meta` formals a param-less call would trip), mirroring `mkWrapped`'s tag field
+  # set (`:63-70`) EXACTLY so a `__isWrappedFn` reader cannot tell a gated record from a plain one.
+  wrapGatedFn =
+    {
+      functionArgs,
+      name ? "<gated>",
+      meta ? { },
+      onResult ? (x: x),
+    }:
+    fn:
+    let
+      required = builtins.filter (n: !functionArgs.${n}) (builtins.attrNames functionArgs);
+    in
+    {
+      __functor =
+        _: fnArgs:
+        if builtins.all (a: fnArgs ? ${a}) required then
+          onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
+        else
+          { };
+      __functionArgs = functionArgs;
+      __isWrappedFn = true;
+      inherit name meta;
+    };
+
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   aspectType =
     cnf:
@@ -338,5 +373,6 @@ in
     mkIsModuleFn
     canTake
     wrapFn
+    wrapGatedFn
     ;
 }

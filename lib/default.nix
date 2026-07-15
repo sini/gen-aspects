@@ -43,7 +43,9 @@ in
   # `wrapFn cnf name fn` — wrap a single raw closure as an inspectable `__isWrappedFn` aspect include
   # (the API sibling of the type-merge's `wrapGuardFn`, for programmatically-generated includes that
   # bypass the option-type merge). See lib/types.nix.
-  inherit (types) wrapFn;
+  # `wrapGatedFn { functionArgs; onResult ? id; … } fn` — the OPT-IN self-gating sibling: its applicator
+  # gates on required coords (inert `{ }` on missing, no throw) + threads `onResult` (N-GATE). See types.nix.
+  inherit (types) wrapFn wrapGatedFn;
   inherit (identity)
     aspectPath
     pathKey
