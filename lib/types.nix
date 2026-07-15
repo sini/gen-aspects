@@ -265,7 +265,7 @@ let
       channelOptions = prelude.genAttrs (keyOf "channel") (
         name:
         ks.${name}.option or (merge.mkOption {
-          description = "Channel `${name}` (raw passthrough)";
+          description = "Channel `${name}` (default raw passthrough)";
           default = null;
           type = t.raw;
         })

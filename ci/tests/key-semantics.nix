@@ -126,7 +126,67 @@ in
     expected = "default";
   };
 
-  # (6) An unknown category throws at construction (named, not a silent no-match).
+  # (6a) A channel carrying its OWN `option` uses THAT option (not the raw fallback):
+  # the declared int default (7) reads back when unset — the raw fallback would be `null`.
+  flake.tests.key-semantics.test-channel-option-override-default = {
+    expr =
+      (mkSchemaEval {
+        keySemantics = {
+          weight = {
+            category = "channel";
+            option = genMerge.mkOption {
+              type = genMerge.types.int;
+              default = 7;
+            };
+          };
+        };
+        modules = [ { config.aspects.svc = { }; } ];
+      }).config.aspects.svc.weight;
+    expected = 7;
+  };
+
+  # (6b) A set value rides the DECLARED typed option (int) — proving the `.option` branch is taken.
+  flake.tests.key-semantics.test-channel-option-override-set = {
+    expr =
+      (mkSchemaEval {
+        keySemantics = {
+          weight = {
+            category = "channel";
+            option = genMerge.mkOption {
+              type = genMerge.types.int;
+              default = 7;
+            };
+          };
+        };
+        modules = [ { config.aspects.svc.weight = 42; } ];
+      }).config.aspects.svc.weight;
+    expected = 42;
+  };
+
+  # (6c) The declared int option ENFORCES its type — a non-int def is rejected (raw would accept it),
+  # further distinguishing the `.option` branch from the raw passthrough fallback.
+  flake.tests.key-semantics.test-channel-option-override-type-enforced = {
+    expr =
+      (builtins.tryEval (
+        builtins.deepSeq
+          (mkSchemaEval {
+            keySemantics = {
+              weight = {
+                category = "channel";
+                option = genMerge.mkOption {
+                  type = genMerge.types.int;
+                  default = 7;
+                };
+              };
+            };
+            modules = [ { config.aspects.svc.weight = "not-an-int"; } ];
+          }).config.aspects.svc.weight
+          true
+      )).success;
+    expected = false;
+  };
+
+  # (7) An unknown category throws at construction (named, not a silent no-match).
   flake.tests.key-semantics.test-bad-category-throws = {
     expr =
       (builtins.tryEval (
