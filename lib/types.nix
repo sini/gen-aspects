@@ -125,7 +125,7 @@ let
 
   # PUBLIC (N-GATE): the OPT-IN self-gating wrapped fn. Distinct from `mkWrapped`/`wrapGuardFn` — the
   # native guard path applies UNCONDITIONALLY and THROWS on a missing required coord (its contract, pinned
-  # by ci/tests/gated-wrap.nix test-native-guard-still-throws); `wrapGatedFn`'s applicator SELF-GATES:
+  # by ci/tests/gated-wrap.nix test-native-guard-not-gated); `wrapGatedFn`'s applicator SELF-GATES:
   # every required coord (a no-default formal, `can-take.nix:10`) present ⇒ `onResult (fn (intersectAttrs
   # functionArgs fnArgs))`; a required coord MISSING ⇒ `{ }` (INERT, no throw — merges harmlessly through
   # `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
