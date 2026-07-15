@@ -5,9 +5,9 @@
 # aspectSubmodule, guard functions to a functor wrap (deferred for pipeline resolution),
 # primitives pass through.
 #
-# Class content uses explicit deferredModule options (from cnf.classes).
-# The module system's own option/freeform separation routes class keys cleanly —
-# classes must be registered.
+# Each declared aspect key's option is built generically from cnf.keySemantics (class →
+# deferredModule, channel → raw, facet → the entry's option/module). The module system's own
+# option/freeform separation routes declared keys cleanly — undeclared keys become nested aspects.
 #
 # Lorenzen et al. (2025) "First-Order Laziness" §1-2.3: class content is a lazy
 # constructor (deferredModule) — inspectable before forcing, evaluated only when
@@ -226,19 +226,55 @@ let
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
-  # Explicit deferredModule options per registered class keep class content clean.
-  # Freeform keys that aren't classes or structural become nested aspects.
-  # cnf.aspectModules extends with pipeline-specific options (excludes, policies, etc.)
+  # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics (Shape B):
+  #   class   → deferredModule option (lazy class content; inspectable before forcing)
+  #   channel → raw passthrough (mkOption { type = raw; default = null; }); value rides verbatim
+  #   facet   → the entry's own bare `option`, or a full `module` mounted via imports
+  # A key that isn't declared and isn't structural falls through the freeform fallback → a nested
+  # aspect (gets identity). No hardcoded class arm: a class is just a keySemantics category.
+  # cnf.aspectModules still extends with pipeline-specific options AND carries gen-schema's
+  # __defsModule seam (schema.nix injects config.schema.aspect.__defsModule into it), so it MUST
+  # stay live in `imports` even though per-key channels no longer ride it.
   aspectSubmodule =
     cnf:
     let
-      classOptions = prelude.genAttrs (builtins.attrNames (cnf.classes or { })) (
+      rawKs = cnf.keySemantics or { };
+      validCats = [
+        "class"
+        "channel"
+        "facet"
+      ];
+      # Force category validation eagerly (a bad category must throw at construction, not silently
+      # never-match a keyOf filter). deepSeq forces each entry's `if`; ks is the validated passthrough.
+      ks = builtins.deepSeq (prelude.mapAttrs (
+        k: e:
+        if builtins.elem e.category validCats then
+          e.category
+        else
+          throw "gen-aspects: keySemantics key '${k}' has unknown category '${e.category}' (expected class|channel|facet)"
+      ) rawKs) rawKs;
+      keyOf = category: builtins.attrNames (prelude.filterAttrs (_: e: e.category == category) ks);
+      classOptions = prelude.genAttrs (keyOf "class") (
         _:
         merge.mkOption {
           description = "Class content (deferred module)";
           default = { };
           type = t.deferredModule;
         }
+      );
+      channelOptions = prelude.genAttrs (keyOf "channel") (
+        name:
+        ks.${name}.option or (merge.mkOption {
+          description = "Channel `${name}` (raw passthrough)";
+          default = null;
+          type = t.raw;
+        })
+      );
+      facetOptions = prelude.mapAttrs (_: e: e.option) (
+        prelude.filterAttrs (_: e: e.category == "facet" && e ? option) ks
+      );
+      facetModules = prelude.mapAttrsToList (_: e: e.module) (
+        prelude.filterAttrs (_: e: e.category == "facet" && e ? module) ks
       );
     in
     merge.submodule (
@@ -251,7 +287,10 @@ let
       {
         freeformType = t.lazyAttrsOf (aspectType cnf);
         config._module.args.aspect = config;
-        imports = cnf.aspectModules or [ ];
+        # ★ __defsModule seam: facet modules first, then aspectModules (which gen-schema's
+        # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
+        # schema-declared instance-option propagation (schema-integration/priority suites).
+        imports = facetModules ++ (cnf.aspectModules or [ ]);
 
         # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
         # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
@@ -302,7 +341,9 @@ let
             default = [ ];
           };
         }
-        // classOptions;
+        // classOptions
+        // channelOptions
+        // facetOptions;
       }
     );
 

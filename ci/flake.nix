@@ -33,16 +33,20 @@
       };
       mkSchemaEval =
         {
+          # `classes` is sugar: each key lowers to a keySemantics entry with category = "class".
+          # Prefer `keySemantics` directly for channel/facet keys. Both merge (keySemantics wins).
           classes ? defaultClasses,
+          keySemantics ? { },
           collections ? { },
           aspectModules ? [ ],
           metaModules ? [ ],
           modules,
         }:
         let
+          classSemantics = lib.mapAttrs (_: _: { category = "class"; }) classes;
           schema = aspects.mkAspectSchema {
+            keySemantics = classSemantics // keySemantics;
             inherit
-              classes
               collections
               aspectModules
               metaModules

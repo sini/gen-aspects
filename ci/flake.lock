@@ -402,11 +402,11 @@
         "gen-types": "gen-types_3"
       },
       "locked": {
-        "lastModified": 1783038356,
-        "narHash": "sha256-UnVJ4S24f7H85geQEpgEKTUImkEJsJIY96gxGWSY8ls=",
+        "lastModified": 1784137650,
+        "narHash": "sha256-36AoxrGOpWPv0EnpZFHMn/ANa8JcopE2r0oBpRX47X0=",
         "owner": "sini",
         "repo": "gen-schema",
-        "rev": "39d3d5d092eb422eef7955328e98543813b8d754",
+        "rev": "017062cdc40cb6f29acb50a403cd59c8de2539dc",
         "type": "github"
       },
       "original": {

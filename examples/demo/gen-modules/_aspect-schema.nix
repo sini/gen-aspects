@@ -8,8 +8,10 @@
 # gen-schema replacement for den.reservedKeys.
 { genAspects, lib }:
 genAspects.mkAspectSchema {
-  classes = {
-    nixos = { };
+  keySemantics = {
+    nixos = {
+      category = "class";
+    };
   };
   collections = {
     settings = {

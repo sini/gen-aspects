@@ -23,6 +23,8 @@ in
     let
       schemaOpt = genSchema.mkSchemaOption {
         collections = cnf.collections or { };
+        # Record per-key semantics opaquely on each schema entry (load-bearing introspection).
+        keySemantics = cnf.keySemantics or { };
         mkType =
           {
             kindModule,
