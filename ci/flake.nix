@@ -43,7 +43,9 @@
           metaModules ? [ ],
           closedKeys ? false,
           freeformKeys ? [ ],
+          recursiveClosed ? false,
           deferIncludeResolution ? false,
+          rejectBareModuleInclude ? false,
           modules,
         }:
         let
@@ -56,7 +58,9 @@
               metaModules
               closedKeys
               freeformKeys
+              recursiveClosed
               deferIncludeResolution
+              rejectBareModuleInclude
               ;
           };
         in

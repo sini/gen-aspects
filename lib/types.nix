@@ -261,8 +261,22 @@ let
         loc: defs:
         let
           k = prelude.last loc;
+          # den feeds ONE pre-merged config def per freeform child, so `head defs` is THE value; the all-defs
+          # form generalises for a native multi-def author (recurse iff SOME def is an attrset namespace; an
+          # all-primitive undeclared multi-def key is not a namespace → throw). Decides on WHNF
+          # (`isAttrs d.value`) — no deep forcing, strictly less than a spine-walk.
+          anyAttrs = builtins.any (d: builtins.isAttrs d.value) defs;
         in
-        if builtins.elem k (cnf.freeformKeys or [ ]) then
+        if (cnf.recursiveClosed or false) then
+          if anyAttrs then
+            # a namespace node — recurse as a nested aspect, gate RETAINED (recursive-closed).
+            (aspectType cnf).merge loc defs
+          else
+            throw "gen-aspects: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
+            + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
+            + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
+            + "content). Declare it in keySemantics, or nest it under a declared key."
+        else if builtins.elem k (cnf.freeformKeys or [ ]) then
           (aspectType (cnf // { closedKeys = false; })).merge loc defs
         else
           throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
@@ -294,11 +308,23 @@ let
               builtins.isAttrs v
               && ((v.__fn or null) != null || (v.__isPolicy or false) || (v.__denCanTake or null) != null)
             );
+          # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
+          # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
+          # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.
+          isBareModuleInclude =
+            builtins.isAttrs v && (v ? imports) && builtins.isList v.imports && v.imports != [ ];
         in
         if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
           v
         else if (cnf.deferIncludeResolution or false) && builtins.length defs == 1 && isDeferredInclude then
           v
+        else if
+          (cnf.rejectBareModuleInclude or false) && builtins.length defs == 1 && isBareModuleInclude
+        then
+          throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
+          + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
+          + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
+          + "content key."
         else
           (aspectOrFn cnf).merge loc defs;
     };
