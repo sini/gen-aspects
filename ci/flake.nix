@@ -41,6 +41,8 @@
           collections ? { },
           aspectModules ? [ ],
           metaModules ? [ ],
+          closedKeys ? false,
+          freeformKeys ? [ ],
           modules,
         }:
         let
@@ -51,6 +53,8 @@
               collections
               aspectModules
               metaModules
+              closedKeys
+              freeformKeys
               ;
           };
         in
@@ -66,6 +70,13 @@
       inherit inputs;
       name = "gen-aspects";
       testModules = ./tests;
-      specialArgs = { inherit aspects mkSchemaEval genMerge genSchema; };
+      specialArgs = {
+        inherit
+          aspects
+          mkSchemaEval
+          genMerge
+          genSchema
+          ;
+      };
     };
 }

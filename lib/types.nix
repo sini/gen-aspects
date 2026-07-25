@@ -239,11 +239,34 @@ let
       {
         origin = prelude.concatStringsSep "/" origin;
         key = identity.key aspect;
-      }.${k}
+      }
+      .${k}
     );
 
   # Recursion-safe binding: either doesn't force subtypes during construction.
   aspectOrFn = cnf: merge.either (aspectType cnf) (aspectSubmodule cnf);
+
+  # Closed-key typo-gate (design decision 2, opt-in). With `cnf.closedKeys` on, an UNDECLARED aspect key
+  # (declared class/channel/facet/structural keys are handled by the submodule `options` and never reach
+  # the freeform elem type) is rejected with a NAMED throw unless it is listed in `cnf.freeformKeys`. A
+  # listed key opens an UNGATED subtree (closedKeys=false for descendants) so legitimate nested aspects
+  # still nest freely. `prelude.last loc` is the undeclared key name (lazyAttrsOf merges each attr at
+  # `loc ++ [key]`).
+  gatedFreeformElem =
+    cnf:
+    merge.mkOptionType {
+      name = "gatedFreeformKey";
+      check = _: true;
+      merge =
+        loc: defs:
+        let
+          k = prelude.last loc;
+        in
+        if builtins.elem k (cnf.freeformKeys or [ ]) then
+          (aspectType (cnf // { closedKeys = false; })).merge loc defs
+        else
+          throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+    };
 
   # An `includes` element is EITHER a by-value aspect (aspectOrFn — unchanged) OR a keyRef (an
   # origin-qualified reference to a node possibly outside the local fixpoint, §Kernel fixes / decision
@@ -327,7 +350,9 @@ let
         ...
       }:
       {
-        freeformType = t.lazyAttrsOf (aspectType cnf);
+        freeformType = t.lazyAttrsOf (
+          if (cnf.closedKeys or false) then gatedFreeformElem cnf else aspectType cnf
+        );
         config._module.args.aspect = config;
         # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
         # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
