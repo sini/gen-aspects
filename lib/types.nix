@@ -282,8 +282,22 @@ let
         loc: defs:
         let
           v = (builtins.head defs).value;
+          # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
+          # closure, a `{ __fn; … }` battery record, or a defunctionalised policy record
+          # (`__isPolicy`/`__denCanTake`). Like `__keyRef`, its resolution must NOT be forced by the type —
+          # the consumer wraps/dispatches it registry-aware (den-hoag compile `normalize`; gen-dispatch
+          # `deriveGroup` for a policy record). First-Order Laziness (Lorenzen et al. 2025): a
+          # deferred-resolution include passes the type unforced. Default off ⇒ native guard-wrapping.
+          isDeferredInclude =
+            builtins.isFunction v
+            || (
+              builtins.isAttrs v
+              && ((v.__fn or null) != null || (v.__isPolicy or false) || (v.__denCanTake or null) != null)
+            );
         in
         if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
+          v
+        else if (cnf.deferIncludeResolution or false) && builtins.length defs == 1 && isDeferredInclude then
           v
         else
           (aspectOrFn cnf).merge loc defs;

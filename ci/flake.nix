@@ -43,6 +43,7 @@
           metaModules ? [ ],
           closedKeys ? false,
           freeformKeys ? [ ],
+          deferIncludeResolution ? false,
           modules,
         }:
         let
@@ -55,6 +56,7 @@
               metaModules
               closedKeys
               freeformKeys
+              deferIncludeResolution
               ;
           };
         in
