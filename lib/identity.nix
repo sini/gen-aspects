@@ -5,6 +5,41 @@ let
 
   pathKey = path: prelude.concatStringsSep "/" path;
 
+  # keyRef — an origin-qualified reference to a node that may live OUTSIDE the local fixpoint
+  # (cross-source direct-use, gen-link federation, decision 6). Accepts a structured `{ origin; path }`
+  # (origin/path each a list, or a "/"-joined string) OR a bare "origin/seg/seg" string. Marked
+  # `__keyRef` so the includes element type recognizes it BEFORE aspectType's accept-all merge absorbs
+  # it as a nested aspect. Carries `.key` (= pathKey path) so a reference's target key is inspectable
+  # uniformly with an aspect's own `.key`. `builtins.split "/"` is a single-literal-char regex (no `.*`
+  # backtracking — safe on short key strings, cf. the whole-file hasInfix stack overflow split fixes).
+  splitSlash = s: builtins.filter (seg: builtins.isString seg && seg != "") (builtins.split "/" s);
+  keyRef =
+    ref:
+    let
+      r =
+        if builtins.isString ref then
+          (
+            let
+              parts = splitSlash ref;
+            in
+            {
+              origin = [ (builtins.head parts) ];
+              path = builtins.tail parts;
+            }
+          )
+        else
+          ref;
+      originRaw = r.origin or [ ];
+      originList = if builtins.isString originRaw then splitSlash originRaw else originRaw;
+      pathList = if builtins.isString r.path then splitSlash r.path else r.path;
+    in
+    {
+      __keyRef = true;
+      origin = originList;
+      path = pathList;
+      key = pathKey pathList;
+    };
+
   isMeaningfulName =
     name: name != "<anon>" && name != "<function body>" && !(prelude.hasPrefix "[definition " name);
 
@@ -65,6 +100,7 @@ in
     pathKey
     isMeaningfulName
     guardKey
+    keyRef
     ;
   key =
     a:

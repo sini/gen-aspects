@@ -245,6 +245,27 @@ let
   # Recursion-safe binding: either doesn't force subtypes during construction.
   aspectOrFn = cnf: merge.either (aspectType cnf) (aspectSubmodule cnf);
 
+  # An `includes` element is EITHER a by-value aspect (aspectOrFn — unchanged) OR a keyRef (an
+  # origin-qualified reference to a node possibly outside the local fixpoint, §Kernel fixes / decision
+  # 6). keyRef is detected by its `__keyRef` marker and passed through opaquely (gen-link resolves it
+  # against the merged graph); everything else routes through aspectOrFn EXACTLY as before, so by-value
+  # includes are byte-unchanged.
+  includesElemType =
+    cnf:
+    merge.mkOptionType {
+      name = "includesElem";
+      check = _: true;
+      merge =
+        loc: defs:
+        let
+          v = (builtins.head defs).value;
+        in
+        if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
+          v
+        else
+          (aspectOrFn cnf).merge loc defs;
+    };
+
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
   # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
@@ -368,7 +389,7 @@ let
 
           includes = merge.mkOption {
             description = "Aspects to include";
-            type = t.listOf (aspectOrFn cnf);
+            type = t.listOf (includesElemType cnf);
             default = [ ];
           };
         }

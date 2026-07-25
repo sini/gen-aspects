@@ -58,6 +58,7 @@ in
     key
     isMeaningfulName
     guardKey
+    keyRef
     ;
   # New API
   inherit (schemaModule) mkAspectSchema;
