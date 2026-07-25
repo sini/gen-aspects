@@ -27,7 +27,11 @@
 # data by the __guard branch below — THAT path IS the Reynolds §6 transform (closed
 # predicate vocabulary + one applyGuard); the functor wrap is the non-defunctionalized
 # escape hatch for raw closures.
-{ prelude, merge }:
+{
+  prelude,
+  merge,
+  hashIdentity,
+}:
 let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
@@ -221,6 +225,23 @@ let
             (prelude.last defs).value;
     };
 
+  # THE canonical content-address for an aspect of ANY kind — plain, wrapped-fn (__isWrappedFn), or
+  # guard (__guard). Routed through gen-schema's ONE hashIdentity formula (identity.nix:16); origin is
+  # just another identity key (design §Identity). `key` = identity.key (the 3-way dispatch, identity.nix
+  # 69-77), so a wrapped-fn / guard record — NOT a submodule instance, carries no `id_hash` option — gets
+  # the SAME id as a plain aspect via the SAME formula. Consumers (gen-link node ids; den-hoag retiring
+  # `sha256 "den-aspect:${key}"`) call THIS, never re-derive the preimage. `origin` is the source label as
+  # a path list (concatStringsSep "/"); default [] ⇒ "" ⇒ today's `.key` partition preserved.
+  aspectId =
+    origin: aspect:
+    hashIdentity "aspect" [ "origin" "key" ] (
+      k:
+      {
+        origin = prelude.concatStringsSep "/" origin;
+        key = identity.key aspect;
+      }.${k}
+    );
+
   # Recursion-safe binding: either doesn't force subtypes during construction.
   aspectOrFn = cnf: merge.either (aspectType cnf) (aspectSubmodule cnf);
 
@@ -326,6 +347,16 @@ let
             default = identity.key config;
           };
 
+          # Convenience content-address on plain submodules, mirroring gen-schema's `id_hash` — computed
+          # via the SAME exported `aspectId` (no second formula). Wrapped-fn / guard aspects are bare
+          # records (no submodule, no option); consumers id them uniformly via `aspects.aspectId`.
+          id_hash = merge.mkOption {
+            internal = true;
+            readOnly = true;
+            type = t.str;
+            default = aspectId (cnf.providerPrefix or [ ]) config;
+          };
+
           meta = merge.mkOption {
             description = "Aspect metadata";
             default = { };
@@ -415,5 +446,6 @@ in
     canTake
     wrapFn
     wrapGatedFn
+    aspectId
     ;
 }

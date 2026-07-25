@@ -22,6 +22,7 @@
     let
       inherit (nixpkgs) lib;
       genMerge = gen-merge.lib;
+      genSchema = gen-schema.lib;
       aspects = import ../lib {
         prelude = gen-prelude.lib;
         merge = genMerge;
@@ -65,6 +66,6 @@
       inherit inputs;
       name = "gen-aspects";
       testModules = ./tests;
-      specialArgs = { inherit aspects mkSchemaEval genMerge; };
+      specialArgs = { inherit aspects mkSchemaEval genMerge genSchema; };
     };
 }

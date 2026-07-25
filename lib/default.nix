@@ -11,7 +11,10 @@
   schema,
 }:
 let
-  types = import ./types.nix { inherit prelude merge; };
+  types = import ./types.nix {
+    inherit prelude merge;
+    inherit (schema) hashIdentity;
+  };
   identity = import ./identity.nix { inherit prelude; };
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value
@@ -46,6 +49,9 @@ in
   # `wrapGatedFn { functionArgs; onResult ? id; … } fn` — the OPT-IN self-gating sibling: its applicator
   # gates on required coords (inert `{ }` on missing, no throw) + threads `onResult` (N-GATE). See types.nix.
   inherit (types) wrapFn wrapGatedFn;
+  # THE canonical, uniform aspect content-address (all three kinds). gen-link builds node ids with it;
+  # den-hoag retires its `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`.
+  inherit (types) aspectId;
   inherit (identity)
     aspectPath
     pathKey
