@@ -123,65 +123,6 @@ in
       };
     };
 
-  # ── onMiss ESCAPE HATCH ──────────────────────────────────────────────────────────────────────────────
-  #    The miss-disposition hook. DEFAULT `_: { }` ⇒ every existing caller byte-identical (covered by
-  #    test-gate-inert-on-missing above, which supplies no onMiss). A consumer overrides it to ride ITS OWN
-  #    original value on a miss instead of the inert `{ }`.
-
-  # ── (d) onMiss SUPPLIED: a required coord (`user`) MISSING ⇒ the consumer's sentinel (its captured value),
-  #    NOT `{ }`. The onMiss here IGNORES its arg and returns a captured value (the "ride the original value"
-  #    pattern — a real consumer closes over its own wrapped value here, never the inner `fn`). ──
-  flake.tests.gated-wrap.test-onmiss-rides-sentinel =
-    let
-      sentinel = {
-        rode = "original-value";
-      };
-      gated = aspects.wrapGatedFn {
-        functionArgs = innerFA;
-        onMiss = _: sentinel;
-      } fn;
-    in
-    {
-      expr = gated { host = "x"; }; # `user` absent ⇒ miss branch
-      expected = sentinel;
-    };
-
-  # ── (e) onMiss RECEIVES the raw fnArgs (the missing-coord shape the applicator was called with). ──
-  flake.tests.gated-wrap.test-onmiss-receives-fnargs =
-    let
-      gated = aspects.wrapGatedFn {
-        functionArgs = innerFA;
-        onMiss = fnArgs: { seen = fnArgs; };
-      } fn;
-    in
-    {
-      expr = gated { host = "only-host"; }; # `user` absent
-      expected = {
-        seen = {
-          host = "only-host";
-        };
-      };
-    };
-
-  # ── (f) LAZINESS: onMiss is NOT evaluated on the FIRE path. A THROWING onMiss must never force when all
-  #    required coords are present (the fire branch takes onResult (fn …), never touches onMiss). ──
-  flake.tests.gated-wrap.test-onmiss-lazy-on-fire =
-    let
-      gated = aspects.wrapGatedFn {
-        functionArgs = innerFA;
-        onMiss = _: throw "onMiss must NOT fire when coords are present";
-      } fn;
-    in
-    {
-      expr = gated {
-        host = "h";
-        user = "u";
-      }; # all required present ⇒ fire branch; onMiss untouched
-      expected = {
-        tag = "fired:h:u";
-      };
-    };
-
   # ── the gated record MIRRORS mkWrapped's tag shape (a `__isWrappedFn` consumer can't tell it apart):
   #    `__isWrappedFn`/`__functionArgs`/callable/name all present. ──
   flake.tests.gated-wrap.test-tag-shape =

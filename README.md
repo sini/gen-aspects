@@ -252,11 +252,6 @@ aspects = gen-aspects.lib;
 
 - **`wrapFn cnf name fn`** — wrap a single raw closure `ctx: <aspect>` as an inspectable `__isWrappedFn` functor: the API sibling of the guard-function wrap that `aspectType` applies automatically. A native bare-fn include rides the option-type merge; a **programmatically generated** include (built off the type, e.g. a bridge that raw-absorbs a foreign surface) bypasses that merge and must call `wrapFn` explicitly — the same rationale (Palmer's three eliminators over a value the type never intercepted) that makes a generated guard record first-order data. A `wrapFn`'d include is equivalent to a type-merge-wrapped bare fn (same formals; same merged content per context).
 
-- **`wrapGatedFn { functionArgs; name ? "<gated>"; meta ? {}; onResult ? id; onMiss ? (_: {}); } fn`** — the OPT-IN **self-gating** sibling of `wrapFn`. Its applicator reads the required coords (no-default formals) from the explicit `functionArgs` override and dispatches on their presence in the applied args: all present ⇒ `onResult (fn (intersectAttrs functionArgs fnArgs))`; any **missing** ⇒ `onMiss fnArgs` (never throws, unlike the native guard path which applies unconditionally). Tagged identically to a `wrapFn` record (`__isWrappedFn`/`__functionArgs`/callable), so a reader can't tell a gated record apart.
-
-  - **`onResult`** (default identity) — post-fire result hook; a consumer threads its own post-processing here (e.g. den-hoag's class-key grounding), keeping consumer vocab out of gen-aspects.
-  - **`onMiss`** (default `_: {}`) — the **miss-disposition escape hatch**. Invoked **lazily on the miss branch only** (no eager cost on the fire path — a throwing `onMiss` never forces when coords are present) and passed the raw `fnArgs` (the missing-coord shape). The default `_: {}` keeps every unset caller byte-identical to the historical inert-`{}` behavior. A consumer that needs the opposite miss-disposition — **ride the original wrapped value** instead of inerting — supplies an `onMiss` that closes over **its own** value and ignores the arg. ★ The hook rides the consumer's original value, **not** the inner `fn` closure here — so no built-in `onMiss` rides `fn`; a consumer whose original is a legacy `__isWrappedFn` functor record would byte-diverge on that arm.
-
 ### Configuration (`cnf`)
 
 ```nix
