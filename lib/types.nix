@@ -131,20 +131,29 @@ let
   # native guard path applies UNCONDITIONALLY and THROWS on a missing required coord (its contract, pinned
   # by ci/tests/gated-wrap.nix test-native-guard-not-gated); `wrapGatedFn`'s applicator SELF-GATES:
   # every required coord (a no-default formal, `can-take.nix:10`) present ⇒ `onResult (fn (intersectAttrs
-  # functionArgs fnArgs))`; a required coord MISSING ⇒ `{ }` (INERT, no throw — merges harmlessly through
-  # `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
-  # consumer's fire path is a closure whose own `builtins.functionArgs` is `{ fnArgs = false; }`, so the
-  # gate must read the inner fn's real formals — the override); `onResult` — a result hook (DEFAULT
-  # identity) a consumer threads its post-fire processing through (den-hoag's class-key grounding rides
-  # here, keeping den vocab OUT of gen-aspects). SELF-CONTAINED — built directly (NOT via `mkWrapped`,
-  # whose required `name`/`meta` formals a param-less call would trip), mirroring `mkWrapped`'s tag field
-  # set (`:63-70`) EXACTLY so a `__isWrappedFn` reader cannot tell a gated record from a plain one.
+  # functionArgs fnArgs))`; a required coord MISSING ⇒ `onMiss fnArgs` (DEFAULT `_: { }`, INERT, no throw —
+  # merges harmlessly through `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the
+  # INNER fire fn (load-bearing: a consumer's fire path is a closure whose own `builtins.functionArgs` is
+  # `{ fnArgs = false; }`, so the gate must read the inner fn's real formals — the override); `onResult` —
+  # a result hook (DEFAULT identity) a consumer threads its post-fire processing through (den-hoag's
+  # class-key grounding rides here, keeping den vocab OUT of gen-aspects); `onMiss` — the miss-disposition
+  # escape hatch (DEFAULT `_: { }`, so an unset `onMiss` is byte-identical to the historical inert-`{ }`).
+  # It is invoked LAZILY only on the miss branch (no eager cost on the fire path — a throwing `onMiss` never
+  # forces when coords are present) and receives the raw `fnArgs` the applicator was called with (the
+  # missing-coord shape; a consumer that "rides the original value" IGNORES this arg and returns its own
+  # captured value). ★ CAVEAT — `onMiss` must let the consumer ride ITS OWN original wrapped value, NOT the
+  # inner `fn` closure param here; the default therefore stays `_: { }` and NO built-in `onMiss` rides
+  # `fn`/`[ fn ]` (a consumer whose original value is a legacy `__isWrappedFn` functor record would byte-
+  # diverge on that arm — it closes over its own value instead). SELF-CONTAINED — built directly (NOT via
+  # `mkWrapped`, whose required `name`/`meta` formals a param-less call would trip), mirroring `mkWrapped`'s
+  # tag field set (`:63-70`) EXACTLY so a `__isWrappedFn` reader cannot tell a gated record from a plain one.
   wrapGatedFn =
     {
       functionArgs,
       name ? "<gated>",
       meta ? { },
       onResult ? (x: x),
+      onMiss ? (_: { }),
     }:
     fn:
     let
@@ -156,7 +165,7 @@ let
         if builtins.all (a: fnArgs ? ${a}) required then
           onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
         else
-          { };
+          onMiss fnArgs;
       __functionArgs = functionArgs;
       __isWrappedFn = true;
       inherit name meta;

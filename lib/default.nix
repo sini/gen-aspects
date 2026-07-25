@@ -46,8 +46,10 @@ in
   # `wrapFn cnf name fn` — wrap a single raw closure as an inspectable `__isWrappedFn` aspect include
   # (the API sibling of the type-merge's `wrapGuardFn`, for programmatically-generated includes that
   # bypass the option-type merge). See lib/types.nix.
-  # `wrapGatedFn { functionArgs; onResult ? id; … } fn` — the OPT-IN self-gating sibling: its applicator
-  # gates on required coords (inert `{ }` on missing, no throw) + threads `onResult` (N-GATE). See types.nix.
+  # `wrapGatedFn { functionArgs; onResult ? id; onMiss ? (_: { }); … } fn` — the OPT-IN self-gating sibling:
+  # its applicator gates on required coords (present ⇒ `onResult (fn …)`; missing ⇒ `onMiss fnArgs`, DEFAULT
+  # inert `{ }`, no throw, lazy) + threads `onResult` (N-GATE). `onMiss` rides the consumer's OWN value, never
+  # the inner `fn`. See types.nix.
   inherit (types) wrapFn wrapGatedFn;
   # THE canonical, uniform aspect content-address (all three kinds). gen-link builds node ids with it;
   # den-hoag retires its `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`.
