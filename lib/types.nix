@@ -329,6 +329,29 @@ let
           (aspectOrFn cnf).merge loc defs;
     };
 
+  # The native structural option SET — the six options every aspect submodule hardwires
+  # (name/description/key/id_hash/meta/includes, below). ONE binding, so keyCategory and the submodule option
+  # names cannot drift (a ci drift-pin asserts equality). Everything else is a declared keySemantics
+  # class/channel/facet, or unregistered.
+  nativeStructuralKeys = [
+    "name"
+    "description"
+    "key"
+    "id_hash"
+    "meta"
+    "includes"
+  ];
+  # keyCategory cnf key : "structural" | "class" | "channel" | "facet" | null. The single classification
+  # surface — a consumer reads a key's category from HERE, never a parallel membership list. null = the key is
+  # neither native-structural nor a declared keySemantics key (a typo, or a freeform nested-aspect child; the
+  # closed gate distinguishes them).
+  keyCategory =
+    cnf: key:
+    if builtins.elem key nativeStructuralKeys then
+      "structural"
+    else
+      (cnf.keySemantics.${key}.category or null);
+
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
   # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
@@ -533,5 +556,7 @@ in
     wrapFn
     wrapGatedFn
     aspectId
+    keyCategory
     ;
+  structuralKeys = nativeStructuralKeys;
 }

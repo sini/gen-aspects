@@ -13,6 +13,7 @@
   key,
   isMeaningfulName,
   canTake,
+  keyCategory,
 }:
 let
   t = merge.types;
@@ -61,6 +62,10 @@ in
     in
     {
       schemaOption = schemaOpt;
+
+      # cnf-closed classification surface: `schema.keyCategory key` reads a key's category against THIS
+      # schema's keySemantics (the single-authority read; see lib/types.nix keyCategory).
+      keyCategory = keyCategory cnf;
 
       mkAspectOption =
         {
