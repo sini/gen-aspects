@@ -226,10 +226,11 @@ let
     };
 
   # THE canonical content-address for an aspect of ANY kind — plain, wrapped-fn (__isWrappedFn), or
-  # guard (__guard). Routed through gen-schema's ONE hashIdentity formula (identity.nix:16); origin is
-  # just another identity key (design §Identity). `key` = identity.key (the 3-way dispatch, identity.nix
-  # 69-77), so a wrapped-fn / guard record — NOT a submodule instance, carries no `id_hash` option — gets
-  # the SAME id as a plain aspect via the SAME formula. Consumers (gen-link node ids; den-hoag retiring
+  # guard (__guard). Routed through gen-schema's ONE hashIdentity formula (gen-schema
+  # `lib/identity.nix`, `hashIdentity`); origin is just another identity key (design §Identity).
+  # `key` = identity.key (the 3-way dispatch in `identity.nix`), so a wrapped-fn / guard record — NOT
+  # a submodule instance, carries no `id_hash` option — gets the SAME id as a plain aspect via the
+  # SAME formula. Consumers (gen-link node ids; den-hoag retiring
   # `sha256 "den-aspect:${key}"`) call THIS, never re-derive the preimage. `origin` is the source label as
   # a path list (concatStringsSep "/"); default [] ⇒ "" ⇒ today's `.key` partition preserved.
   aspectId =
