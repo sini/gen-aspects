@@ -1,6 +1,7 @@
 # Partition-identity through the exported `aspects.aspectId` — THE canonical, uniform aspect content-
-# address for ALL three kinds (plain / wrapped-fn / guard, identity.nix:69-77). `aspectId origin aspect`
-# = gen-schema hashIdentity over [origin, key], key = identity.key aspect (NOT mkIdentityModule
+# address for ALL three kinds (plain / wrapped-fn / guard — identity.nix `key`, whose three-way
+# dispatch IS that enumeration). `aspectId origin aspect` = gen-schema hashIdentity over
+# [origin, key], key = identity.key aspect (NOT mkIdentityModule
 # reflection — that would fold `description` in and break the `.key` partition, design §Identity note).
 # With origin = []: aspectId [] a == aspectId [] b ⟺ key(a) == key(b), over all three kinds + a custom-
 # `description` pair (description must NOT change the id). A non-empty origin distinguishes two same-key

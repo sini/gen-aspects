@@ -427,10 +427,11 @@ let
         # top container (`aspectsRoot`) re-roots the mount away, so `prefix` here is
         # CONTAINER-RELATIVE (2b, owner ruling): `[ apps media spicetify ]`, no mount segment.
         # `name` is already `last prefix`; the chain is everything above it. Stamped here so `key`
-        # (= pathKey(chain ++ [name]) = pathKey(prefix), identity.nix:69-76) is path-bearing AT
-        # MERGE, born in the type — never reconstructed downstream. Distinct paths ⇒ distinct keys
-        # (fixes the name-only collapse: hardware.cpu.intel ≠ hardware.gpu.intel). The relative
-        # chain UNIFIES with the guard branch (also loc-keyed and re-rooted, types.nix:171),
+        # (= pathKey(chain ++ [name]) = pathKey(prefix), identity.nix `key`'s plain branch
+        # `pathKey (aspectPath a)`) is path-bearing AT MERGE, born in the type — never
+        # reconstructed downstream. Distinct paths ⇒ distinct keys (fixes the name-only collapse:
+        # hardware.cpu.intel ≠ hardware.gpu.intel). The relative chain UNIFIES with the guard
+        # branch (also loc-keyed and re-rooted, `aspectType`'s `__guard` branch),
         # is origin-invariant (§3a: the container root is the proto-namespace root; an origin
         # qualifier prepends additively), and byte-matches den-hoag's root-relative `__provider`.
         # mkDefault so a user-set meta.aspect-chain still wins.

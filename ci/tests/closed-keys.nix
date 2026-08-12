@@ -1,6 +1,7 @@
 # Closed-key typo-gate (design decision 2, opt-in, default OFF). The freeform fallback silently absorbs
-# any undeclared key as a nested aspect (types.nix:288), so a misspelled class/facet key becomes a
-# stray sub-aspect. When `closedKeys` is on, an undeclared key NOT in `freeformKeys` throws a named
+# any undeclared key as a nested aspect (types.nix `aspectSubmodule`'s `freeformType`), so a
+# misspelled class/facet key becomes a stray sub-aspect. When `closedKeys` is on, an undeclared
+# key NOT in `freeformKeys` throws a named
 # error; default off preserves today's absorption exactly.
 {
   genMerge,
