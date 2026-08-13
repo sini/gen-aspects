@@ -524,6 +524,12 @@ let
   # carries no module set, so `null` is its correct answer and propagating it is correct too. nixpkgs
   # calls `substSubModules` only where `getSubModules != null` (`fixupOptionType`, lib/modules.nix), so
   # the rebuild is live exactly when the element really does carry modules.
+  #
+  # Both propagations are guarded the way `attrsOfWith`/`listOf` guard theirs: an element that carries
+  # no protocol AT ALL — a gen-types PARAMETRIC leaf (`enum`/`struct`/`union`) reaches the unified
+  # namespace as a bare constructor and is never protocol-completed — must answer "nothing to
+  # substitute" rather than abort on a missing attribute. `or null` covers the read; the `?` test
+  # covers the rebuild, which falls back to the element unchanged.
   aspectsRootWith =
     elemType:
     merge.mkOptionType {
@@ -532,7 +538,8 @@ let
       nestedTypes = { inherit elemType; };
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
       getSubModules = elemType.getSubModules or null;
-      substSubModules = m: aspectsRootWith (elemType.substSubModules m);
+      substSubModules =
+        m: aspectsRootWith (if elemType ? substSubModules then elemType.substSubModules m else elemType);
       merge =
         loc: defs:
         let

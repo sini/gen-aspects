@@ -32,6 +32,15 @@ let
   # POSITIVE CONTROL for the getSubOptions read path: a type that really does declare a sub-option.
   # It carries neither an element type nor a module set, so it is outside the construction rule's
   # domain and is completed, not refused.
+  #
+  # ★ WHY THIS AND NOT `sub`. The obvious control is `sub.getSubOptions [ ]`, and it is ARM-VARIANT:
+  # it reads ATTRS{0} against the gen-merge this repo's ci lock pins (`2701d8b`) and ATTRS{1} against
+  # any gen-merge from `8daa25d` on, which is where `getSubOptions` for submodule/attrsOf/listOf
+  # landed — AFTER the lock. Pinning that row would red whichever arm it was not measured on, so it
+  # is deliberately left unpinned. `declaring` replaces it because it is both constructible under the
+  # construction rule and arm-stable: it supplies its own `getSubOptions`, so it reads ATTRS{1} on
+  # both arms and does not depend on which gen-merge answers. Recorded here rather than dropped — an
+  # exclusion that leaves no trace gets re-proposed, and re-proposing this one breaks an arm.
   declaring = genMerge.mkOptionType {
     name = "declaring";
     getSubOptions = _prefix: {
@@ -143,9 +152,17 @@ in
     };
   };
 
-  # Each answer is STORED, not absent — the separation the shape rows cannot make on their own. A
-  # NULL that is stored is a supplied answer ("no module set here"); a missing field is the protocol
-  # left unimplemented, which is what the construction rule refuses.
+  # Each answer is STORED, not absent — a NULL that is stored is a supplied answer ("no module set
+  # here"), where a missing field is the protocol left unimplemented.
+  #
+  # ★ WHAT THIS CELL CANNOT SEPARATE, MEASURED BOTH ARMS WITH THE FIX ARCHIVED OUT. On the current
+  # lock (pre-W4a gen-merge) it stays GREEN without the fix: `completeType` stamps all three fields
+  # onto every type it completes, so the stubbed `aspectsRoot` answers "stored" too. On the W4a arm it
+  # never evaluates — construction refuses `aspectsRoot` by name first and all four cells in this file
+  # abort together. Neither arm discriminates the fix, so what this cell documents is STORAGE: that
+  # the NULLs above are supplied answers rather than gaps, which the shape rows alone cannot say. The
+  # discrimination lives in cells 1-3 — `substSubModules` reads TYPE<aspectsRoot> where a stub reads
+  # NULL — and in the archived-fix control run that reds exactly that row.
   flake.tests.sub-protocol.test-answers-are-stored-not-absent = {
     expr = {
       getSubOptions = root ? getSubOptions;
