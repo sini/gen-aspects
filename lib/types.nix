@@ -502,15 +502,37 @@ let
   # plain and guard aspects in ONE relative namespace (collision law: plain+guard at the same
   # path dedup). MUST wrap only the TOP container, never `aspectSubmodule`'s nested freeform
   # (which must stay additive, else every level would reset to `[ ]` → name-only collapse).
-  aspectsRoot =
-    cnf:
-    let
-      elemType = aspectType cnf;
-    in
+  #
+  # Element-parameterised, like gen-merge's own `attrsOfWith` (lib/types.nix, `attrsOf`/`lazyAttrsOf`):
+  # a container that CARRIES an element type owes the nixpkgs sub-protocol over that element
+  # (getSubOptions/getSubModules/substSubModules), and `substSubModules` can only answer by rebuilding
+  # ITSELF over the substituted element — so the constructor has to take the element, not `cnf`.
+  # `completeType`'s defaults (`{ }` / null / `_m: null`) are a LEAF's answers: on a wrapper they report
+  # "declares nothing" indistinguishably from "protocol unimplemented here", which is the ambiguity a
+  # supplied field cannot fall into.
+  #
+  # `getSubOptions` threads the caller's prefix (`prefix ++ [ "<name>" ]`, the per-key placeholder
+  # segment) rather than re-rooting the way `merge` does. The two are not in tension: this type keeps
+  # two distinct path notions, and each half reports the one it owns. `getSubOptions` is the ADDRESS —
+  # where a consumer writes the value, which is still under the mount (`den.aspects.<name>.…`); the
+  # re-rooting governs the merged aspect's IDENTITY (`key`, `meta.aspect-chain`), which `merge` derives
+  # from its own re-rooted loc and which no introspection answer reports. Dropping the mount here would
+  # hand an introspecting consumer an address that resolves nowhere.
+  #
+  # `getSubModules`/`substSubModules` propagate whatever the element answers. With `aspectType` as the
+  # element that is `null` / a rebuild over `null`: `aspectType` is Palmer's flat dispatching type and
+  # carries no module set, so `null` is its correct answer and propagating it is correct too. nixpkgs
+  # calls `substSubModules` only where `getSubModules != null` (`fixupOptionType`, lib/modules.nix), so
+  # the rebuild is live exactly when the element really does carry modules.
+  aspectsRootWith =
+    elemType:
     merge.mkOptionType {
       name = "aspectsRoot";
       inherit elemType;
       nestedTypes = { inherit elemType; };
+      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+      getSubModules = elemType.getSubModules or null;
+      substSubModules = m: aspectsRootWith (elemType.substSubModules m);
       merge =
         loc: defs:
         let
@@ -532,6 +554,7 @@ let
           }) keys
         );
     };
+  aspectsRoot = cnf: aspectsRootWith (aspectType cnf);
 
   # Top-level aspect container. Provides fixpoint: aspects can reference siblings.
   # Freeform is `aspectsRoot` (re-rooting) so nested identity is container-relative (A-IDENT 2b).
