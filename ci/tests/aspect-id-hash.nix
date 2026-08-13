@@ -18,7 +18,8 @@ let
   inherit (aspects) aspectId; # THE canonical id — works for plain, wrapped-fn, and guard alike.
 
   # plain
-  plainFoo = (mkSchemaEval { modules = [ { config.aspects.foo.classOne = { }; } ]; }).config.aspects.foo;
+  plainFoo =
+    (mkSchemaEval { modules = [ { config.aspects.foo.classOne = { }; } ]; }).config.aspects.foo;
 
   # distinct paths → distinct keys → distinct id
   hwEval = mkSchemaEval {
@@ -33,28 +34,66 @@ let
   # custom-description pair: same path (key "svc"), different description → SAME id. Two separate evals
   # so both can key as "svc".
   descA =
-    (mkSchemaEval { modules = [ { config.aspects.svc = { description = "Alpha svc"; classOne = { }; }; } ]; }).config.aspects.svc;
+    (mkSchemaEval {
+      modules = [
+        {
+          config.aspects.svc = {
+            description = "Alpha svc";
+            classOne = { };
+          };
+        }
+      ];
+    }).config.aspects.svc;
   descB =
-    (mkSchemaEval { modules = [ { config.aspects.svc = { description = "Beta svc"; classOne = { }; }; } ]; }).config.aspects.svc;
+    (mkSchemaEval {
+      modules = [
+        {
+          config.aspects.svc = {
+            description = "Beta svc";
+            classOne = { };
+          };
+        }
+      ];
+    }).config.aspects.svc;
 
   # wrapped-fn (__isWrappedFn), a BARE functor record (no id_hash option): key = pathKey meta.loc. `host`
   # is not a module arg → guard closure → wrap.
   wf =
-    (mkSchemaEval { modules = [ { config.aspects.wf = { host, ... }: { classOne.networking.hostName = host.name or "x"; }; } ]; }).config.aspects.wf;
+    (mkSchemaEval {
+      modules = [
+        {
+          config.aspects.wf =
+            { host, ... }:
+            {
+              classOne.networking.hostName = host.name or "x";
+            };
+        }
+      ];
+    }).config.aspects.wf;
   plainWf = (mkSchemaEval { modules = [ { config.aspects.wf.classOne = { }; } ]; }).config.aspects.wf;
 
   # guard (__guard), a BARE record (no id_hash option): key = guardKey — site-independent for a first-
   # order body.
   g1 =
-    (mkSchemaEval { modules = [ { config.aspects.g = aspects.guard (aspects.pred.host "h1") { classOne = { }; }; } ]; }).config.aspects.g;
+    (mkSchemaEval {
+      modules = [ { config.aspects.g = aspects.guard (aspects.pred.host "h1") { classOne = { }; }; } ];
+    }).config.aspects.g;
   g2 =
-    (mkSchemaEval { modules = [ { config.aspects.g = aspects.guard (aspects.pred.host "h1") { classOne = { }; }; } ]; }).config.aspects.g;
+    (mkSchemaEval {
+      modules = [ { config.aspects.g = aspects.guard (aspects.pred.host "h1") { classOne = { }; }; } ];
+    }).config.aspects.g;
 
   # providerPrefix feeds the option's origin: bypass mkSchemaEval (which hardcodes providerPrefix = []).
   mkEvalPP =
     providerPrefix: modules:
     let
-      schema = aspects.mkAspectSchema { keySemantics = { classOne = { category = "class"; }; }; };
+      schema = aspects.mkAspectSchema {
+        keySemantics = {
+          classOne = {
+            category = "class";
+          };
+        };
+      };
     in
     genMerge.evalModuleTree {
       modules = [
@@ -75,7 +114,8 @@ in
         {
           origin = "";
           key = aspects.key plainFoo;
-        }.${k}
+        }
+        .${k}
       );
     expected = true;
   };

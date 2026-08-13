@@ -12,7 +12,18 @@ let
     builtins.head
       (mkSchemaEval {
         modules = [
-          { config.aspects.main.includes = [ (aspects.keyRef { origin = [ "y" ]; path = [ "apps" "media" "pg" ]; }) ]; }
+          {
+            config.aspects.main.includes = [
+              (aspects.keyRef {
+                origin = [ "y" ];
+                path = [
+                  "apps"
+                  "media"
+                  "pg"
+                ];
+              })
+            ];
+          }
         ];
       }).config.aspects.main.includes;
 
@@ -78,7 +89,11 @@ in
     expected = {
       key = "apps/media/pg";
       origin = [ "y" ];
-      path = [ "apps" "media" "pg" ];
+      path = [
+        "apps"
+        "media"
+        "pg"
+      ];
     };
   };
   # well-formed baseline: "y/x" → origin [ "y" ], path [ "x" ], key "x".
