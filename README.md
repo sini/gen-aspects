@@ -258,8 +258,9 @@ aspects = gen-aspects.lib;
 through a single `checkedCnf`, so a key outside the recognised set is **refused by name** — the
 refusal lists the offending keys, renders the recognised set, and, for a key the library retired,
 names its replacement. The refusal is a `throw`, catchable with `tryEval`, and reachable by forcing
-the entry point's own result. The recognised set is `aspects.cnfKeys` (with its defaults at
-`aspects.cnfDefaults`); read it from there rather than restating it.
+the entry point's own result. The recognised set is `aspects.cnfKeys`; read it from there rather than
+restating it. The default behind each key stays internal — the question a consumer asks of this
+surface is whether a key is recognised, not what it falls back to.
 
 This closes a silent failure mode rather than adding a strictness. Under the previous `cnf.<key> or <default>` reads nothing ever inspected the key SET, so an unrecognised key was not reinterpreted —
 it was **inert**, and whatever it meant to declare stayed undeclared and fell through the aspect

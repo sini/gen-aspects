@@ -27,8 +27,11 @@
   ...
 }:
 let
-  inherit (cnfInternals) cnfRefusal;
-  inherit (aspects) cnfKeys cnfDefaults;
+  # `cnfDefaults` is deliberately NOT public: the published surface answers whether a key is
+  # recognised, and the value each key falls back to is the library's own business. The totality
+  # cells need those values, so they take them through the same internal channel as `cnfRefusal`.
+  inherit (cnfInternals) cnfRefusal cnfDefaults;
+  inherit (aspects) cnfKeys;
 
   # Substring test WITHOUT a regex. `lib.hasInfix` compiles to `builtins.match ".*<sub>.*"`, and a
   # leading-`.*` match over a several-hundred-character subject is the shape that overflows the

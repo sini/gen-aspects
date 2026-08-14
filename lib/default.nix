@@ -80,10 +80,11 @@ in
     ;
   # base (form-less) vocab; consumers with cnf.guardForms use (mkGuardVocab cnf).applyGuard
   applyGuard = (guardModule.mkGuardVocab { }).applyGuard;
-  # The `cnf` vocabulary as data. Every entry point above whose first argument is a `cnf` constructs
-  # it through this set and refuses an off-domain key by name; `cnfKeys` is the recognised set the
-  # refusal renders, and `cnfDefaults` the name → default binding it derives from. Exported so a
-  # consumer — and the drift pin that checks this set against the library's own reads — reads the
-  # vocabulary from here rather than restating it.
-  inherit (cnfModule) cnfKeys cnfDefaults;
+  # The recognised `cnf` key set as data. Every entry point above whose first argument is a `cnf`
+  # constructs it through this vocabulary and refuses an off-domain key by name; `cnfKeys` is the set
+  # the refusal renders, exported so a consumer — and the drift pin that checks it against the
+  # library's own reads — reads it from here rather than restating it. The defaults behind it stay
+  # internal: a consumer asks whether a key is RECOGNISED, and nothing outside this library needs the
+  # value each key falls back to.
+  inherit (cnfModule) cnfKeys;
 }
