@@ -16,6 +16,7 @@ let
     inherit (schema) hashIdentity;
   };
   identity = import ./identity.nix { inherit prelude; };
+  cnfModule = import ./cnf.nix;
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value
   guardModule = import ./guard.nix { inherit prelude; };
@@ -79,4 +80,10 @@ in
     ;
   # base (form-less) vocab; consumers with cnf.guardForms use (mkGuardVocab cnf).applyGuard
   applyGuard = (guardModule.mkGuardVocab { }).applyGuard;
+  # The `cnf` vocabulary as data. Every entry point above whose first argument is a `cnf` constructs
+  # it through this set and refuses an off-domain key by name; `cnfKeys` is the recognised set the
+  # refusal renders, and `cnfDefaults` the name → default binding it derives from. Exported so a
+  # consumer — and the drift pin that checks this set against the library's own reads — reads the
+  # vocabulary from here rather than restating it.
+  inherit (cnfModule) cnfKeys cnfDefaults;
 }

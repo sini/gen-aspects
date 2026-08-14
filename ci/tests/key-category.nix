@@ -26,7 +26,7 @@ let
   };
   schema = aspects.mkAspectSchema cnf;
   driftEval = mkSchemaEval {
-    classes = { };
+    fixtureKeySemantics = { };
     modules = [ { config.aspects.main = { }; } ];
   };
   structuralOptionNames = builtins.sort builtins.lessThan (

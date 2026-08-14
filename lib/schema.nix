@@ -17,15 +17,16 @@
 }:
 let
   t = merge.types;
+  inherit (import ./cnf.nix) extendCnf checkedEntry;
 in
 {
-  mkAspectSchema =
+  mkAspectSchema = checkedEntry (
     cnf:
     let
       schemaOpt = genSchema.mkSchemaOption {
-        collections = cnf.collections or { };
+        collections = cnf.collections;
         # Record per-key semantics opaquely on each schema entry (load-bearing introspection).
-        keySemantics = cnf.keySemantics or { };
+        keySemantics = cnf.keySemantics;
         mkType =
           {
             kindModule,
@@ -75,7 +76,7 @@ in
           description = "Aspects";
           default = { };
           # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
-          type = aspectsRoot (cnf // { inherit providerPrefix; });
+          type = aspectsRoot (extendCnf cnf { inherit providerPrefix; });
         };
 
       # mkAspectModule is a NixOS module that declares options.aspects and
@@ -94,14 +95,13 @@ in
             default = { };
             # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
             type = aspectsRoot (
-              cnf
-              // {
+              extendCnf cnf {
                 inherit providerPrefix;
                 # Lazily inject schema-declared option modules into every instance.
                 # config.schema.aspect.__defsModule carries the merged module built
                 # from user defs on the schema kind entry (e.g. options.priority).
                 aspectModules =
-                  (cnf.aspectModules or [ ])
+                  cnf.aspectModules
                   ++ prelude.optional (
                     config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
                   ) config.schema.aspect.__defsModule;
@@ -128,7 +128,7 @@ in
               type = t.lazyAttrsOf t.raw;
             };
             # aspectsRoot (re-rooting) → aspect identity is relative to the namespace's aspect root (A-IDENT 2b).
-            freeformType = aspectsRoot (cnf // { providerPrefix = [ name ]; });
+            freeformType = aspectsRoot (extendCnf cnf { providerPrefix = [ name ]; });
           }
         );
 
@@ -152,5 +152,6 @@ in
           isMeaningfulName
           ;
       };
-    };
+    }
+  );
 }

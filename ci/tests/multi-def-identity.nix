@@ -27,8 +27,10 @@ let
   # Two "files" each contribute a child of apps.dev.security -> multi-def collision
   # at `dev` and `security` (mirrors den's gpg.nix + ssh.nix shape).
   eval = mkSchemaEval {
-    classes = {
-      nixos = { };
+    fixtureKeySemantics = {
+      nixos = {
+        category = "class";
+      };
     };
     modules = [
       { config.aspects.apps.dev.security.gpg.nixos.programs.gnupg.agent.enable = true; }

@@ -202,7 +202,7 @@ Schema-declared options propagate to aspect instances via `mkAspectModule`. When
 }
 ```
 
-`mkAspectModule` lazily injects `config.schema.aspect.__defsModule` into each aspect's `aspectModules`, so schema extensions are available without manual wiring. This `__defsModule` seam is why `aspectSubmodule` mounts `imports = facetModules ++ (cnf.aspectModules or [])` — `aspectModules` must stay live even though per-key channels are now declared through `keySemantics` rather than injected as modules.
+`mkAspectModule` lazily injects `config.schema.aspect.__defsModule` into each aspect's `aspectModules`, so schema extensions are available without manual wiring. This `__defsModule` seam is why `aspectSubmodule` mounts `imports = facetModules ++ cnf.aspectModules` — `aspectModules` must stay live even though per-key channels are now declared through `keySemantics` rather than injected as modules.
 
 ## Flat Registry
 
@@ -254,6 +254,18 @@ aspects = gen-aspects.lib;
 
 ### Configuration (`cnf`)
 
+`cnf` is a **closed vocabulary**, not an open attrset. Every entry point that takes one constructs it
+through a single `checkedCnf`, so a key outside the recognised set is **refused by name** — the
+refusal lists the offending keys, renders the recognised set, and, for a key the library retired,
+names its replacement. The refusal is a `throw`, catchable with `tryEval`, and reachable by forcing
+the entry point's own result. The recognised set is `aspects.cnfKeys` (with its defaults at
+`aspects.cnfDefaults`); read it from there rather than restating it.
+
+This closes a silent failure mode rather than adding a strictness. Under the previous `cnf.<key> or <default>` reads nothing ever inspected the key SET, so an unrecognised key was not reinterpreted —
+it was **inert**, and whatever it meant to declare stayed undeclared and fell through the aspect
+submodule's freeform fallback into a nested aspect tree. `mkAspectSchema { classes = …; }` computed
+exactly `mkAspectSchema { }`.
+
 ```nix
 aspectsType {
   # Per-key semantics — one surface for class/channel/facet dispatch.
@@ -291,7 +303,7 @@ aspectsType {
 ### Utilities
 
 - **`canTake`** — function arg introspection. `canTake.upTo params fn` checks if all required args of `fn` are satisfiable by `params`.
-- **`mkIsModuleFn cnf`** — `canTake.upTo (cnf.moduleArgs or defaults)`. Returns a predicate that classifies functions as module fns or guard fns.
+- **`mkIsModuleFn cnf`** — `canTake.upTo cnf.moduleArgs`. Returns a predicate that classifies functions as module fns or guard fns.
 - **`key`**, **`aspectPath`**, **`pathKey`**, **`isMeaningfulName`**, **`guardKey`** — identity computation from `meta` + `name`. `key` routes three ways: static aspects (via `meta.aspect-chain`, stamped intrinsically at merge from the option path — [A-IDENT](#aspect-identity-a-ident)), wrapped guard functions (via `meta.loc`), and defunctionalized guard records (`__guard` → `guardKey`, a site-independent structural key over the predicate + first-order body). All three are container-relative (re-rooted by `aspectsRoot`), so plain and guard keys share one namespace.
 
 ### Schema & Registry

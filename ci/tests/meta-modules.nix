@@ -10,7 +10,7 @@ let
   mkEval =
     modules:
     mkSchemaEval {
-      classes.classOne = { };
+      fixtureKeySemantics.classOne.category = "class";
       metaModules = [
         {
           options.guard = genMerge.mkOption {

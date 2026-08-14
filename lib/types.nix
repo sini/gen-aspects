@@ -35,21 +35,11 @@
 let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
+  inherit (import ./cnf.nix) extendCnf checkedEntry;
   t = merge.types;
 
-  # Module functions take known module args — evaluated by the submodule.
-  # Guard functions take context args (host/user/etc.) — wrapped for later.
-  # The set of known module args is configurable via cnf.moduleArgs.
-  # Default includes standard NixOS args + aspect (provided by gen-aspects).
-  defaultModuleArgs = {
-    lib = true;
-    config = true;
-    options = true;
-    pkgs = true;
-    modulesPath = true;
-    aspect = true;
-  };
-  mkIsModuleFn = cnf: canTake.upTo (cnf.moduleArgs or defaultModuleArgs);
+  # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
+  mkIsModuleFn = cnf: canTake.upTo cnf.moduleArgs;
 
   # The `__isWrappedFn` functor record — ONE construction site for the inspectable raw-closure wrap
   # (Reynolds 1972 by analogy, per the header: the closure is preserved inside `__functor`, not
@@ -268,7 +258,7 @@ let
           # (`isAttrs d.value`) — no deep forcing, strictly less than a spine-walk.
           anyAttrs = builtins.any (d: builtins.isAttrs d.value) defs;
         in
-        if (cnf.recursiveClosed or false) then
+        if cnf.recursiveClosed then
           if anyAttrs then
             # a namespace node — recurse as a nested aspect, gate RETAINED (recursive-closed).
             (aspectType cnf).merge loc defs
@@ -277,8 +267,8 @@ let
             + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
             + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
             + "content). Declare it in keySemantics, or nest it under a declared key."
-        else if builtins.elem k (cnf.freeformKeys or [ ]) then
-          (aspectType (cnf // { closedKeys = false; })).merge loc defs
+        else if builtins.elem k cnf.freeformKeys then
+          (aspectType (extendCnf cnf { closedKeys = false; })).merge loc defs
         else
           throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
     };
@@ -317,11 +307,9 @@ let
         in
         if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
           v
-        else if (cnf.deferIncludeResolution or false) && builtins.length defs == 1 && isDeferredInclude then
+        else if cnf.deferIncludeResolution && builtins.length defs == 1 && isDeferredInclude then
           v
-        else if
-          (cnf.rejectBareModuleInclude or false) && builtins.length defs == 1 && isBareModuleInclude
-        then
+        else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
           throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
           + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
           + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
@@ -346,12 +334,16 @@ let
   # surface — a consumer reads a key's category from HERE, never a parallel membership list. null = the key is
   # neither native-structural nor a declared keySemantics key (a typo, or a freeform nested-aspect child; the
   # closed gate distinguishes them).
+  # The `or null` here guards the INNER dynamic lookup `.${key}.category`, not `cnf` membership, and
+  # so is NOT the `or` default that the constructed record retires: null is this function's
+  # documented answer for an unregistered key, and a consumer's typo gate is built on exactly that
+  # null. Stripping it would turn every unregistered key into a throw.
   keyCategory =
     cnf: key:
     if builtins.elem key nativeStructuralKeys then
       "structural"
     else
-      (cnf.keySemantics.${key}.category or null);
+      cnf.keySemantics.${key}.category or null;
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
@@ -367,7 +359,7 @@ let
   aspectSubmodule =
     cnf:
     let
-      rawKs = cnf.keySemantics or { };
+      rawKs = cnf.keySemantics;
       validCats = [
         "class"
         "channel"
@@ -414,14 +406,12 @@ let
         ...
       }:
       {
-        freeformType = t.lazyAttrsOf (
-          if (cnf.closedKeys or false) then gatedFreeformElem cnf else aspectType cnf
-        );
+        freeformType = t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem cnf else aspectType cnf);
         config._module.args.aspect = config;
         # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
         # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
         # schema-declared instance-option propagation.
-        imports = facetModules ++ (cnf.aspectModules or [ ]);
+        imports = facetModules ++ cnf.aspectModules;
 
         # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
         # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
@@ -465,7 +455,7 @@ let
             internal = true;
             readOnly = true;
             type = t.str;
-            default = aspectId (cnf.providerPrefix or [ ]) config;
+            default = aspectId cnf.providerPrefix config;
           };
 
           meta = merge.mkOption {
@@ -473,7 +463,7 @@ let
             default = { };
             type = merge.submodule {
               freeformType = t.lazyAttrsOf t.raw;
-              imports = cnf.metaModules or [ ];
+              imports = cnf.metaModules;
             };
           };
 
@@ -577,18 +567,26 @@ let
 
 in
 {
+  # PUBLIC entry points — every export whose first argument is a `cnf` constructs it through
+  # `checkedEntry`, so a key outside the vocabulary refuses BY NAME here instead of being silently
+  # inert. The recursion above (aspectType ↔ aspectSubmodule, gatedFreeformElem, includesElemType,
+  # aspectsRoot's per-key mergeDefs) refers to the LOCAL bindings, which already hold a constructed
+  # record: the check runs once per consumer call, not once per aspect node.
+  aspectType = checkedEntry aspectType;
+  aspectSubmodule = checkedEntry aspectSubmodule;
+  aspectsType = checkedEntry aspectsType;
+  aspectsRoot = checkedEntry aspectsRoot;
+  aspectOrFn = checkedEntry aspectOrFn;
+  mkIsModuleFn = checkedEntry mkIsModuleFn;
+  wrapFn = checkedEntry wrapFn;
+  keyCategory = checkedEntry keyCategory;
+  # Not entry points, and the reason is structural rather than per-name: `canTake` carries no
+  # configuration at all, `wrapGatedFn`'s first argument is a `{ functionArgs; … }` spec, `aspectId`
+  # takes an origin path, and `structuralKeys` is a value.
   inherit
-    aspectType
-    aspectSubmodule
-    aspectsType
-    aspectsRoot
-    aspectOrFn
-    mkIsModuleFn
     canTake
-    wrapFn
     wrapGatedFn
     aspectId
-    keyCategory
     ;
   structuralKeys = nativeStructuralKeys;
 }

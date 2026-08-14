@@ -17,8 +17,10 @@ let
     if builtins.length parts <= 1 then null else lib.concatStringsSep "/" (lib.init parts);
 
   eval = mkSchemaEval {
-    classes = {
-      nixos = { };
+    fixtureKeySemantics = {
+      nixos = {
+        category = "class";
+      };
     };
     modules = [
       {
@@ -39,8 +41,10 @@ let
 
   # Test with guard function
   guardEval = mkSchemaEval {
-    classes = {
-      nixos = { };
+    fixtureKeySemantics = {
+      nixos = {
+        category = "class";
+      };
     };
     modules = [
       {
@@ -57,8 +61,10 @@ let
 
   # Test deep nesting
   deepEval = mkSchemaEval {
-    classes = {
-      nixos = { };
+    fixtureKeySemantics = {
+      nixos = {
+        category = "class";
+      };
     };
     modules = [
       {

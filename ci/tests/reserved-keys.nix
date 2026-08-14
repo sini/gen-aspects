@@ -23,8 +23,10 @@ let
   withSettings =
     modules:
     mkSchemaEval {
-      classes = {
-        nixos = { };
+      fixtureKeySemantics = {
+        nixos = {
+          category = "class";
+        };
       };
       aspectModules = [
         {
@@ -57,8 +59,10 @@ let
   # Contrast: WITHOUT declaring `settings`, the same key becomes a nested aspect
   # (parity with den's un-reserved dispatch — both require opt-in).
   undeclared = mkSchemaEval {
-    classes = {
-      nixos = { };
+    fixtureKeySemantics = {
+      nixos = {
+        category = "class";
+      };
     };
     modules = [ { config.aspects.igloo.settings.theme = "dark"; } ];
   };

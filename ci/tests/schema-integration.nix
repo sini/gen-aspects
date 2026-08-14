@@ -9,9 +9,13 @@
 }:
 let
   eval = mkSchemaEval {
-    classes = {
-      classOne = { };
-      classTwo = { };
+    fixtureKeySemantics = {
+      classOne = {
+        category = "class";
+      };
+      classTwo = {
+        category = "class";
+      };
     };
     collections = {
       settings = {
@@ -54,9 +58,13 @@ let
 
   # Separate eval to test class content on standalone aspects
   classEval = mkSchemaEval {
-    classes = {
-      classOne = { };
-      classTwo = { };
+    fixtureKeySemantics = {
+      classOne = {
+        category = "class";
+      };
+      classTwo = {
+        category = "class";
+      };
     };
     modules = [
       (
@@ -121,8 +129,10 @@ in
     expr =
       let
         schema = aspects.mkAspectSchema {
-          classes = {
-            classOne = { };
+          keySemantics = {
+            classOne = {
+              category = "class";
+            };
           };
         };
       in
@@ -134,8 +144,10 @@ in
     expr =
       let
         schema = aspects.mkAspectSchema {
-          classes = {
-            classOne = { };
+          keySemantics = {
+            classOne = {
+              category = "class";
+            };
           };
         };
       in

@@ -5,6 +5,7 @@
 # closure. Raw closures remain the non-defunctionalized escape hatch (functionTo, see types.nix).
 { prelude }:
 let
+  inherit (import ./cnf.nix) checkedEntry;
   # Vendored attrByPath (gen-prelude has no attrByPath): walk `path` into `set`, `default` if absent.
   attrByPath =
     path: default: set:
@@ -107,7 +108,7 @@ in
 {
   inherit toArgData pred guard;
 
-  mkGuardVocab =
+  mkGuardVocab = checkedEntry (
     cnf:
     let
       getPath = path: ctx: attrByPath path null ctx;
@@ -132,7 +133,7 @@ in
           throw "gen-aspects.guard: custom form '${name}' must be { eval; reads; }"
         else
           form
-      ) (cnf.guardForms or { });
+      ) cnf.guardForms;
       # O2: ONE global dispatcher, case-analysis on the predicate tag.
       evalPred =
         ctx: pr:
@@ -179,5 +180,6 @@ in
           g ctx
         else
           throw "gen-aspects.guard: applyGuard: not a guard record or callable";
-    };
+    }
+  );
 }

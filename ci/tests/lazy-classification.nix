@@ -22,8 +22,10 @@ let
   bomb = throw "gen-aspects #580: freeform leaf forced during classification";
 
   eval = mkSchemaEval {
-    classes = {
-      nixos = { };
+    fixtureKeySemantics = {
+      nixos = {
+        category = "class";
+      };
     };
     modules = [
       {
@@ -78,8 +80,10 @@ in
   flake.tests.lazy-classification.test-registered-class-content-stays-lazy =
     let
       eval2 = mkSchemaEval {
-        classes = {
-          nixos = { };
+        fixtureKeySemantics = {
+          nixos = {
+            category = "class";
+          };
         };
         modules = [
           { config.aspects.web2.nixos.networking.hostName = throw "must stay lazy"; }

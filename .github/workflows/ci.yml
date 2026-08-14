@@ -17,3 +17,24 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - run: nix flake check
       - run: nix fmt -- --ci
+      # The `cnf` vocabulary is total in BOTH directions. `lib/cnf.nix` gives read → declaration:
+      # every read is `cnf.<key>` with no fallback, so reading an undeclared key aborts. This gives
+      # the reverse — a key declared in `cnfDefaults` that nothing in `lib/` reads would be accepted
+      # and do nothing, which is exactly the inertness the refusal exists to end, surviving inside
+      # the recognised set. Lexical, hence a CI step beside the format gate rather than a nix-unit
+      # cell. TWO PARTS OF THE PREDICATE ARE LOAD-BEARING, and each answers a way it manufactures a
+      # PHANTOM member — a name on the left that no read put there, which the guard would then
+      # demand be "fixed" by declaring a key nothing reads. (1) The comment strip: a comment naming
+      # a retired key reads as a live member. (2) The leading-character class: `cnf.<name>` also
+      # matches the PATH `./cnf.nix`, so a bare `cnf\.` pattern reports a member called `nix`. The
+      # match therefore consumes the preceding character and requires it not to be `/`, alphanumeric,
+      # `_` or `.`; `sed` strips it back off. Verified to fire in both directions: a read with no
+      # declaration and a declaration with no read each produce a non-empty diff.
+      - name: cnf vocabulary is total in both directions
+        working-directory: .
+        run: |
+          diff <( for f in lib/*.nix; do sed 's/#.*$//' "$f"; done \
+                    | grep -oE '(^|[^/[:alnum:]_.])cnf\.[a-zA-Z_][a-zA-Z0-9_]*' \
+                    | sed 's/.*cnf\.//' | sort -u ) \
+               <( nix eval --raw '.#lib.cnfKeys' \
+                    --apply 'ks: builtins.concatStringsSep "\n" ks + "\n"' )

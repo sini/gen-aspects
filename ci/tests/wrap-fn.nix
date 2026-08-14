@@ -11,9 +11,13 @@
 }:
 let
   cnf = {
-    classes = {
-      classOne = { };
-      classTwo = { };
+    keySemantics = {
+      classOne = {
+        category = "class";
+      };
+      classTwo = {
+        category = "class";
+      };
     };
   };
   # A raw guard closure (REQUIRES `host`, so the aspect type routes it to wrapGuardFn, not the
