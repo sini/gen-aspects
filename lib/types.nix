@@ -220,7 +220,8 @@ let
   # `lib/identity.nix`, `hashIdentity`); origin is just another identity key (design §Identity).
   # `key` = identity.key (the 3-way dispatch in `identity.nix`), so a wrapped-fn / guard record — NOT
   # a submodule instance, carries no `id_hash` option — gets the SAME id as a plain aspect via the
-  # SAME formula. Consumers (gen-link node ids; den-hoag retiring
+  # SAME formula, and it is an IDENTITY, not a vertex name: gen-link NAMES a federation node by its
+  # origin-qualified `aspects.key`, never this. Consumers (the `id_hash` default; den-hoag, which retired
   # `sha256 "den-aspect:${key}"`) call THIS, never re-derive the preimage. `origin` is the source label as
   # a path list (concatStringsSep "/"); default [] ⇒ "" ⇒ today's `.key` partition preserved.
   aspectId =

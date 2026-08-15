@@ -55,8 +55,8 @@ in
   # `wrapGatedFn { functionArgs; onResult ? id; … } fn` — the OPT-IN self-gating sibling: its applicator
   # gates on required coords (inert `{ }` on missing, no throw) + threads `onResult` (N-GATE). See types.nix.
   inherit (types) wrapFn wrapGatedFn;
-  # THE canonical, uniform aspect content-address (all three kinds). gen-link builds node ids with it;
-  # den-hoag retires its `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`.
+  # THE canonical, uniform aspect content-address (all three kinds). den-hoag retired its
+  # `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`. See lib/types.nix.
   inherit (types) aspectId;
   # `structuralKeys` (the six native structural option names as ONE binding) + `keyCategory cnf key` — the
   # single aspect-key classification surface a consumer reads a key's category from. See lib/types.nix.
