@@ -378,12 +378,20 @@ let
           throw "gen-aspects: keySemantics key '${k}' has unknown category '${e.category}' (expected class|channel|facet)"
       ) rawKs) rawKs;
       keyOf = category: builtins.attrNames (prelude.filterAttrs (_: e: e.category == category) ks);
+      # A declared class with no content reads `null`, never an empty deferredModule. Absence must be
+      # REPRESENTABLE in the value: a `{ }` default merges to `{ imports = [ { } ]; }`, which is
+      # shape-indistinguishable from real content, so a delivery class would realize on the mere
+      # DECLARATION (ADR-0028's Rider: a delivery class realizes only on declared content, never on
+      # structural shape). The distinction does survive in the deferredModule's `_file` marker, but
+      # recovering it there is a repair that sniffs a fabricated intermediate and binds a consumer to
+      # merge-internal diagnostic text — `null` is the construction in which the intermediate never
+      # forms. `channelOptions` below already represents absence this way.
       classOptions = prelude.genAttrs (keyOf "class") (
         _:
         merge.mkOption {
-          description = "Class content (deferred module)";
-          default = { };
-          type = t.deferredModule;
+          description = "Class content (deferred module); `null` when the class is declared but never given content";
+          default = null;
+          type = t.nullOr t.deferredModule;
         }
       );
       channelOptions = prelude.genAttrs (keyOf "channel") (

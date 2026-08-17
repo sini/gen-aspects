@@ -130,7 +130,7 @@ in
 
 **Key semantics** declare, per aspect key, a `category ∈ { class, channel, facet }` through `cnf.keySemantics`. `aspectSubmodule` builds each declared key's option generically from this one surface:
 
-- `class` (e.g. `nixos`, `homeManager`, `darwin`) → an explicit `deferredModule` option — clean content buckets with no structural keys injected.
+- `class` (e.g. `nixos`, `homeManager`, `darwin`) → an explicit `nullOr deferredModule` option defaulting to `null` — clean content buckets with no structural keys injected. A class DECLARED but never given content reads `null`, so absence is representable rather than fabricated: a `{ }` default merges to `{ imports = [ { } ]; }`, shape-indistinguishable from real content, and a consumer projecting classes by shape would realize the mere declaration.
 - `channel` → a raw passthrough (`mkOption { type = raw; }`); the value rides verbatim, and is *not* turned into a nested aspect. A channel may supply its own `option` to override the raw default.
 - `facet` → the entry's own `option` (a bare `mkOption`) or a full `module` (mounted via `imports`) — for typed instance fields like `neededBy` / `settings` / `id`.
 
@@ -244,7 +244,7 @@ aspects = gen-aspects.lib;
 
 - **`aspectsType cnf`** — top-level container. Submodule with `freeformType = lazyAttrsOf (aspectType cnf)` and fixpoint (`_module.args.aspects = config`).
 
-- **`aspectSubmodule cnf`** — aspect entry. Submodule with structural options (`name`, `description`, `key`, `meta`, `includes`), one option per declared `cnf.keySemantics` key built generically from its category (class → `deferredModule`, channel → `raw`, facet → the entry's `option`/`module`), and freeform for undeclared (nested) aspects.
+- **`aspectSubmodule cnf`** — aspect entry. Submodule with structural options (`name`, `description`, `key`, `meta`, `includes`), one option per declared `cnf.keySemantics` key built generically from its category (class → `nullOr deferredModule` defaulting to `null`, channel → `raw`, facet → the entry's `option`/`module`), and freeform for undeclared (nested) aspects.
 
 - **`aspectType cnf`** — Palmer flat dispatch. One type, dispatch in merge. Attrsets and module functions → `aspectSubmodule`. Guard functions → `functionTo` wrapper. Primitives → passthrough.
 
@@ -270,7 +270,7 @@ exactly `mkAspectSchema { }`.
 ```nix
 aspectsType {
   # Per-key semantics — one surface for class/channel/facet dispatch.
-  # class  → deferredModule (clean content buckets)
+  # class  → nullOr deferredModule, default null (clean content buckets; unset reads null)
   # channel → raw passthrough (value rides verbatim; may carry its own `option`)
   # facet  → the entry's `option` (bare mkOption) or `module` (mounted via imports)
   keySemantics = {
