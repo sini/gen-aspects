@@ -15,9 +15,9 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 |---|---|
 | The module system itself — `evalModuleTree`, `mkOption`, `mkMerge`, `submodule`, `mkOptionType`, `mergeDefs`. gen-aspects builds every option and type through the injected `merge` argument | `gen-merge` — "gen-merge — pure-Nix byte-mode module MERGE engine (evalModuleTree) for the pure-gen module system" |
 | Leaf type checking (`str`, `listOf`, `raw`, `lazyAttrsOf`, `deferredModule`) — reached only as `merge.types` | `gen-types` — "gen-types: pure, nixpkgs-lib-free structural type checker for the gen ecosystem" |
-| Minting identity hashes and kind/registry infrastructure. gen-aspects consumes exactly two gen-schema names: `hashIdentity` (`lib/default.nix:16`) and `mkSchemaOption` (`lib/schema.nix:25`) | `gen-schema` — "gen-schema: typed record registry with extension points for the pure-gen module system" |
+| Minting identity hashes and kind/registry infrastructure. gen-aspects consumes exactly two gen-schema names: `hashIdentity` (`lib/default.nix`, the `inherit (schema) hashIdentity` passed into `types.nix`) and `mkSchemaOption` (`lib/schema.nix`'s `schemaOpt`) | `gen-schema` — "gen-schema: typed record registry with extension points for the pure-gen module system" |
 | General utilities (`concatStringsSep`, `genAttrs`, `filterAttrs`, `foldl'`, `last`, `init`, `functionArgs`) | `gen-prelude` — "gen-prelude: vendored, nixpkgs-lib-free pure utilities for the gen ecosystem" |
-| Resolving a `keyRef` against a merged cross-origin graph; federating aspects across flakes | `gen-link` — "gen-link: cross-flake aspect federation over origin-labeled subgraphs". `lib/types.nix:285-289` states the type passes `__keyRef` through opaquely for gen-link to resolve |
+| Resolving a `keyRef` against a merged cross-origin graph; federating aspects across flakes | `gen-link` — "gen-link: cross-flake aspect federation over origin-labeled subgraphs". `lib/types.nix`'s `includesElemType` states the type passes `__keyRef` through opaquely for gen-link to resolve |
 | Predicates over graph positions (matching aspects by attribute, kind, or tree position) | `gen-select` — "gen-select: selector algebra for attributed graph positions" |
 | Choosing which of several matching rules wins; ordering and conflict resolution | `gen-dispatch` — "gen-dispatch: relational rule dispatch over ordered groups (the dispatch STEP)" |
 | Traversal and query combinators over the flat registry `flatten` produces | `gen-graph` — "gen-graph: accessor-based graph query combinators" |
@@ -109,7 +109,7 @@ additionally reads `cnf.guardForms : { <name> = { eval = ctx: argData: bool; rea
 **Record markers** (produced and consumed, not exports): `__guard` (defunctionalized guard record),
 `__isWrappedFn` + `__functionArgs` (raw-closure functor wrap), `__keyRef` (out-of-fixpoint reference),
 `__defsModule` (gen-schema instance-option seam), `__isPolicy` / `__fn` / `__denCanTake` (recognized only
-as deferred-include markers under `cnf.deferIncludeResolution`, `lib/types.nix:305-310`).
+as deferred-include markers under `cnf.deferIncludeResolution` — `lib/types.nix`'s `includesElemType`, its `isDeferredInclude`).
 
 ## Entry points by task
 
@@ -142,36 +142,49 @@ Verified at rev `1689e41` by evaluating against `aspects = import ./. { }` with 
 `ctx = { host.name = "h1"; class = "nixos"; user.name = "u"; tags.t = "v"; }`;
 `gHost = aspects.guard (aspects.pred.host "h1") { classOne = { }; }`.
 
+The behaviours are as verified at that rev. The **anchors** below were re-derived against `7b11e80`
+and now name bindings rather than line ranges, for the reason stated next; re-deriving them is not a
+re-run of the evidence.
+
+**Cites into `lib/` are by BINDING NAME, never by line range.** Grep the name. Every range this file
+used to carry was re-derived against the tree it describes and every one had drifted, most of them
+onto unrelated code while the prose around them stayed true — a reader chasing a drifted range either
+finds nothing or, worse, finds a plausible neighbour and closes a live finding against it. A name can
+go stale too — rename the binding and it dangles — but it dangles LOUDLY, because the grep returns
+nothing, whereas a drifted range fails plausibly, which is the mode that costs a reader something.
+Fixing the ranges one at a time is what this file did before, and it is worse than leaving them: one
+freshly verified row among wrong ones is indistinguishable from the wrong ones.
+
 | Trap | Evidence |
 |---|---|
-| A wrapped-fn aspect is callable but **`isFunction` says false** — under both `builtins.isFunction` and `prelude.isFunction` | `lib/types.nix:68`; both ⇒ `false` on a type-merge-wrapped guard fn. `applyGuard` compensates with an explicit `\|\| (g.__isWrappedFn or false)` disjunct (`lib/guard.nix:178`) |
+| A wrapped-fn aspect is callable but **`isFunction` says false** — under both `builtins.isFunction` and `prelude.isFunction` | `lib/types.nix`'s `mkWrapped` (the one `__functor` / `__isWrappedFn` record both wraps build); both ⇒ `false` on a type-merge-wrapped guard fn. `applyGuard` compensates with an explicit `\|\| (g.__isWrappedFn or false)` disjunct (`lib/guard.nix`'s `applyGuard`) |
 | `builtins.functionArgs` on a wrapped-fn is an **uncatchable** type error, not a throw — read `.__functionArgs` instead | observed `error: 'functionArgs' requires a function`, raised through `tryEval`; `.__functionArgs` ⇒ `{ host = false; }`. Test: `test-tag-shape` (`ci/tests/gated-wrap.nix`) |
-| The native guard wrap applies **unconditionally**: a missing coord raises nix's own `called without required argument`, which `tryEval` cannot rescue | `lib/types.nix:81-98`; applying the wrap to `{ }` aborted the whole eval. Positive control, same wrapper: full coords ⇒ a merged aspect carrying `classOne`. Test: `test-native-guard-not-gated` |
-| `wrapGatedFn` is the **opt-in** sibling: a missing required coord ⇒ `{ }` inert, and extra args are dropped | `lib/types.nix:142-163`; `gated { }` ⇒ `{ }`, `gated { host = "h"; extra = 1; }` ⇒ `{ classOne.x = "h"; }`. Tests: `test-gate-inert-on-missing`, `test-fires-onresult-and-intersect` |
-| The two wraps return **different shapes**: `wrapGatedFn` returns the raw `onResult (fn …)` value; the native wrap returns an `aspectSubmodule`-merged aspect, so a class bucket comes back as `{ imports = [ … ]; }` | `lib/types.nix:154-159` (no `.merge` call) vs `lib/types.nix:86-91`; gated ⇒ `{ classOne = { x = "h"; }; }`, native ⇒ `{ classOne.imports = [ … ]; }` |
-| A guard record defined **twice** under one key loses guard shape: `__guard` becomes `{ _type = "merge"; contents = …; }`, so `flatten` dies with an uncatchable `expected a Boolean but found a set` | `lib/types.nix:200-203` (a `TODO(guard)` naming the limitation) + `lib/flatten.nix:17`; observed exactly that error. Positive control: the single-def guard flattens fine (`ok ⇒ true`). Test: `test-guard-multidef-limitation` |
-| Same root cause for primitives: a **multi-def primitive key does not last-def-win** — the unresolved `mkMerge` marker leaks verbatim into `config` | `lib/types.nix:177-178`; two defs of `aspects.p.lit` ⇒ `{ _type = "merge"; contents = [ 1 2 ]; }`. Positive control: single def ⇒ `1`. The passthrough tests (`test-primitive-string-passthrough`, `test-primitive-list-passthrough`) are single-def only |
-| `mkGuardVocab`'s custom-form validation is **lookup-lazy, not construction-eager** — a form missing `reads` builds fine and throws only when a guard *of that form* is dispatched | `lib/guard.nix:127-135` (the check sits inside a `mapAttrs` value thunk); `guardForms.f2 = { eval = …; }` dispatching `gHost` ⇒ `ok true`, dispatching `pred.custom "f2"` ⇒ threw |
-| Same for the core-name collision check: shadowing `host` throws only when a `host` predicate is dispatched | `lib/guard.nix:129-130`; `guardForms.host = …` dispatching `pred.always` ⇒ `ok true` (control), dispatching `gHost` ⇒ threw. Test: `test-custom-form-collision` |
-| By contrast `keySemantics` category validation **is** eager (`deepSeq`) — one bad category throws while reading an *unrelated* aspect's `name` | `lib/types.nix:377-383`; `keySemantics.bogus.category = "widget"` ⇒ reading `aspects.a.name` threw. Positive control: `category = "channel"` ⇒ `"a"`. Test: `test-bad-category-throws` |
-| A non-firing guard yields **`null`**, not `{ }` — different from `wrapGatedFn`'s inert `{ }` | `lib/guard.nix:177`; `applyGuard ctx (guard (pred.host "other") …)` ⇒ `null`. Tests: `test-applyguard-not-fires`, `test-applyguard-fires` |
-| `applyGuard` accepts a **raw closure** (the escape hatch) and applies it to the context; anything that is neither guard nor callable throws | `lib/guard.nix:174-181`; `applyGuard ctx (c: { seen = c.class; })` ⇒ `{ seen = "nixos"; }`, `applyGuard ctx { notAGuard = 1; }` ⇒ threw. Test: `test-escape-hatch` |
-| `pred.all [ ]` ⇒ true, `pred.any [ ]` ⇒ false; both reject a **guard** where a predicate is expected | `lib/guard.nix:73-93`; observed `true` / `false`, and `pred.all [ gHost ]` ⇒ threw |
-| Predicate args must be first-order — a function anywhere in them throws at construction | `lib/guard.nix:61-65`; `toArgData { f = (x: x); }` ⇒ threw. Control: `{ s = "a"; i = 1; l = [ true ]; }` ⇒ `{ __t; v; }` tags. Test: `test-toargdata-throws-on-function` |
-| `guardKey` is site-independent for a first-order body but falls back to **`guard-loc:<anon>`** for an opaque one, so two distinct opaque guards with no `meta.loc` collide | `lib/identity.nix:81-95`; `gHost` ⇒ `guard:host:c…`, a guard whose body holds a closure ⇒ `guard-loc:<anon>`. Two identical first-order guards ⇒ same key. Tests: `test-guardkey-site-independent`, `test-guard-opaque-body-site-distinct` |
-| `aspectId` routes through gen-schema's `hashIdentity` over `[ origin, key ]`, **not** `mkIdentityModule` — so `description` is not in the preimage | `lib/types.nix:235-244`; `aspectId [ ] a == genSchema.hashIdentity "aspect" [ "origin" "key" ] …` ⇒ `true`, and two aspects differing only in `description` ⇒ same id. `git grep -n mkIdentityModule -- lib/` ⇒ no hits; positive control `git grep -n hashIdentity -- lib/` ⇒ 4 hits. Tests: `test-aspectid-is-canonical-formula`, `test-description-not-in-id` |
-| There is **no `reservedKeys` surface** — a reserved key is an option declared through `cnf.aspectModules`, which the module system binds before the freeform fallback | `git grep -n reservedKeys -- lib/` ⇒ no hits; positive control `git grep -n aspectModules -- lib/` ⇒ 5 hits (`lib/schema.nix:103-104`, `lib/types.nix:363,420,423`). Tests: `test-reserved-key-reads-back-verbatim`, `test-undeclared-key-is-nested-aspect` |
-| `aspectsRoot` **drops the mount segment**: keys are container-relative, so the option path `aspects.hardware.cpu.intel` keys as `hardware/cpu/intel`, not `aspects/hardware/…` | `lib/types.nix:503-532`; observed `key = "hardware/cpu/intel"`, `meta.aspect-chain = [ "hardware" "cpu" ]`. Tests: `test-nested-aspect-key`, `test-no-name-only-collision` |
-| `keyRef "prov/a/b"` splits the **first segment off as origin**, and the resulting `.key` excludes it | `lib/identity.nix:16-41`; ⇒ `{ __keyRef = true; origin = [ "prov" ]; path = [ "a" "b" ]; key = "a/b"; }`. Tests: `test-keyref-origin`, `test-keyref-target-key-readable` |
-| With `closedKeys`, a key listed in `freeformKeys` opens an **ungated** subtree — descendants get `closedKeys = false` and admit anything | `lib/types.nix:279-280`; an arbitrary key three levels under a listed key ⇒ `ok true`. Contrast: an undeclared key at the gate ⇒ threw. Positive control with the gate off: the same key becomes a nested aspect ⇒ `ok true`. Tests: `test-gate-on-allows-listed`, `test-gate-on-rejects-undeclared` |
-| `recursiveClosed` keeps the gate all the way down, admitting an undeclared key only as a **namespace attrset** — a primitive there throws | `lib/types.nix:270-278`; namespace ⇒ `ok true`, `oops = 5` ⇒ threw. Tests: `test-gate-retained-below`, `test-typo-leaf-throws` |
-| An `includes` element that is a bare `{ imports = [ … ]; }` module is **accepted by default**; rejection is opt-in via `rejectBareModuleInclude` | `lib/types.nix:321-328`; default ⇒ `ok true`, opt-in ⇒ threw. Tests: `test-default-off-absorbs`, `test-bare-module-rejected` |
-| A raw closure in `includes` is wrapped by default, but passes through **unforced and still a real function** under `deferIncludeResolution` | `lib/types.nix:319-320`; default ⇒ `__isWrappedFn = true`, opt-in ⇒ `builtins.isFunction` ⇒ `true`. Tests: `test-default-off-wraps-bare-fn`, `test-bare-fn-passes-through` |
-| `aspectType`'s `check` is `_: true` — no value is ever rejected by the type check; every decision happens in `merge` | `lib/types.nix:173`; `(aspectType { }).check 12345` ⇒ `true` |
-| `canTake.atLeast` and `canTake.upTo` disagree on a `{ ... }:`-only function — `upTo` additionally requires a non-empty arg intersection | `lib/can-take.nix:16-22`; `atLeast { a = 1; } ({ ... }: 1)` ⇒ `true`, `upTo` ⇒ `false`, `upTo { a = 1; } ({ a, ... }: 1)` ⇒ `true`. Since `mkIsModuleFn` is `upTo`, a bare `{ ... }:` aspect is classified as a **guard** fn, not a module fn |
-| A `channel` key defaults to **`null`**, not `{ }`, and its value rides verbatim; a `class` key reads back as the `deferredModule` shape `{ imports = [ … ]; }` | `lib/types.nix:393-399, 385-392`; unset channel ⇒ `null`, set ⇒ the value unchanged, class ⇒ `attrNames` `[ "imports" ]`. Tests: `test-channel-value-verbatim`, `test-class-key-is-deferred-content` |
-| `keyCategory` returns **`null`** for an unregistered key — absence is not an error, so a typo is indistinguishable from a freeform child unless the closed gate is on | `lib/types.nix:348-353`; `"name"` ⇒ `"structural"`, declared ⇒ its category, `"zzz"` ⇒ `null`. Tests: `test-unknown-null`, `test-structural` |
-| `flatten` keys nested aspects and guard/wrapped **leaves**, but never class content and never recurses into a leaf | `lib/flatten.nix:17-18`; a tree with class content, a nested aspect, a guard and a wrapped fn ⇒ `[ "top" "top/g" "top/nested" "top/w" ]`. Tests: `test-class-keys-excluded`, `test-guard-function-not-recursed` |
+| The native guard wrap applies **unconditionally**: a missing coord raises nix's own `called without required argument`, which `tryEval` cannot rescue | `lib/types.nix`'s `wrapGuardFn`; applying the wrap to `{ }` aborted the whole eval. Positive control, same wrapper: full coords ⇒ a merged aspect carrying `classOne`. Test: `test-native-guard-not-gated` |
+| `wrapGatedFn` is the **opt-in** sibling: a missing required coord ⇒ `{ }` inert, and extra args are dropped | `lib/types.nix`'s `wrapGatedFn`; `gated { }` ⇒ `{ }`, `gated { host = "h"; extra = 1; }` ⇒ `{ classOne.x = "h"; }`. Tests: `test-gate-inert-on-missing`, `test-fires-onresult-and-intersect` |
+| The two wraps return **different shapes**: `wrapGatedFn` returns the raw `onResult (fn …)` value; the native wrap returns an `aspectSubmodule`-merged aspect, so a class bucket comes back as `{ imports = [ … ]; }` | `lib/types.nix`'s `wrapGatedFn` — its `__functor` makes no `.merge` call — against `wrapGuardFn`'s `apply`, which does; gated ⇒ `{ classOne = { x = "h"; }; }`, native ⇒ `{ classOne.imports = [ … ]; }` |
+| A guard record defined **twice** under one key loses guard shape: `__guard` becomes `{ _type = "merge"; contents = …; }`, so `flatten` dies with an uncatchable `expected a Boolean but found a set` | `lib/types.nix`'s `aspectType` merge, whose `TODO(guard)` comment names the limitation, + `lib/flatten.nix`'s `isGuardLeaf`; observed exactly that error. Positive control: the single-def guard flattens fine (`ok ⇒ true`). Test: `test-guard-multidef-limitation` |
+| Same root cause for primitives: a **multi-def primitive key does not last-def-win** — the unresolved `mkMerge` marker leaks verbatim into `config` | `lib/types.nix`'s `aspectType` merge — the all-primitive `mkMerge` arm of its `length defs != 1` branch; two defs of `aspects.p.lit` ⇒ `{ _type = "merge"; contents = [ 1 2 ]; }`. Positive control: single def ⇒ `1`. The passthrough tests (`test-primitive-string-passthrough`, `test-primitive-list-passthrough`) are single-def only |
+| `mkGuardVocab`'s custom-form validation is **lookup-lazy, not construction-eager** — a form missing `reads` builds fine and throws only when a guard *of that form* is dispatched | `lib/guard.nix`'s `checkedUserForms` (the check sits inside a `mapAttrs` value thunk); `guardForms.f2 = { eval = …; }` dispatching `gHost` ⇒ `ok true`, dispatching `pred.custom "f2"` ⇒ threw |
+| Same for the core-name collision check: shadowing `host` throws only when a `host` predicate is dispatched | `lib/guard.nix`'s `checkedUserForms`, its `coreFormNames` collision arm; `guardForms.host = …` dispatching `pred.always` ⇒ `ok true` (control), dispatching `gHost` ⇒ threw. Test: `test-custom-form-collision` |
+| By contrast `keySemantics` category validation **is** eager (`deepSeq`) — one bad category throws while reading an *unrelated* aspect's `name` | `lib/types.nix`'s `aspectSubmodule`, its `ks` binding (the `deepSeq` over the category check); `keySemantics.bogus.category = "widget"` ⇒ reading `aspects.a.name` threw. Positive control: `category = "channel"` ⇒ `"a"`. Test: `test-bad-category-throws` |
+| A non-firing guard yields **`null`**, not `{ }` — different from `wrapGatedFn`'s inert `{ }` | `lib/guard.nix`'s `applyGuard`, its non-firing arm; `applyGuard ctx (guard (pred.host "other") …)` ⇒ `null`. Tests: `test-applyguard-not-fires`, `test-applyguard-fires` |
+| `applyGuard` accepts a **raw closure** (the escape hatch) and applies it to the context; anything that is neither guard nor callable throws | `lib/guard.nix`'s `applyGuard`, its `isFunction` / `__isWrappedFn` arm and closing throw; `applyGuard ctx (c: { seen = c.class; })` ⇒ `{ seen = "nixos"; }`, `applyGuard ctx { notAGuard = 1; }` ⇒ threw. Test: `test-escape-hatch` |
+| `pred.all [ ]` ⇒ true, `pred.any [ ]` ⇒ false; both reject a **guard** where a predicate is expected | `lib/guard.nix`'s `pred.all` / `pred.any` over `assertPred`; observed `true` / `false`, and `pred.all [ gHost ]` ⇒ threw |
+| Predicate args must be first-order — a function anywhere in them throws at construction | `lib/guard.nix`'s `tagVal` (the closing throw) under `toArgData`; `toArgData { f = (x: x); }` ⇒ threw. Control: `{ s = "a"; i = 1; l = [ true ]; }` ⇒ `{ __t; v; }` tags. Test: `test-toargdata-throws-on-function` |
+| `guardKey` is site-independent for a first-order body but falls back to **`guard-loc:<anon>`** for an opaque one, so two distinct opaque guards with no `meta.loc` collide | `lib/identity.nix`'s `guardKey` over `bodyKey`; `gHost` ⇒ `guard:host:c…`, a guard whose body holds a closure ⇒ `guard-loc:<anon>`. Two identical first-order guards ⇒ same key. Tests: `test-guardkey-site-independent`, `test-guard-opaque-body-site-distinct` |
+| `aspectId` routes through gen-schema's `hashIdentity` over `[ origin, key ]`, **not** `mkIdentityModule` — so `description` is not in the preimage | `lib/types.nix`'s `aspectId`; `aspectId [ ] a == genSchema.hashIdentity "aspect" [ "origin" "key" ] …` ⇒ `true`, and two aspects differing only in `description` ⇒ same id. `git grep -n mkIdentityModule -- lib/` ⇒ no hits; positive control `git grep -n hashIdentity -- lib/` ⇒ 5 hits. Tests: `test-aspectid-is-canonical-formula`, `test-description-not-in-id` |
+| There is **no `reservedKeys` surface** — a reserved key is an option declared through `cnf.aspectModules`, which the module system binds before the freeform fallback | `git grep -n reservedKeys -- lib/` ⇒ no hits; positive control `git grep -n aspectModules -- lib/` ⇒ 6 hits — `lib/cnf.nix`'s default, `lib/schema.nix`'s `mkAspectModule`, and `lib/types.nix`'s `aspectSubmodule` (its `imports = facetModules ++ cnf.aspectModules`, plus two comments). Tests: `test-reserved-key-reads-back-verbatim`, `test-undeclared-key-is-nested-aspect` |
+| `aspectsRoot` **drops the mount segment**: keys are container-relative, so the option path `aspects.hardware.cpu.intel` keys as `hardware/cpu/intel`, not `aspects/hardware/…` | `lib/types.nix`'s `aspectsRootWith`, whose `merge` re-roots each child at `[ k ]`; observed `key = "hardware/cpu/intel"`, `meta.aspect-chain = [ "hardware" "cpu" ]`. Tests: `test-nested-aspect-key`, `test-no-name-only-collision` |
+| `keyRef "prov/a/b"` splits the **first segment off as origin**, and the resulting `.key` excludes it | `lib/identity.nix`'s `keyRef` over `splitSlash`; ⇒ `{ __keyRef = true; origin = [ "prov" ]; path = [ "a" "b" ]; key = "a/b"; }`. Tests: `test-keyref-origin`, `test-keyref-target-key-readable` |
+| With `closedKeys`, a key listed in `freeformKeys` opens an **ungated** subtree — descendants get `closedKeys = false` and admit anything | `lib/types.nix`'s `gatedFreeformElem`, its `cnf.freeformKeys` arm; an arbitrary key three levels under a listed key ⇒ `ok true`. Contrast: an undeclared key at the gate ⇒ threw. Positive control with the gate off: the same key becomes a nested aspect ⇒ `ok true`. Tests: `test-gate-on-allows-listed`, `test-gate-on-rejects-undeclared` |
+| `recursiveClosed` keeps the gate all the way down, admitting an undeclared key only as a **namespace attrset** — a primitive there throws | `lib/types.nix`'s `gatedFreeformElem`, its `cnf.recursiveClosed` arm; namespace ⇒ `ok true`, `oops = 5` ⇒ threw. Tests: `test-gate-retained-below`, `test-typo-leaf-throws` |
+| An `includes` element that is a bare `{ imports = [ … ]; }` module is **accepted by default**; rejection is opt-in via `rejectBareModuleInclude` | `lib/types.nix`'s `includesElemType`, its `isBareModuleInclude`; default ⇒ `ok true`, opt-in ⇒ threw. Tests: `test-default-off-absorbs`, `test-bare-module-rejected` |
+| A raw closure in `includes` is wrapped by default, but passes through **unforced and still a real function** under `deferIncludeResolution` | `lib/types.nix`'s `includesElemType`, its `isDeferredInclude`; default ⇒ `__isWrappedFn = true`, opt-in ⇒ `builtins.isFunction` ⇒ `true`. Tests: `test-default-off-wraps-bare-fn`, `test-bare-fn-passes-through` |
+| `aspectType`'s `check` is `_: true` — no value is ever rejected by the type check; every decision happens in `merge` | `lib/types.nix`'s `aspectType`, its `check = _: true`; `(aspectType { }).check 12345` ⇒ `true` |
+| `canTake.atLeast` and `canTake.upTo` disagree on a `{ ... }:`-only function — `upTo` additionally requires a non-empty arg intersection | `lib/can-take.nix`'s `canTake` (its `satisfied` / `upTo` fields) behind the `atLeast` / `upTo` exports; `atLeast { a = 1; } ({ ... }: 1)` ⇒ `true`, `upTo` ⇒ `false`, `upTo { a = 1; } ({ a, ... }: 1)` ⇒ `true`. Since `mkIsModuleFn` is `upTo`, a bare `{ ... }:` aspect is classified as a **guard** fn, not a module fn |
+| A `channel` key defaults to **`null`**, not `{ }`, and its value rides verbatim; a `class` key reads back as the `deferredModule` shape `{ imports = [ … ]; }` | `lib/types.nix`'s `aspectSubmodule`, its `channelOptions` and `classOptions`; unset channel ⇒ `null`, set ⇒ the value unchanged, class ⇒ `attrNames` `[ "imports" ]`. Tests: `test-channel-value-verbatim`, `test-class-key-is-deferred-content` |
+| `keyCategory` returns **`null`** for an unregistered key — absence is not an error, so a typo is indistinguishable from a freeform child unless the closed gate is on | `lib/types.nix`'s `keyCategory` over `nativeStructuralKeys`; `"name"` ⇒ `"structural"`, declared ⇒ its category, `"zzz"` ⇒ `null`. Tests: `test-unknown-null`, `test-structural` |
+| `flatten` keys nested aspects and guard/wrapped **leaves**, but never class content and never recurses into a leaf | `lib/flatten.nix`'s `isGuardLeaf` / `isNestedAspect`; a tree with class content, a nested aspect, a guard and a wrapped fn ⇒ `[ "top" "top/g" "top/nested" "top/w" ]`. Tests: `test-class-keys-excluded`, `test-guard-function-not-recursed` |
 
 **Read, not exercised** in this run: `mkNamespaceType`, `mkAspectOption`, `cnf.collections`,
 `cnf.metaModules`, and the `facet` variant carrying a full `module` (only the bare-`option` facet was
@@ -180,31 +193,31 @@ evaluated). Each has named CI coverage — `test-collection-tags`, `test-schema-
 
 ## Theory
 
-Claimed in `README.md:316-328`, whose table carries an explicit **Relationship** column splitting
+Claimed in `README.md`'s **Theoretical Foundations** table, which carries an explicit **Relationship** column splitting
 Implements from Informed by, and restated in the code headers.
 
 **Implements**
 
 - **Palmer et al. (2024), *Intensional Functions*** — one flat type dispatching by value shape in merge
   (§2), identity keys (§2.2) supplied for consumer-side dedup; `name`/`meta` from `loc` for tracing
-  (§5.1). Header at `lib/types.nix:3-6`.
+  (§5.1). Stated in `lib/types.nix`'s header comment (its "one type, dispatch in merge" paragraph).
 - **Reynolds (1972), *Definitional Interpreters* §6, as formalized by Danvy & Nielsen (2001),
   *Defunctionalization at Work*** (obligations O1–O7) — the closed guard-**predicate** vocabulary:
   predicates are pure first-order data, dispatched by one global `applyGuard`, keyed by a
-  site-independent `guardKey`. `lib/guard.nix:1-5` marks each obligation inline (O1 at `:23`, O2 at
-  `:136`, O3/O4 at `:68`, O7 at `:114`). The README states the honest boundary: arbitrary
+  site-independent `guardKey`. `lib/guard.nix`'s header names the obligations, and each is marked inline at the
+  construct that discharges it — grep `O1:`, `O2:`, `O3/O4:`, `O7` in that file. The README states the honest boundary: arbitrary
   `{ host, … }:` closures cannot be defunctionalized in pure Nix and stay a tagged escape hatch.
 
 **Informed by** (README's own label; no result claimed)
 
 - **Lorenzen et al. (2025), *First-Order Laziness*** §1–2.3 — class content as `deferredModule` is
   inspectable before forcing. The README states this comes from Nix's native laziness, **not** from
-  Lorenzen's mechanism, and that the citation is provenance for the idea only (`lib/types.nix:12-14`).
+  Lorenzen's mechanism, and that the citation is provenance for the idea only (`lib/types.nix`'s header, its Lorenzen paragraph).
 
 Two further attributions appear in code but not in the README table: **Reynolds, *Elimination of
 Higher-Order Functions*** for the constructor tag replacing source position in `guardKey`
-(`lib/identity.nix:79-80`), and Reynolds 1972 cited **by analogy only** for the `__isWrappedFn` functor
-wrap — `lib/types.nix:17-19` explicitly disclaims it as not the literal §6 transform.
+(`lib/identity.nix`'s `guardKey` comment), and Reynolds 1972 cited **by analogy only** for the `__isWrappedFn` functor
+wrap — `lib/types.nix`'s header explicitly disclaims it as not the literal §6 transform.
 
 **Checked invariant**: the library is nixpkgs-lib-free. `ci/tests/purity.nix` strips comments and scans
 `lib/**.nix` + root `flake.nix` + `default.nix` for `lib.types` / `lib.mkOption` / `lib.evalModules` /
@@ -232,8 +245,8 @@ Current output (verbatim):
 {"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","host","tagEq","user"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","flatten","guard","guardKey","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenHost","whenTagEq","whenUser"]}
 ```
 
-**Checks.** Test-runner invocation (from the repo root; CI runs the same command with
-`working-directory: ci`, `.github/workflows/ci.yml:13,18`):
+**Checks.** Test-runner invocation (from the repo root; CI runs the same command from the
+`check` job's `working-directory: ci`, `.github/workflows/ci.yml`):
 
 ```sh
 nix flake check ./ci
