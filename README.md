@@ -40,7 +40,7 @@ Dependency class: **Class D** (nixpkgs-lib-tethered). gen-aspects depends on nix
 
 gen-aspects gives you the *types*, not a framework. An **aspect** is a submodule carrying structural identity (`name`, `key`, `meta`, `includes`) plus freeform, class-separated content. You register your target module systems as **classes** (`nixos`, `homeManager`, `darwin`); each class becomes a clean `deferredModule` option so content stays free of the structural keys.
 
-One flat type (`aspectType`) dispatches by value shape at merge time (Palmer 2024): attrsets and module functions become aspect submodules, context-dependent guard functions are wrapped as inspectable, tagged functors, and primitives pass through unchanged. The library computes stable identity keys and, via `flatten`, a flat path-keyed registry suitable for graph queries.
+One flat type (`aspectType`) dispatches by value shape at merge time (Palmer 2024): attrsets and module functions become aspect submodules, context-dependent guard functions are wrapped as inspectable, tagged functors, and primitives pass through unchanged. The library computes stable identity keys, and via `graphFacts` publishes the aspect graph's facts — the node set, the parent and includes relations, and the node values — for a framework to assemble a graph from. `flatten` renders the same walk as a flat path-keyed registry.
 
 Everything downstream — evaluation, scheduling, conflict resolution, dispatch policy — is the consumer's job. gen-aspects supplies the type surface and the identity keys; the pipeline lives in [gen-resolve](https://github.com/sini/gen-resolve) / [gen-dispatch](https://github.com/sini/gen-dispatch) / [den](https://github.com/sini/den).
 
@@ -157,7 +157,12 @@ The rule (VERBATIM):
 - **It matches den-hoag's identity form.** den-hoag's `__provider` reconstruction is already root-relative (`apps/media/spicetify`), so consuming the native relative `.key` is byte-for-byte the same key — the lowest-churn path to retiring the shadow layer.
 - **It keeps plain and guard unified.** The re-root is a *uniform* reset applied to every value the container merges (not a depth-based strip), so the guard branch (keyed off `meta.loc`, also re-rooted) lands in the SAME relative namespace as plain aspects — a plain aspect and a guard function at the same path key identically and dedup, as the collision law requires.
 
-**One identity, two views (exact).** `flatten`'s walk key and `.key` are now the SAME identity, LITERALLY equal: both are container-relative (`flatten` walks from the container root; `.key` is re-rooted there), so `key(a) == flattenKey(a)` (e.g. both `"apps/media/spicetify"`). Not two surfaces modulo a prefix — one identity, two exactly-agreeing views (unit-tested in `flat-registry` `test-key-agrees-with-flatten`).
+**One identity, two views — modulo the origin qualifier, and for plain aspects only.** For a plain aspect under an empty origin, `flatten`'s walk key and `.key` are literally equal: both are container-relative (`flatten` walks from the container root; `.key` is re-rooted there), so `key(a) == flattenKey(a)` (e.g. both `"apps/media/spicetify"`). Two scopes on that, both load-bearing:
+
+- **The origin qualifier moves one side and not the other.** A published node id is `pathKey(origin ++ path)`, while `.key` takes no origin at all — its three arms are `guardKey`, `pathKey(meta.loc)` and `pathKey(aspectPath)`, none of which sees one. The two agree only after the qualifier is stripped, and coincide exactly when `cnf.providerPrefix` is `[ ]`.
+- **Guard records and wrapped fns are outside the claim.** They are bare records rather than submodule instances, so they carry no `key` option at all — and a guard record's `.key` is `guardKey`, which content-addresses a bodied guard (`"guard:<pred>:<hash>"`) instead of rendering its position. Their positions are answered by the published `parentOf` (see [Flat Registry](#flat-registry)), never by `.key`.
+
+Unit-tested in `flat-registry` `test-node-id-agrees-with-key-modulo-origin`, which enumerates over the published `nodes`, names those two exclusions rather than filtering them away, and asserts the fixture actually carried one of each.
 
 ## Schema Integration
 
@@ -215,7 +220,9 @@ flat = aspects.flatten eval.config.aspects;
 # => { "networking" = ...; "networking/firewall" = ...; }
 ```
 
-Entries are the aspect values unchanged — `flatten` does not inject any fields. Parent relationships are implicit in the path key: `"networking/firewall"` → parent is `"networking"`. Guard functions (`__isWrappedFn`) are included as entries but not recursed into.
+Entries are the aspect values unchanged — `flatten` does not inject any fields. Guard functions (`__isWrappedFn`) and guard records (`__guard`) are included as entries but never recursed into.
+
+**The path key is a RENDERING of a parent edge, not the edge. Do not split it.** `"networking/firewall"` looks like it says its parent is `"networking"`, and for a plain aspect it happens to agree — but a nested guard leaf is in the registry carrying no `meta.aspect-chain` at all, so the two derivations a consumer might reach for disagree on it, and the `meta.aspect-chain or [ ]` one answers *root* for a node whose parent is its container. Worse, that wrong answer is indistinguishable from a right one: a genuine root aspect yields `[ ]` through the same accessor, so absence and root are the same value. Read `graphFacts` instead.
 
 Detection is structural rather than relying on a hardcoded key list:
 
@@ -223,18 +230,28 @@ Detection is structural rather than relying on a hardcoded key list:
 - Class content (`deferredModule`) lacks `name` and is skipped
 - Primitives (strings, lists) are skipped
 
-The flat registry enables gen-graph and gen-select queries over the aspect tree. Parent accessors derive from the key:
+### Published facts
+
+`graphFacts` publishes what a graph is built FROM — the node set, the two edge relations and the node values — as plain data. gen-aspects imports no query library for this: the query libraries are needed to *query* a graph, never to *state* one, and every fact here is an attrset, a list or a string.
 
 ```nix
-parentOf = id:
-  let parts = lib.splitString "/" id;
-  in if builtins.length parts <= 1 then null
-  else lib.concatStringsSep "/" (lib.init parts);
+facts = aspects.graphFacts cnf eval.config.aspects;
+# => { nodes      = [ "networking" "networking/firewall" … ];
+#      parentOf   = { "networking" = null; "networking/firewall" = "networking"; … };
+#      includesOf = { "networking" = [ ]; … };
+#      nodeData   = { "networking" = <the aspect value, unchanged>; … }; }
 ```
+
+- **A node id is `pathKey(cnf.providerPrefix ++ walkPath)`** — the walk position the registry already keys on, qualified by origin. It is deliberately *not* `identity.key`: that function content-addresses a guard record, which would move every guard node's name off its position.
+- **`parentOf` is a DISPATCH ON NODE SHAPE, not a join.** A plain aspect holds its position under `meta.aspect-chain`; a wrapped fn or guard record holds it under `meta.loc`, and neither shape carries the other's. The dispatch is why the relation is published once here rather than re-derived per framework: a framework that re-derives it with a single accessor gets a wrong graph.
+- **`parentOf` is total and refuses.** Every node has an answer — an id, or an explicit `null` meaning root — and a position naming a container that is not a node is a named refusal rather than a dropped edge or a bad target passed downstream. The ground is locality: once the edge leaves the library nothing can name the aspect at fault.
+- **`includesOf` resolves each declared include to a node id**, taking a `keyRef`'s own origin for a cross-source reference. An inline guard record or deferred closure at the include position references no node and is refused by name.
+
+A framework builds the graph from these with `gen-graph.labeledFrom` / `fromRegistry` and expresses its named views over `gen-select`'s algebra; the registry above is one such view.
 
 ## API Reference
 
-The `.lib` value exposes twenty top-level names: the five aspect types (incl. `aspectsRoot`, the re-rooting container), `wrapFn`, the four identity/introspection utilities plus `guardKey`, the four schema-and-registry entry points, and the five-name guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`).
+The `.lib` value exposes the five aspect types (incl. `aspectsRoot`, the re-rooting container), the value-shape constructors (`wrapFn`, `wrapGatedFn`, `canTake`), the identity/introspection utilities plus `guardKey` and `keyRef`, the schema-and-registry entry points (`mkAspectSchema`, `flatten`, `graphFacts`, `keyCategory`, `structuralKeys`, `cnfKeys`), and the guard-predicate vocabulary (`mkGuardVocab`, `applyGuard`, `toArgData`, `pred`, `guard`). The roster itself is the binding, not a count restated in prose — read `lib/default.nix`.
 
 ```nix
 aspects = gen-aspects.lib;
@@ -310,7 +327,8 @@ aspectsType {
 ### Schema & Registry
 
 - **`mkAspectSchema cnf`** — bridges aspect types to gen-schema kind-level infrastructure. Returns `schemaOption`, `mkAspectOption`, `mkAspectModule`, `mkNamespaceType`, plus re-exports (`aspectType`, `identity`, `canTake`, `mkIsModuleFn`). See [Schema Integration](#schema-integration).
-- **`flatten aspects`** — walks the recursive aspect tree into a flat attrset keyed by `path` identity (`"parent/child"`), structurally detecting nested aspects vs class content. See [Flat Registry](#flat-registry).
+- **`flatten aspects`** — walks the recursive aspect tree into a flat attrset keyed by `path` identity (`"parent/child"`), structurally detecting nested aspects vs class content. The key is a rendering of a parent edge, never the edge; read `graphFacts` for parenthood. See [Flat Registry](#flat-registry).
+- **`graphFacts cnf aspects`** — the aspect graph's facts as plain data: `{ nodes; parentOf; includesOf; nodeData; }`, keyed by origin-qualified node id. `parentOf` dispatches on node shape and is total; a dangling parent and an unresolvable include each refuse by name. See [Published facts](#published-facts).
 
 ## Demo
 

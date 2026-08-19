@@ -20,7 +20,7 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 | Resolving a `keyRef` against a merged cross-origin graph; federating aspects across flakes | `gen-link` — "gen-link: cross-flake aspect federation over origin-labeled subgraphs". `lib/types.nix`'s `includesElemType` states the type passes `__keyRef` through opaquely for gen-link to resolve |
 | Predicates over graph positions (matching aspects by attribute, kind, or tree position) | `gen-select` — "gen-select: selector algebra for attributed graph positions" |
 | Choosing which of several matching rules wins; ordering and conflict resolution | `gen-dispatch` — "gen-dispatch: relational rule dispatch over ordered groups (the dispatch STEP)" |
-| Traversal and query combinators over the flat registry `flatten` produces | `gen-graph` — "gen-graph: accessor-based graph query combinators" |
+| Traversal and query combinators over the facts `graphFacts` publishes (`labeledFrom`, `fromRegistry`, `materializeParents`, `query`) | `gen-graph` — "gen-graph: accessor-based graph query combinators". gen-aspects does NOT import it: the query libraries query a graph, they do not state one |
 | Demand-driven attribute evaluation over scope graphs | `gen-scope` — "gen-scope: demand-driven attribute grammar evaluator over algebraic scope graphs" |
 | Class partition / contract / apply / gate machinery. `keySemantics.<k>.category = "class"` only declares the key as a `deferredModule` bucket; nothing here interprets class content | `gen-class` — "gen-class — pure-Nix class-share mechanism (partition / contract / apply / gate) for the pure-gen module system" |
 | Layered settings resolution and precedence | `gen-settings` — "gen-settings — stratified settings resolution as a pure layered fold, with refs-as-data, structured provenance, and the graduated injection construct" |
@@ -78,13 +78,14 @@ each defaulting to a `fetchTree` of the flake-locked rev, so `import ./. { }` se
 | `mkGuardVocab cnf` `.vocab` | `{ whenHost, whenClass, whenUser, whenTagEq, whenEq, whenAll, whenAny, always }` — each is `args -> body -> guardRecord` |
 | `applyGuard` | `ctx -> guardRecord \| closure \| wrappedFn -> value` — the top-level binding is `(mkGuardVocab { }).applyGuard`, i.e. the base vocab with no `cnf.guardForms` |
 
-**Introspection and registry** — `lib/can-take.nix`, `lib/flatten.nix`
+**Introspection and registry** — `lib/can-take.nix`, `lib/walk.nix`, `lib/flatten.nix`, `lib/facts.nix`
 
 | Export | Signature |
 |---|---|
 | `canTake` | `{ atLeast, upTo }` — each `params -> fn -> bool` |
 | `mkIsModuleFn` | `cnf -> fn -> bool` (= `canTake.upTo (cnf.moduleArgs or defaults)`) |
-| `flatten` | `aspects -> { "<path/key>" = aspect; … }` (a bare value; takes no dependency argument) |
+| `flatten` | `aspects -> { "<path/key>" = aspect; … }` (a bare value; takes no dependency argument). The key is a RENDERING of a parent edge, never the edge — do not split it |
+| `graphFacts` | `cnf -> aspects -> { nodes; parentOf; includesOf; nodeData; }` — the aspect graph's facts as plain data, keyed by the origin-qualified walk key (`pathKey (cnf.providerPrefix ++ walkPath)`). `parentOf` DISPATCHES on node shape (a plain aspect's position is under `meta.aspect-chain`, a guard's / wrapped fn's under `meta.loc`), is total over `nodes` with an explicit `null` for a root, and refuses by name on a parent that is not a node. `includesOf` refuses by name on an include element that references no node |
 
 **Schema bridge** — `lib/schema.nix`
 
@@ -130,7 +131,7 @@ as deferred-include markers under `cnf.deferIncludeResolution` — `lib/types.ni
 | Wrap a programmatically generated closure include | `wrapFn cnf name fn` |
 | Wrap one that must be inert on missing coords | `wrapGatedFn { functionArgs; onResult ? ; } fn` |
 | Classify a function as module-fn vs guard-fn | `mkIsModuleFn cnf fn` |
-| Hand the aspect tree to a graph query | `flatten aspects` |
+| Hand the aspect tree to a graph query | `graphFacts cnf aspects` (NOT `flatten` — parenthood is a published relation, not a substring of the key) |
 | Reject undeclared aspect keys | `cnf.closedKeys = true` (+ `freeformKeys` / `recursiveClosed`) |
 
 ## Measured traps
@@ -184,7 +185,8 @@ freshly verified row among wrong ones is indistinguishable from the wrong ones.
 | `canTake.atLeast` and `canTake.upTo` disagree on a `{ ... }:`-only function — `upTo` additionally requires a non-empty arg intersection | `lib/can-take.nix`'s `canTake` (its `satisfied` / `upTo` fields) behind the `atLeast` / `upTo` exports; `atLeast { a = 1; } ({ ... }: 1)` ⇒ `true`, `upTo` ⇒ `false`, `upTo { a = 1; } ({ a, ... }: 1)` ⇒ `true`. Since `mkIsModuleFn` is `upTo`, a bare `{ ... }:` aspect is classified as a **guard** fn, not a module fn |
 | A `channel` key defaults to **`null`**, not `{ }`, and its value rides verbatim; a `class` key reads back as the `deferredModule` shape `{ imports = [ … ]; }` | `lib/types.nix`'s `aspectSubmodule`, its `channelOptions` and `classOptions`; unset channel ⇒ `null`, set ⇒ the value unchanged, class ⇒ `attrNames` `[ "imports" ]`. Tests: `test-channel-value-verbatim`, `test-class-key-is-deferred-content` |
 | `keyCategory` returns **`null`** for an unregistered key — absence is not an error, so a typo is indistinguishable from a freeform child unless the closed gate is on | `lib/types.nix`'s `keyCategory` over `nativeStructuralKeys`; `"name"` ⇒ `"structural"`, declared ⇒ its category, `"zzz"` ⇒ `null`. Tests: `test-unknown-null`, `test-structural` |
-| `flatten` keys nested aspects and guard/wrapped **leaves**, but never class content and never recurses into a leaf | `lib/flatten.nix`'s `isGuardLeaf` / `isNestedAspect`; a tree with class content, a nested aspect, a guard and a wrapped fn ⇒ `[ "top" "top/g" "top/nested" "top/w" ]`. Tests: `test-class-keys-excluded`, `test-guard-function-not-recursed` |
+| `flatten` keys nested aspects and guard/wrapped **leaves**, but never class content and never recurses into a leaf | `lib/walk.nix`'s `isGuardLeaf` / `isNestedAspect` (the membership predicate `flatten` and `graphFacts` share); a tree with class content, a nested aspect, a guard and a wrapped fn ⇒ `[ "top" "top/g" "top/nested" "top/w" ]`. Tests: `test-class-keys-excluded`, `test-guard-function-not-recursed` |
+| A nested GUARD LEAF is in the registry, carries **no** `meta.aspect-chain`, and `meta.aspect-chain or [ ]` answers ROOT for it — indistinguishably from a genuine root, which yields the same `[ ]`. A framework joining the registry with that accessor gets a WRONG graph, not a re-derived one | Measured at a nested guard `top/g`: `meta` keys are `[ "file" "loc" ]` (no chain), `meta.loc` is `[ "top" "g" ]`, and `identity.key` returns `guard:<pred>:<hash>` — a content address, not the position. This is why `graphFacts.parentOf` dispatches on shape rather than reading one accessor. Test: `test-parent-is-a-dispatch-not-a-chain` |
 
 **Read, not exercised** in this run: `mkNamespaceType`, `mkAspectOption`, `cnf.collections`,
 `cnf.metaModules`, and the `facet` variant carrying a full `module` (only the bare-`option` facet was
@@ -242,7 +244,7 @@ nix eval --json .#lib --apply 'l: {
 Current output (verbatim):
 
 ```json
-{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","host","tagEq","user"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","flatten","guard","guardKey","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenHost","whenTagEq","whenUser"]}
+{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","host","tagEq","user"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenHost","whenTagEq","whenUser"]}
 ```
 
 **Checks.** Test-runner invocation (from the repo root; CI runs the same command from the
