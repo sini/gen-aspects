@@ -528,7 +528,10 @@ in
     };
   };
 
-  # ★ NO EMITTED EDGE TARGET IS OUTSIDE `nodes`. The general form of the fabrication this repairs:
+  # ★ NO LOCALLY-QUALIFIED EDGE TARGET IS OUTSIDE `nodes`. The general form of the fabrication this
+  # repairs — and the scope is the claim, not a hedge: a FOREIGN keyRef emits a target that is
+  # deliberately not a node here (asserted at `foreignKeyRef` above), because it names one in a
+  # fixpoint this library does not hold. Hence every fixture below is local-origin:
   # an inline aspect literal carries a `.key`, but that key is its MERGE position under `includes`
   # (`app/includes/0`), so taking the `? key` branch on shape alone minted an id for a node that
   # does not exist. Left standing it does not merely mislead — `gen-graph.mkGraph` unions edge
@@ -589,7 +592,11 @@ in
     };
   };
 
-  # EVERY refusal renderer this library defines has both a catchability and a message assertion.
+  # EVERY refusal renderer `lib/facts.nix` EXPORTS has both a catchability and a message assertion.
+  # The reach is the exports, and stating it wider would overstate what this roster measures: it reads
+  # `attrNames factsInternals`, so a renderer defined in this file's `let` but not exported, or one in
+  # another library file, is outside it. `lib/cnf.nix`'s `cnfRefusal` is the library's only other
+  # renderer and carries both assertion kinds in `ci/tests/cnf-refusal.nix`.
   # Stated as an assertion rather than left to review, because the gap this closes was exactly a
   # refusal that had neither: the check is that the set of renderers equals the set covered.
   flake.tests.graph-facts.test-every-refusal-renderer-is-covered = {
