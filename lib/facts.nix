@@ -7,20 +7,41 @@
 # edge relations and the node values are published as plain data, and nothing downstream re-derives
 # an edge from a string.
 #
-# ★ THE PARENT RELATION IS NOT A JOIN — IT IS A DISPATCH, AND THE DISPATCH IS DOMAIN KNOWLEDGE.
-# The position a node holds is recorded under a DIFFERENT ATTRIBUTE BY SHAPE: a plain aspect's
-# under `meta.aspect-chain` (stamped at merge by `types.nix`), a wrapped-fn's or guard record's
-# under `meta.loc`, and neither shape carries the other's. A framework joining `meta.aspect-chain`
-# with the registry key would get a WRONG graph, not merely a re-derived one — measured: a nested
-# guard leaf is in the registry, carries no `aspect-chain` at all, and `meta.aspect-chain or [ ]`
-# answers ROOT for it while its true parent is its container. Worse, that wrong answer is
-# INDISTINGUISHABLE from a right one, because a genuine root aspect yields `[ ]` through the same
-# accessor: absence and root are the same value. So the relation is published ONCE, by the library
-# that owns the node shapes.
+# ★ WHY THE RELATION MUST BE PUBLISHED HERE AND CANNOT BE RE-DERIVED BY A FRAMEWORK. A framework
+# holding only `flatten`'s output and the node values would have to join on `meta`, and that join is
+# WRONG rather than merely redundant: the position a node holds is recorded under a different
+# attribute by shape, a nested guard leaf carries no `meta.aspect-chain` at all, and
+# `meta.aspect-chain or [ ]` therefore answers ROOT for it while its true parent is its container.
+# Worse, that wrong answer is INDISTINGUISHABLE from a right one, because a genuine root yields the
+# same `[ ]`: absence and root are the same value. gen-aspects owns the node shapes, so gen-aspects
+# answers.
+#
+# ★★ AND THE ANSWER IS THE WALK, NOT A DISPATCH OVER `meta`. This library HOLDS the walk — the
+# framework's handicap is not ours — and every entry carries its own position (`walk.nix`), for
+# every shape. Deriving the parent from `meta` instead was measurably wrong on this library's own
+# public constructors, three ways in one run:
+#
+#   * `wrapFn cnf name fn` stamps `meta.loc = [ name ]` from the SITING NAME its caller passes, not
+#     from a tree position. Read as a position it is one segment long, so `top/wf` and
+#     `top/deeper/wf2` both reported parent `null` — a non-root node spelled as a ROOT, silently:
+#     the exact defect above, reproduced inside the fix for it.
+#   * `wrapGatedFn` defaults `meta ? { }`, so its record carries no `meta.loc` at all and the read
+#     THREW on the output of a shipped, tested public constructor.
+#   * A hand-set `meta.aspect-chain` (it is `mkDefault`) was honoured over the walk, yielding a node
+#     whose parent contradicts its own id.
+#
+# The control in the same run — a bare fn wrapped by the type-merge path, which does carry a real
+# `meta.loc` — answered correctly, so those were the shapes failing and not the instrument.
+#
+# ⇒ THE ID AND THE PARENT NOW COME FROM ONE SOURCE, and that is the property rather than an
+# optimisation: the id IS the origin-qualified walk key, so any second source for the parent makes
+# their DISAGREEMENT expressible, and every such disagreement is a silent wrong. It also makes
+# totality a CONSTRUCTION rather than a check — `walk.nix` descends only into values it also emits,
+# so a non-root node's parent is necessarily already a node, and no refusal is needed to say so.
 #
 # NO QUERY LIBRARY IS IMPORTED, AND THAT IS THE DESIGN RATHER THAN AN OMISSION. Every fact here is
-# plain data — an attrset, a list, a string — so ADR-0014's "only plain data crosses" holds by
-# construction, and the query libraries are needed to QUERY the graph, never to STATE it. Routing
+# plain data — an attrset, a list, a string, an int — so ADR-0014's "only plain data crosses" holds
+# by construction, and the query libraries are needed to QUERY the graph, never to STATE it. Routing
 # one through gen-aspects would additionally hand the substrate a second route to the evaluator,
 # which is the engine drift one gen-scope exists to prevent (ADR-0006, ADR-0008).
 { prelude }:
@@ -30,47 +51,35 @@ let
 
   render = prelude.concatStringsSep "/";
 
-  # Every refusal below is rendered from a NAMED binding rather than spelled at its `throw`. Nix
-  # cannot recover a thrown message through `tryEval`, so the CI asserts catchability on the real
-  # path and message CONTENT on these renderers — the same split `cnf.nix` uses for `cnfRefusal`.
-  # A message that only exists inside a `throw` is a message nothing can hold to naming its subject.
-  positionRefusal =
-    id: what:
-    "gen-aspects: aspect '${id}' records no position in the tree (`${what}` is absent), so its parent "
-    + "cannot be answered. Reading the position as `or [ ]` would report this node as a ROOT, which is "
-    + "the absence-as-root collapse the published relation exists to retire.";
-
-  danglingParentRefusal =
-    id: position: parent:
-    "gen-aspects: aspect '${id}' holds the position '${position}', whose parent '${parent}' is not a "
-    + "node in this aspect tree. Nothing downstream can name the aspect at fault once this edge leaves "
-    + "the library, so it is refused here. Either the parent is missing from the tree, or "
-    + "`meta.aspect-chain` was set by hand to a path the tree does not contain.";
-
-  unresolvableIncludeRefusal =
-    id: i:
-    "gen-aspects: aspect '${id}' declares an include at position ${toString i} that references no node "
-    + "— an inline guard record or a deferred closure, not an aspect and not a keyRef. The walk never "
-    + "descends into `includes`, so no node exists for the edge to reach. Give the include an aspect "
-    + "(by value or as a `keyRef`), or declare the inline content at a position of its own, where it "
-    + "becomes a node.";
+  # The refusal renders from a NAMED binding rather than being spelled at its `throw`. Nix cannot
+  # recover a thrown message through `tryEval`, so the CI asserts catchability on the real path and
+  # message CONTENT on this renderer — the same split `cnf.nix` uses for `cnfRefusal`. A message
+  # that exists only inside a `throw` is one nothing can hold to naming its subject.
+  danglingIncludeRefusal =
+    id: i: target:
+    "gen-aspects: aspect '${id}' declares at include position ${toString i} a keyRef to '${target}', "
+    + "which carries THIS tree's own origin and so names a local node — but no such node exists. "
+    + "Nothing downstream can name the aspect at fault once this edge leaves the library, so it is "
+    + "refused here rather than passed on: `gen-graph.mkGraph` unions edge targets into its node "
+    + "set, which would admit the typo AS a node and widen the graph past the membership predicate. "
+    + "Correct the path, or give the keyRef the origin the target actually belongs to.";
 in
 {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
-  # reads the refusal, never renders it.
-  inherit positionRefusal danglingParentRefusal unresolvableIncludeRefusal;
+  # reads a refusal, never renders one.
+  inherit danglingIncludeRefusal;
 
-  # `graphFacts cnf aspects` → { nodes; parentOf; includesOf; nodeData; }
+  # `graphFacts cnf aspects` → { nodes; parentOf; includesOf; unresolvedIncludesOf; nodeData; }
   #
-  # `nodes` is the membership predicate's answer as a list of ids; the other three are attrsets
-  # keyed by that same id, so `attrNames` over any of them IS the node set (the property O-row R3
-  # names TOTALITY, asserted in `ci/tests/graph-facts.nix`).
+  # `nodes` is the membership predicate's answer as a list of ids; the rest are attrsets keyed by
+  # that same id, so `attrNames` over any of them IS the node set — totality, asserted in
+  # `ci/tests/graph-facts.nix`.
   graphFacts = checkedEntry (
     cnf: aspects:
     let
-      # R1 — THE NODE ID IS THE ORIGIN-QUALIFIED WALK KEY. The origin qualifier is just another
-      # identity key (ADR-0016), which is why `aspectId` already mints over `[ "origin" "key" ]`;
-      # the container-relative half is the walk position the registry already keys on.
+      # THE NODE ID IS THE ORIGIN-QUALIFIED WALK KEY. The origin qualifier is just another identity
+      # key (ADR-0016), which is why `aspectId` already mints over `[ "origin" "key" ]`; the
+      # container-relative half is the walk position the registry already keys on.
       #
       # ★ THE ID IS DELIBERATELY NOT `identity.key`, AND THE DIFFERENCE IS NOT COSMETIC. That
       # function's `__guard` arm returns `guardKey`, which prefixes a located guard
@@ -102,82 +111,80 @@ in
         }) entries
       );
 
-      # R2 — the position a node HOLDS, dispatched on shape exactly as `identity.key` dispatches,
-      # but resolving to the held position rather than to a minted key. Absence is never spelled as
-      # a root: a shape whose position lives at an attribute that is missing REFUSES BY NAME, since
-      # answering `[ ]` there is precisely the collapse this relation exists to retire.
-      positionOf =
-        id: v:
-        if isGuardLeaf v then
-          if (v.meta or { }) ? loc then v.meta.loc else throw (positionRefusal id "meta.loc")
-        else if (v.meta or { }) ? aspect-chain then
-          v.meta.aspect-chain ++ [ v.name ]
-        else
-          throw (positionRefusal id "meta.aspect-chain");
-
-      # R3 — `parentOf` is TOTAL and REFUSES; it never defaults. Every node has an answer: an id, or
-      # an explicit `null` meaning root. No node is silently absent from the relation.
-      #
-      # A parent naming a string that is not a node is a NAMED REFUSAL RAISED HERE, and THE GROUND
-      # IS LOCALITY. Each alternative defers the objection to a site that cannot name the offending
-      # aspect: passing the target through means the first objection arrives at an ordering call
-      # holding a request and no idea whose chain was wrong; dropping the edge reports a node with
-      # no parent while its own position says otherwise, which is silence about a fact the substrate
-      # holds; and admitting the target as a node widens the node set past the membership predicate.
+      # THE PARENT EDGE, taken from the walk position the entry already carries. `null` means ROOT
+      # and nothing else: a one-segment walk path IS a root of this container, so the value cannot
+      # stand in for an absence the way a `meta` read could. Totality holds by construction, which
+      # is why no refusal guards this — `test-parent-closure-is-a-construction` pins the walk
+      # property the construction rests on instead.
       parentOf = builtins.listToAttrs (
-        map (
-          e:
-          let
-            id = idOf e.path;
-            position = positionOf id e.value;
-          in
-          {
-            name = id;
-            value =
-              if builtins.length position <= 1 then
-                null
-              else
-                let
-                  parent = idOf (prelude.init position);
-                in
-                if nodeSet ? ${parent} then parent else throw (danglingParentRefusal id (render position) parent);
-          }
-        ) entries
+        map (e: {
+          name = idOf e.path;
+          value = if builtins.length e.path <= 1 then null else idOf (prelude.init e.path);
+        }) entries
       );
 
-      # `includesOf` — the declared include edges, each element resolved to a node id.
+      # ── the INCLUDE edges ──────────────────────────────────────────────────────────────────────
       #
-      # THE ELEMENT DISPATCH IS ON WHAT THE ELEMENT REFERENCES, and only two shapes reference a node.
-      # A `keyRef` carries its own origin and path, so it qualifies with the REFERENT's origin rather
-      # than this container's — that is what makes it a cross-source reference. A by-value aspect is a
-      # submodule instance and its `.key` is the container-relative walk key, which qualifies here.
+      # ★ THE DISPATCH IS ON WHETHER THE ELEMENT NAMES A NODE, NOT ON THE ELEMENT'S SHAPE. Reading
+      # the shape is what produced a refusal on four shapes this library ships and tests — a raw
+      # closure, a `{ __fn; … }` battery record and an `__isPolicy` record under
+      # `cnf.deferIncludeResolution`, plus a bare closure wrapped by the DEFAULT path — and a
+      # fabricated id for a fifth, the inline `{ … }` aspect literal, whose `.key` is its MERGE
+      # position under `includes` rather than a walk position. An `includes` list holds two
+      # different kinds of thing and only one of them is an edge:
       #
-      # ★ AN INLINE GUARD RECORD OR DEFERRED CLOSURE AT THE INCLUDE POSITION REFERENCES NOTHING, and
-      # is refused by name rather than dropped. Measured: such an element's `meta.loc` is its MERGE
-      # position (`app/includes/0`), not a walk position, and the walk never descends into `includes`
-      # — so there is no node for the edge to land on, and minting one would widen the node set past
-      # the membership predicate. Dropping it silently would lose a declaration the substrate holds,
-      # which is the same defect on the includes side that R3 refuses on the parent side.
-      includesOf = builtins.listToAttrs (
-        map (
-          e:
+      #   REFERENCE — a `keyRef`, or a by-value aspect whose key IS a node. It has a target.
+      #   INLINE    — content written AT the include position: a wrapped fn, a guard record, a
+      #               deferred closure or policy record, an aspect literal. The walk never descends
+      #               into `includes`, so no node exists for an edge to reach. This is not a broken
+      #               reference; it is not a reference at all.
+      #
+      # An inline element is neither refused nor dropped: its POSITION is published in
+      # `unresolvedIncludesOf`, so a consumer needing the element indexes back into
+      # `nodeData.<id>.includes` and nothing about the declaration goes unsaid. Only a keyRef
+      # carrying THIS tree's origin is unambiguously a broken local reference, and only that
+      # refuses.
+      resolve =
+        id: i: elem:
+        if builtins.isAttrs elem && (elem.__keyRef or false) then
+          # A keyRef is a REFERENCE by construction, so a bad one is an error and not an ambiguity.
+          # It is checkable exactly when its origin is ours; a genuinely foreign origin names a node
+          # in a fixpoint this library does not hold and cannot be checked here at all.
           let
-            id = idOf e.path;
-            declared = if isGuardLeaf e.value then [ ] else e.value.includes;
+            target = render (elem.origin ++ elem.path);
           in
-          {
-            name = id;
-            value = prelude.imap0 (
-              i: elem:
-              if builtins.isAttrs elem && (elem.__keyRef or false) then
-                render (elem.origin ++ elem.path)
-              else if builtins.isAttrs elem && elem ? key then
-                qualify elem.key
-              else
-                throw (unresolvableIncludeRefusal id i)
-            ) declared;
-          }
-        ) entries
+          if elem.origin != origin || nodeSet ? ${target} then
+            target
+          else
+            throw (danglingIncludeRefusal id i target)
+        else if builtins.isAttrs elem && elem ? key && nodeSet ? ${qualify elem.key} then
+          qualify elem.key
+        else
+          null;
+
+      indexed =
+        e:
+        prelude.imap0 (i: elem: { inherit i elem; }) (
+          if isGuardLeaf e.value then [ ] else e.value.includes
+        );
+      resolved = e: map (x: x // { target = resolve (idOf e.path) x.i x.elem; }) (indexed e);
+
+      includesOf = builtins.listToAttrs (
+        map (e: {
+          name = idOf e.path;
+          value = map (x: x.target) (builtins.filter (x: x.target != null) (resolved e));
+        }) entries
+      );
+
+      # The declared include positions that name no node, PUBLISHED rather than dropped: an aspect's
+      # inline include content is a fact the substrate holds, and a relation that simply omitted it
+      # would be the "something vanishes and nothing says so" shape this whole design exists to
+      # retire. Positions rather than elements, so reading the relation forces no element body.
+      unresolvedIncludesOf = builtins.listToAttrs (
+        map (e: {
+          name = idOf e.path;
+          value = map (x: x.i) (builtins.filter (x: x.target == null) (resolved e));
+        }) entries
       );
     in
     {
@@ -185,6 +192,7 @@ in
         nodes
         parentOf
         includesOf
+        unresolvedIncludesOf
         nodeData
         ;
     }

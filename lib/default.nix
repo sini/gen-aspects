@@ -73,12 +73,12 @@ in
   # New API
   inherit (schemaModule) mkAspectSchema;
   inherit flatten;
-  # `graphFacts cnf aspects` → `{ nodes; parentOf; includesOf; nodeData; }` — THE aspect graph's
-  # facts as plain data. The node set, the two edge relations and the node values, published so a
-  # framework assembles the graph from them instead of parsing `flatten`'s key for parenthood
-  # (ADR-0012: the flat registry is a projection, never a source). The parent relation is a DISPATCH
-  # on node shape, not a join — see lib/facts.nix for the measurement that makes it a correctness
-  # requirement rather than anti-duplication hygiene.
+  # `graphFacts cnf aspects` → `{ nodes; parentOf; includesOf; unresolvedIncludesOf; nodeData; }` —
+  # THE aspect graph's facts as plain data. The node set, the edge relations and the node values,
+  # published so a framework assembles the graph from them instead of parsing `flatten`'s key for
+  # parenthood (ADR-0012: the flat registry is a projection, never a source). The id and the parent
+  # are BOTH the node's walk position, so a disagreement between them is inexpressible — see
+  # lib/facts.nix for the measurement that makes one source a correctness requirement.
   inherit (factsModule) graphFacts;
   inherit (guardModule)
     mkGuardVocab
