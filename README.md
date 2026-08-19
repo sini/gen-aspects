@@ -236,16 +236,19 @@ Detection is structural rather than relying on a hardcoded key list:
 
 ```nix
 facts = aspects.graphFacts cnf eval.config.aspects;
-# => { nodes      = [ "networking" "networking/firewall" … ];
-#      parentOf   = { "networking" = null; "networking/firewall" = "networking"; … };
-#      includesOf = { "networking" = [ ]; … };
-#      nodeData   = { "networking" = <the aspect value, unchanged>; … }; }
+# => { nodes                = [ "networking" "networking/firewall" … ];
+#      parentOf             = { "networking" = null; "networking/firewall" = "networking"; … };
+#      includesOf           = { "networking" = [ ]; … };
+#      unresolvedIncludesOf = { "networking" = [ ]; … };
+#      nodeData             = { "networking" = <the aspect value, unchanged>; … }; }
 ```
 
 - **A node id is `pathKey(cnf.providerPrefix ++ walkPath)`** — the walk position the registry already keys on, qualified by origin. It is deliberately *not* `identity.key`: that function content-addresses a guard record, which would move every guard node's name off its position.
-- **`parentOf` is a DISPATCH ON NODE SHAPE, not a join.** A plain aspect holds its position under `meta.aspect-chain`; a wrapped fn or guard record holds it under `meta.loc`, and neither shape carries the other's. The dispatch is why the relation is published once here rather than re-derived per framework: a framework that re-derives it with a single accessor gets a wrong graph.
-- **`parentOf` is total and refuses.** Every node has an answer — an id, or an explicit `null` meaning root — and a position naming a container that is not a node is a named refusal rather than a dropped edge or a bad target passed downstream. The ground is locality: once the edge leaves the library nothing can name the aspect at fault.
-- **`includesOf` resolves each declared include to a node id**, taking a `keyRef`'s own origin for a cross-source reference. An inline guard record or deferred closure at the include position references no node and is refused by name.
+- **`parentOf` is the node's own WALK POSITION, and the id and the parent come from one source.** A framework holding only the registry and the values would have to join on `meta`, and that join is wrong rather than merely redundant — a nested guard leaf carries no `meta.aspect-chain` at all, so `meta.aspect-chain or [ ]` answers root for it, indistinguishably from a genuine root. That is why the relation is published here. It is *not* why it should be computed from `meta` here: this library holds the walk, and reading a position out of `meta` instead is wrong on its own public constructors — `wrapFn` stamps `meta.loc` from the siting name its caller passes, and `wrapGatedFn` defaults `meta` to `{ }`.
+- **`parentOf` is total, and `null` means root and only root.** Every node has an answer. Totality holds *by construction* rather than by a check: the walk descends only into values it also emits, so a non-root node's parent is necessarily already a node — there is no dangling case for a refusal to guard.
+- **`includesOf` resolves the include elements that REFERENCE a node**, taking a `keyRef`'s own origin for a cross-source reference. Every target it emits is in `nodes`.
+- **`unresolvedIncludesOf` names the declared positions that reference no node.** An `includes` list holds two kinds of thing, and only one is an edge: a *reference* (a `keyRef`, or a by-value aspect whose key is a node), and *inline content* written at the include position (a wrapped fn, a guard record, a deferred closure or policy record, an aspect literal). The walk never descends into `includes`, so inline content has no node for an edge to reach. Its position is published rather than dropped — index back into `nodeData.<id>.includes` for the element itself.
+- **One refusal, and it fires only where the input is unambiguously broken:** a `keyRef` carrying *this* tree's own origin, and so naming a local node, when no such node exists. A genuinely foreign origin names a node in a fixpoint this library does not hold and is not checkable here.
 
 A framework builds the graph from these with `gen-graph.labeledFrom` / `fromRegistry` and expresses its named views over `gen-select`'s algebra; the registry above is one such view.
 
@@ -328,7 +331,7 @@ aspectsType {
 
 - **`mkAspectSchema cnf`** — bridges aspect types to gen-schema kind-level infrastructure. Returns `schemaOption`, `mkAspectOption`, `mkAspectModule`, `mkNamespaceType`, plus re-exports (`aspectType`, `identity`, `canTake`, `mkIsModuleFn`). See [Schema Integration](#schema-integration).
 - **`flatten aspects`** — walks the recursive aspect tree into a flat attrset keyed by `path` identity (`"parent/child"`), structurally detecting nested aspects vs class content. The key is a rendering of a parent edge, never the edge; read `graphFacts` for parenthood. See [Flat Registry](#flat-registry).
-- **`graphFacts cnf aspects`** — the aspect graph's facts as plain data: `{ nodes; parentOf; includesOf; nodeData; }`, keyed by origin-qualified node id. `parentOf` dispatches on node shape and is total; a dangling parent and an unresolvable include each refuse by name. See [Published facts](#published-facts).
+- **`graphFacts cnf aspects`** — the aspect graph's facts as plain data: `{ nodes; parentOf; includesOf; unresolvedIncludesOf; nodeData; }`, keyed by origin-qualified node id. `parentOf` is the walk position and is total by construction; include elements that reference no node are published as positions rather than refused. See [Published facts](#published-facts).
 
 ## Demo
 
