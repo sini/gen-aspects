@@ -1,47 +1,22 @@
-# Flat registry: walks the recursive aspect tree and produces a flat attrset
-# keyed by path identity. Enables gen-graph/gen-select queries over aspects.
+# Flat registry: renders the aspect-tree walk as a flat attrset keyed by path identity.
 #
-# Detection is structural — no hardcoded key lists:
-# - Nested aspects have `name` (from aspectSubmodule), class content and primitives don't
-# - Guard leaves — wrapped guard functions (__isWrappedFn) AND defunctionalized guard
-#   records (__guard, guard.nix) — are included as leaf entries but never recursed into
+# THE REGISTRY IS A PROJECTION, NEVER A SOURCE (ADR-0012). Parenthood is NOT recoverable from
+# this attrset: `"a/b/c"` is a RENDERING of a parent edge, not the edge, and a nested guard leaf
+# sits in the registry carrying no `meta.aspect-chain` at all — so a consumer that splits the key
+# and a consumer that reads `meta.aspect-chain or [ ]` disagree, and the second answers ROOT for a
+# node whose true parent is `top`. `facts.nix` publishes the edge relations the substrate holds;
+# read `graphFacts`, never this key.
 #
-# Parent relationships are implicit in the path key: "a/b/c" → parent is "a/b".
-#
-# Collects entries as a list (O(n) via concatMap) then single listToAttrs at the
-# end, avoiding the O(n²) cost of accumulating with foldl'+//.
-# Dep-free (builtins only) → a bare value (gen convention: no `{ }:` when argument-less).
+# The membership predicate and the descent live in `walk.nix` — the same walk `facts.nix` reads —
+# so this file states only the rendering. Dep-free (builtins only) → a bare value (gen convention:
+# no `{ }:` when argument-less).
 let
-  # A guard leaf: a wrapped guard function (__isWrappedFn) OR a defunctionalized guard
-  # record (__guard, guard.nix). Both are included as leaf entries, never recursed into.
-  isGuardLeaf = v: builtins.isAttrs v && ((v.__isWrappedFn or false) || (v.__guard or false));
-  isNestedAspect = v: builtins.isAttrs v && v ? name && !(isGuardLeaf v);
-
-  collectEntries =
-    prefix: aspect:
-    builtins.concatMap (
-      k:
-      let
-        v = aspect.${k};
-        pathKey = if prefix == "" then k else "${prefix}/${k}";
-      in
-      if isNestedAspect v then
-        [
-          {
-            name = pathKey;
-            value = v;
-          }
-        ]
-        ++ collectEntries pathKey v
-      else if isGuardLeaf v then
-        [
-          {
-            name = pathKey;
-            value = v;
-          }
-        ]
-      else
-        [ ]
-    ) (builtins.attrNames aspect);
+  inherit (import ./walk.nix) walk;
 in
-aspects: builtins.listToAttrs (collectEntries "" aspects)
+aspects:
+builtins.listToAttrs (
+  map (e: {
+    name = builtins.concatStringsSep "/" e.path;
+    inherit (e) value;
+  }) (walk aspects)
+)
