@@ -92,6 +92,9 @@
         # thrown message through `tryEval`, so message content is asserted on the renderer the throw
         # path calls, while catchability is asserted on the real path.
         cnfInternals = import ../lib/cnf.nix;
+        # The published-facts module, for the same split over its three refusals. Its renderers are
+        # deliberately absent from `lib/default.nix` — a consumer reads a refusal, never renders one.
+        factsInternals = import ../lib/facts.nix { prelude = gen-prelude.lib; };
       };
     };
 }
