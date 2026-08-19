@@ -11,12 +11,13 @@
 # reproduced here: proving a consumer-facing fix inside the library's own harness is the divergence
 # den-hoag-gxe4 was closed on. It is asserted at the consumer, in gen-flake's suite.
 {
+  lib,
   mkSchemaEval,
   aspects,
   ...
 }:
 let
-  inherit (aspects) flatten;
+  inherit (aspects) flatten graphFacts;
 
   # TWO classes declared, content on ONE. `metrics` is declared and never set.
   eval = mkSchemaEval {
@@ -36,6 +37,9 @@ let
   };
   entry = eval.config.aspects.web;
   flat = flatten eval.config.aspects;
+  # The same tree under a NON-EMPTY ORIGIN, so the projection assertion below is measured against a
+  # real qualifier rather than an empty one.
+  originFacts = graphFacts { providerPrefix = [ "acme" ]; } eval.config.aspects;
 
   # Laziness: the class body is a FUNCTION module whose result throws. Inspecting the deferredModule
   # must never CALL it. The positive control lives in the same fixture — `lazyBodyReachable` below
@@ -134,5 +138,28 @@ in
   flake.tests.class-declared-content.test-multiple-definitions-still-collect = {
     expr = builtins.length multiEval.config.aspects.web.nixos.imports;
     expected = 2;
+  };
+
+  # THE REGISTRY IS A PROJECTION OF THE PUBLISHED FACTS, identical modulo the origin qualifier —
+  # asserted here because this fixture is the one carrying a DECLARED-BUT-UNSET class, the value
+  # shape a projection is most likely to normalise away.
+  flake.tests.class-declared-content.test-registry-projects-from-published-facts = {
+    expr = {
+      strippedKeysMatch =
+        lib.sort (a: b: a < b) (map (lib.removePrefix "acme/") originFacts.nodes)
+        == lib.sort (a: b: a < b) (builtins.attrNames flat);
+      differBeforeStripping =
+        lib.sort (a: b: a < b) originFacts.nodes != lib.sort (a: b: a < b) (builtins.attrNames flat);
+      # The unset class still reads `null` through the published node value, not `{ }` and not a
+      # missing attribute — the whole point of the representation this suite pins.
+      unsetClassIsNullThroughFacts = originFacts.nodeData."acme/web".metrics == null;
+      setClassSurvives = builtins.isAttrs originFacts.nodeData."acme/web".nixos;
+    };
+    expected = {
+      strippedKeysMatch = true;
+      differBeforeStripping = true;
+      unsetClassIsNullThroughFacts = true;
+      setClassSurvives = true;
+    };
   };
 }

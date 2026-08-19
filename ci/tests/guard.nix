@@ -345,8 +345,18 @@ in
     {
       # single-def would give `true`; multi-def folds into the submodule -> a mkMerge attrset,
       # so the guard-record shape is lost (guardField == true is FALSE).
-      expr = guardField == true;
-      expected = false;
+      expr = {
+        guardShapeIsLost = guardField == true;
+        # WITNESS, in the same record: `dup` IS in the fixture. Held apart, `… .__guard or false`
+        # swallows the absence — drop `dup` entirely and the negative goes green with no subject
+        # left anywhere in the tree. `or` is not the hazard by itself; `or` together with a falsy
+        # expectation is what turns a missing subject into a pass.
+        dupIsInTheTree = eval.config.aspects ? dup;
+      };
+      expected = {
+        guardShapeIsLost = false;
+        dupIsInTheTree = true;
+      };
     };
 
   # a defunctionalized guard record flattens as a LEAF (like __isWrappedFn), never recursed
@@ -368,6 +378,47 @@ in
         hasDb = true;
         dbIsGuard = true;
         noChildren = true;
+      };
+    };
+
+  # THE REGISTRY IS A PROJECTION OF THE PUBLISHED FACTS, identical modulo the origin qualifier —
+  # asserted over a GUARD-RECORD fixture, the node shape the projection is least able to describe
+  # from a key alone. A guard leaf carries no `meta.aspect-chain`, so the published parent for it is
+  # a dispatch result rather than a chain read, and it is asserted here alongside the projection.
+  flake.tests.guard.test-registry-projects-from-published-facts =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.top.db = gv.vocab.whenHost "cortex" { classOne.setting = "x"; };
+            config.aspects.top.plain.classOne.setting = "y";
+          }
+        ];
+      };
+      flat = aspects.flatten eval.config.aspects;
+      facts = aspects.graphFacts { providerPrefix = [ "acme" ]; } eval.config.aspects;
+      sorted = lib.sort (a: b: a < b);
+    in
+    {
+      expr = {
+        strippedKeysMatch =
+          sorted (map (lib.removePrefix "acme/") facts.nodes) == sorted (builtins.attrNames flat);
+        differBeforeStripping = sorted facts.nodes != sorted (builtins.attrNames flat);
+        # The guard leaf IS a node, and its parent is the container it sits in — not the root the
+        # bare `meta.aspect-chain or [ ]` reader would report for it.
+        guardLeafIsANode = builtins.elem "acme/top/db" facts.nodes;
+        guardLeafParent = facts.parentOf."acme/top/db";
+        # CONTROL: the plain sibling in the same fixture answers the same way, so the assertion is
+        # not simply reporting whatever the walk position happened to be.
+        plainSiblingParent = facts.parentOf."acme/top/plain";
+      };
+      expected = {
+        strippedKeysMatch = true;
+        differBeforeStripping = true;
+        guardLeafIsANode = true;
+        guardLeafParent = "acme/top";
+        plainSiblingParent = "acme/top";
       };
     };
 }

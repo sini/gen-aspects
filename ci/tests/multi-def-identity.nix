@@ -22,7 +22,7 @@
   ...
 }:
 let
-  inherit (aspects) flatten;
+  inherit (aspects) flatten graphFacts;
 
   # Two "files" each contribute a child of apps.dev.security -> multi-def collision
   # at `dev` and `security` (mirrors den's gpg.nix + ssh.nix shape).
@@ -40,6 +40,10 @@ let
 
   flat = flatten eval.config.aspects;
   keys = lib.sort (a: b: a < b) (builtins.attrNames flat);
+
+  # The same multi-def tree under a NON-EMPTY ORIGIN, so the projection below is measured against a
+  # real qualifier rather than an empty one.
+  originFacts = graphFacts { providerPrefix = [ "acme" ]; } eval.config.aspects;
 in
 {
   # Multi-def collision collapses to ONE structural identity per attribute path —
@@ -71,7 +75,33 @@ in
 
   # No anonymous identities anywhere in the registry.
   flake.tests.multi-def-identity.test-no-anonymous-identities = {
-    expr = builtins.filter (k: lib.hasInfix "<anon>" k || lib.hasInfix ":" k) keys;
-    expected = [ ];
+    expr = {
+      anonymous = builtins.filter (k: lib.hasInfix "<anon>" k || lib.hasInfix ":" k) keys;
+      # WITNESS, in the same record: the registry the filter ran over is the multi-def tree. Held
+      # apart, the empty-list expectation is satisfied by dropping the `apps` tree entirely, and the
+      # assertion reports success over nothing at all.
+      registrySize = builtins.length keys;
+    };
+    expected = {
+      anonymous = [ ];
+      registrySize = 5;
+    };
+  };
+
+  # THE REGISTRY IS A PROJECTION OF THE PUBLISHED FACTS, identical modulo the origin qualifier —
+  # asserted over the multi-def fixture, where the collapse this suite pins is what makes the node
+  # set well-defined in the first place.
+  flake.tests.multi-def-identity.test-registry-projects-from-published-facts = {
+    expr = {
+      strippedKeysMatch =
+        lib.sort (a: b: a < b) (map (lib.removePrefix "acme/") originFacts.nodes) == keys;
+      differBeforeStripping = lib.sort (a: b: a < b) originFacts.nodes != keys;
+      valuesUntouched = builtins.all (k: originFacts.nodeData."acme/${k}" == flat.${k}) keys;
+    };
+    expected = {
+      strippedKeysMatch = true;
+      differBeforeStripping = true;
+      valuesUntouched = true;
+    };
   };
 }
