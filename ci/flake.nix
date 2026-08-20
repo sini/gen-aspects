@@ -93,6 +93,12 @@
           genSchema
           genIdentity
           ;
+        # `prelude` reaches the suite because `tests/entry.nix` applies the STANDALONE root entry
+        # with explicit arguments — which is what keeps that cell pure, since supplying every
+        # dependency formal means the shim's fetching defaults are never forced. It is the SAME
+        # instance `aspects` above is built from, so the two sides of that comparison differ in
+        # entry point and in nothing else.
+        prelude = gen-prelude.lib;
         # The `cnf` module itself, so the suite can assert what a refusal SAYS. Nix cannot recover a
         # thrown message through `tryEval`, so message content is asserted on the renderer the throw
         # path calls, while catchability is asserted on the real path.
