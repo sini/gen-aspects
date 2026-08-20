@@ -12,6 +12,7 @@
   mkSchemaEval,
   genMerge,
   genSchema,
+  genIdentity,
   ...
 }:
 let
@@ -106,10 +107,16 @@ let
   ppProv = (mkEvalPP [ "prov" ] [ { config.aspects.foo.classOne = { }; } ]).config.aspects.foo;
 in
 {
-  # aspectId IS gen-schema's one canonical hashIdentity formula (no private re-hash inside gen-aspects).
+  # aspectId IS the ecosystem's one canonical hashIdentity formula — no private re-hash inside
+  # gen-aspects. The formula now lives in gen-identity, a dependency-free leaf, rather than being
+  # reached through gen-schema's re-export; the assertion is unchanged and only its subject's
+  # address moved. ★ Reading it against gen-schema here would compare TWO PINS rather than one
+  # formula — gen-aspects' ci pins gen-schema independently, so that comparison silently becomes
+  # "do these two pins agree" the moment either moves, which is the failure this cell exists to
+  # exclude.
   flake.tests.aspect-id-hash.test-aspectid-is-canonical-formula = {
     expr =
-      aspectId [ ] plainFoo == genSchema.hashIdentity "aspect" [ "origin" "key" ] (
+      aspectId [ ] plainFoo == genIdentity.hashIdentity "aspect" [ "origin" "key" ] (
         k:
         {
           origin = "";

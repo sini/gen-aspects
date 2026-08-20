@@ -9,13 +9,20 @@
   prelude,
   merge,
   schema,
+  identity,
 }:
 let
   types = import ./types.nix {
     inherit prelude merge;
-    inherit (schema) hashIdentity;
+    inherit (identity) hashIdentity;
   };
-  identity = import ./identity.nix { inherit prelude; };
+  # ★ RENAMED FROM `identity` TO AVOID SHADOWING THE INJECTED MINT. gen-identity arrives as
+  # `identity` on the ecosystem's convention — the library name minus `gen-`, as prelude, merge
+  # and schema all do — and a file-local binding of the same name silently captured it for the
+  # whole `let` body. The parameter is interface and the let-binding is private, so the private
+  # one yields. This module is gen-aspects' own aspect-KEY derivation (paths, keys, guard keys),
+  # which is a different concern from the mint and now reads as one.
+  aspectIdentity = import ./identity.nix { inherit prelude; };
   cnfModule = import ./cnf.nix;
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value
@@ -30,7 +37,7 @@ let
       mkIsModuleFn
       keyCategory
       ;
-    inherit (identity)
+    inherit (aspectIdentity)
       aspectPath
       pathKey
       key
@@ -62,7 +69,7 @@ in
   # `structuralKeys` (the six native structural option names as ONE binding) + `keyCategory cnf key` — the
   # single aspect-key classification surface a consumer reads a key's category from. See lib/types.nix.
   inherit (types) structuralKeys keyCategory;
-  inherit (identity)
+  inherit (aspectIdentity)
     aspectPath
     pathKey
     key

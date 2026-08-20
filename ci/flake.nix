@@ -4,6 +4,7 @@
     gen-prelude.url = "github:sini/gen-prelude";
     gen-merge.url = "github:sini/gen-merge";
     gen-schema.url = "github:sini/gen-schema";
+    gen-identity.url = "github:sini/gen-identity";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
     # test modules use for assertions. The library itself (../lib) is nixpkgs-lib-free
     # (ci/tests/purity.nix enforces this); it is driven via gen-merge's evalModuleTree, not evalModules.
@@ -16,16 +17,19 @@
       gen-prelude,
       gen-merge,
       gen-schema,
+      gen-identity,
       nixpkgs,
       ...
     }:
     let
       genMerge = gen-merge.lib;
       genSchema = gen-schema.lib;
+      genIdentity = gen-identity.lib;
       aspects = import ../lib {
         prelude = gen-prelude.lib;
         merge = genMerge;
         schema = gen-schema.lib;
+        identity = gen-identity.lib;
       };
       # The class fixture, written in the library's own keySemantics shape. The harness used to take a
       # `classes` knob and lower it, which is how a spelling the published API had RETIRED stayed
@@ -87,6 +91,7 @@
           mkSchemaEval
           genMerge
           genSchema
+          genIdentity
           ;
         # The `cnf` module itself, so the suite can assert what a refusal SAYS. Nix cannot recover a
         # thrown message through `tryEval`, so message content is asserted on the renderer the throw
