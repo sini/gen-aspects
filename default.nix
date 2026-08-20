@@ -7,6 +7,17 @@
   fetch ? name: builtins.fetchTree (lock.nodes.${lock.nodes.root.inputs.${name}}.locked),
   prelude ? import "${fetch "gen-prelude"}/lib",
   merge ? import "${fetch "gen-merge"}" { inherit prelude; },
+  # The one minting authority: a dependency-free leaf, so its lib is a bare value and this
+  # takes no argument. Derived from THIS shim's lock so the whole construction mints through one
+  # encoding — two instances would be two content-address formulas for one node.
+  identity ? import "${fetch "gen-identity"}/lib",
   schema ? import "${fetch "gen-schema"}" { inherit prelude merge; },
 }:
-import ./lib { inherit prelude merge schema; }
+import ./lib {
+  inherit
+    prelude
+    merge
+    schema
+    identity
+    ;
+}
