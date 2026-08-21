@@ -24,7 +24,7 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 | Demand-driven attribute evaluation over scope graphs | `gen-scope` — "gen-scope: demand-driven attribute grammar evaluator over algebraic scope graphs" |
 | Class partition / contract / apply / gate machinery. `keySemantics.<k>.category = "class"` only declares the key as a `deferredModule` bucket; nothing here interprets class content | `gen-class` — "gen-class — pure-Nix class-share mechanism (partition / contract / apply / gate) for the pure-gen module system" |
 | Layered settings resolution and precedence | `gen-settings` — "gen-settings — stratified settings resolution as a pure layered fold, with refs-as-data, structured provenance, and the graduated injection construct" |
-| Channels as dataflow. A `channel`-category key here is a raw passthrough option, not a pipe | `gen-pipe` — "gen-pipe — scoped channels + dataflow algebra (map/filter/fold/scan/route/join/tee) with B5 determinism, provenance, dedup, and class-aware contributions" |
+| Channels as dataflow. A `channel`-category key here is a raw passthrough option, not a pipe | **`gen-view`, which inherited it — `gen-pipe` RETIRED as a library rather than moving as one.** ADR-0010 §3 retires gen-pipe into the movement vocabulary; the channel and dataflow constructs are gen-view's (the fourth destination §3 gained on 2026-08-20), and `sel` retires into `gen-select`. The gen-pipe repository orphans as reference under ADR-0031 §3's F3 pattern, off the `gen/lib/mkGenLibs.nix` roster and not a `gen` hub input. The homonym warning is what survives and why this row is kept: a `channel`-category key here is still a raw passthrough option and still not a dataflow channel |
 
 ## Exports
 
