@@ -1,10 +1,11 @@
-# Warm-override memoization TRACE showcase (gen-flake v1).
+# Warm-override memoization TRACE showcase (the successor compose, `gen.lib.compose`).
 #
 # `composed.override edits` re-composes the tree; when `edits` carries ONLY `modules` (a modules-only
-# append) gen-flake fires gen-merge's WARM path — it SPLICES the previous eval's declared leaves the
+# append) the compose fires gen-merge's WARM path — it SPLICES the previous eval's declared leaves the
 # edit provably cannot touch and re-merges only the rest, byte-identically to a cold re-compose (the
-# standing cold-parity oracle pins it). The override result carries a `trace` = the engine's
-# memoization decision (gen-flake README §"Warm override + trace"; gen-merge README §"Warm re-eval").
+# standing cold-parity oracle pins it). The admission is gen-memo's (`warmAdmits`); the override
+# result carries a `trace` = the engine's memoization decision, narrowed by gen-memo's `warmTrace`
+# (gen-merge README §"Warm re-eval").
 #
 # Here we override the composed tree by appending ONE host-level settings layer (a modules-only edit ⇒
 # warm) and project the trace: the FLEET inventory (gen-modules/entities.nix, marked `pureModule`) is
@@ -12,7 +13,7 @@
 # edit lands on re-merges. This is "what the engine reused vs recomputed when we overrode the fleet's
 # settings", delivered as data.
 #
-# READER side (gen-flake value-injection): consumes `genComposed` (the compose result, carrying its
+# READER side (value-injection): consumes `genComposed` (the compose result, carrying its
 # `.override` handle) threaded via _module.args in flake.nix.
 {
   genComposed,
@@ -30,10 +31,22 @@ let
   };
 
   trace = (genComposed.override { modules = [ settingsEdit ]; }).trace;
+
+  # RED CONTROL — the SAME edit carrying a second key (`specialArgs`): the admission predicate
+  # (gen-memo's `warmAdmits`) refuses warm, so `mode` flips to "cold" and the fleet leaves are NOT
+  # spliced (`reused` is absent on a cold trace). The two control outputs below pin that the four
+  # invariants measure the warm path rather than a constant — a control that does not flip is a dead
+  # instrument.
+  coldTrace =
+    (genComposed.override {
+      modules = [ settingsEdit ];
+      specialArgs = { };
+    }).trace;
 in
 {
   config.flake = {
-    # The memoization decision, projected verbatim (gen-flake threads the engine's `warmDecision`).
+    # The memoization decision, projected verbatim (the compose splices the engine's `warmDecision`,
+    # narrowed by gen-memo's `warmTrace`).
     # Real shape here: mode="warm"; reused=["fleet.environments" "fleet.hosts"] (the marked fleet,
     # SPLICED); remerged={aspects,namespaces,schema,scopeSettings} (the dirty function modules — e.g.
     # scopeSettings re-merges as `dirty-decl settings.nix`, NOT because the edit touched it);
@@ -56,5 +69,9 @@ in
       builtins.elem "fleet.hosts" trace.reused && builtins.elem "fleet.environments" trace.reused; # true
     overrideSettingsRemerged = trace.remerged ? scopeSettings; # true — scopeSettings is dirty-decl (settings.nix), re-merges regardless of the edit
     overrideMarkedPureClean = trace.modules.clean != [ ]; # true — the marked-pure fleet is the sole clean entry
+
+    # The RED control's two reads (see `coldTrace` above):
+    overrideColdControlMode = coldTrace.mode; # "cold" — the second edit key refuses warm
+    overrideColdControlFleetDropped = !(builtins.elem "fleet.hosts" (coldTrace.reused or [ ])); # true — nothing spliced on the cold path
   };
 }
