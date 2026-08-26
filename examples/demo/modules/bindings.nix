@@ -4,7 +4,7 @@
 # gen-bind's `buildSignature`/`wrap` on the same binding SHAPE, so the demo can assert what a binding
 # advertises without going through the terminal.
 #
-# READER side (gen-flake value-injection): the aspect class content comes from the injected
+# READER side (value-injection): the aspect class content comes from the injected
 # `genValues.aspects` (the gen tree's resolved config), not a flake-parts `config.aspects` option tree.
 {
   lib,

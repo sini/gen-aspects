@@ -1,8 +1,8 @@
 # gen-aspects demo: web deployment fleet
 
-A single integrated flake exercising all 8 gen libraries together. Models a web deployment fleet with environments (prod, staging, dev), hosts, services, and observability — demonstrating aspects, schema extensions, scope-based settings composition, graph queries, selector patterns, policy dispatch, and module bindings.
+A single integrated flake exercising 9 gen libraries together. Models a web deployment fleet with environments (prod, staging, dev), hosts, services, and observability — demonstrating aspects, schema extensions, scope-based settings composition, graph queries, selector patterns, policy dispatch, module bindings, and delivery-class realization.
 
-The gen definition tree (`gen-modules/`) is composed **purely** by [gen-flake](https://github.com/sini/gen-flake) — gen-merge's byte-mode `evalModuleTree`, not flake-parts' nixpkgs `lib.evalModules`. gen-flake injects the resolved config **values** into the flake-parts eval as the `genValues` module arg; the readers (`modules/*`) run the settings cascade + graph/selector/policy/bind demos over those values. No gen *type* ever enters the flake-parts options tree — the value-injection invariant that lets a gen aspect schema coexist with flake-parts (the old `options.schema`/`options.aspects`/`options.namespaces` embeds threw under the pure re-host).
+The gen definition tree (`gen-modules/`) is composed **purely** by the [gen hub](https://github.com/sini/gen)'s successor compose (`gen.lib.compose`) — gen-merge's byte-mode `evalModuleTree`, not flake-parts' nixpkgs `lib.evalModules`. The flake injects the resolved config **values** into the flake-parts eval as the `genValues` module arg; the readers (`modules/*`) run the settings cascade + graph/selector/policy/bind demos over those values. No gen *type* ever enters the flake-parts options tree — the value-injection invariant that lets a gen aspect schema coexist with flake-parts (the old `options.schema`/`options.aspects`/`options.namespaces` embeds threw under the pure re-host).
 
 ## Running
 
@@ -20,10 +20,11 @@ nix flake check --allow-dirty-locks
 ## Structure
 
 ```
-flake.nix            — flake-parts + gen-flake (compose+realize, DIRECT) + reader-side gen libs
-gen-modules/         — the gen definition tree, composed PURELY by gen-flake (evalModuleTree)
+flake.nix            — flake-parts + the hub's compose + gen-delivery project (DIRECT) + reader-side gen libs
+gen-modules/         — the gen definition tree, composed PURELY by gen.lib.compose (evalModuleTree)
   setup.nix          — options.schema + options.aspects (the typed surface) + schema extensions
-  _aspect-schema.nix — shared mkAspectSchema cnf (helper; _-prefixed, not a tree module)
+  _aspect-cnf.nix    — the mkAspectSchema ARGUMENT (one declaration: schema construction + gen-delivery's cnf)
+  _aspect-schema.nix — shared mkAspectSchema construction (helper; _-prefixed, not a tree module)
   entities.nix       — fleet structure: environments + hosts (marked `pureModule` — warm-reusable)
   aspects/
     base.nix         — base-system, networking, monitoring-base
@@ -38,22 +39,22 @@ modules/             — the flake-parts (reader) side; reads genValues, NOT com
   queries.nix        — gen-graph traversals + gen-select pattern matching (over genValues)
   policies.nix       — gen-dispatch step + gen-scope.circular loop with action vocabulary
   bindings.nix       — gen-bind signature/wrapped METADATA probe (bindResults)
-  terminal.nix       — the nixos-class TERMINAL: realize + the bindings hook → realized (per-host systems)
+  terminal.nix       — the nixos-class TERMINAL: gen-delivery realize + the refinements layer → realized (per-host systems)
   override-trace.nix — warm override showcase: composed.override → the memoization trace (pureModule fleet reused)
   _policy-rules.nix  — shared policy action vocabulary + rules (helper; _-prefixed, not a module)
   outputs.nix        — flake outputs for verification (reads genValues + reader results)
 ```
 
-### Class-content terminal — `realize` + the `bindings` hook
+### Class-content terminal — gen-delivery's `project` + `realize`
 
-The `nixos` class content is built by gen-flake v1's `realize` (`terminal.nix`). Because the demo needs two knobs the `flakeModules.default` ergonomics module does not surface, it drives gen-flake's lower-level API directly:
+The `nixos` class content is built by [gen-delivery](https://github.com/sini/gen-delivery) (`terminal.nix`): the projection discovers the **declared** delivery classes per node (the `cnf` — the demo's own `mkAspectSchema` argument, shared via `gen-modules/_aspect-cnf.nix`), and the fold hands each class's collected content to the target-owned terminal. Because the demo needs two knobs the hub's `flakeModules.default` ergonomics module does not surface, it drives the lower-level surfaces directly:
 
-- `compose { selectHosts; }` — the fleet lives under `fleet.hosts`, not the top-level `hosts` the default projection reads, and `projectHosts` needs each host tagged with the aspects its role runs (the fleet schema carries only env/role, so `selectHosts` synthesizes membership: web/all hosts run `firewall` + `services/nginx`, database hosts run `firewall` only).
-- `realize { bindings; }` — the reader-computed per-`(host, aspect)` settings cascade (`composedSettings`) is passed as a first-class **binding**. v0's `mkSystems` `wrapAll` bound only the resolved `host` instance, with no hook for that richer settings binding — so this demo used to hand-roll a "reader terminal" (per-aspect `genBind.wrap` + a stub `evalModules`). v1's `realize` takes a `bindings` hook, so the terminal itself wraps the class content.
+- `project { selectHosts; }` — the fleet lives under `fleet.hosts`, not the top-level `hosts` the default projection reads, and the projection needs each host tagged with the aspects its role runs (the fleet schema carries only env/role, so `selectHosts` synthesizes membership: web/all hosts run `firewall` + `services/nginx`, database hosts run `firewall` only).
+- `realize { refinements; }` — the reader-computed per-`(host, aspect)` settings cascade (`composedSettings`) is passed as the per-node contribution layer (the declared layer order: projection < global < refinement). v0's `mkSystems` `wrapAll` bound only the resolved `host` instance, with no hook for that richer settings binding — so this demo used to hand-roll a "reader terminal" (per-aspect `genBind.wrap` + a stub `evalModules`). `realize`'s refinement layer lets the terminal itself wrap the class content.
 
 The terminal here is a pure **DATA terminal** (the design's "attrset builder — no nixpkgs"): it wraps a host's class deferredModules with `genBind.wrapAll` and renders them through a bare `lib.evalModules` over stub options, so the demo asserts exact resolved values without a full NixOS eval. `realize` folds it per host into `realized.nixos.<host>` = the host's composed config.
 
-**Intentional v1 delta.** The reader terminal rendered each aspect in isolation; `realize` composes ALL of a host's aspects into ONE system. So `networking.firewall.allowedTCPPorts` on a web/all host now UNIONs the firewall cascade with nginx's public port (443) — the correct behaviour for a composed host system. The assertions moved from per-aspect equality to whole-system checks (cascade ports preserved as a subset; nginx contributes exactly its port; database hosts, running firewall only, carry no 443).
+**Intentional delta vs the reader terminal.** The reader terminal rendered each aspect in isolation; `realize` composes ALL of a host's aspects into ONE system. So `networking.firewall.allowedTCPPorts` on a web/all host now UNIONs the firewall cascade with nginx's public port (443) — the correct behaviour for a composed host system. The assertions moved from per-aspect equality to whole-system checks (cascade ports preserved as a subset; nginx contributes exactly its port; database hosts, running firewall only, carry no 443).
 
 ## What each library does here
 
@@ -65,7 +66,8 @@ The terminal here is a pure **DATA terminal** (the design's "attrset builder —
 | **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order; `circular` (Kleene ascent) drives the policy dispatch convergence loop |
 | **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch groups |
 | **gen-select** | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching |
-| **gen-bind** | `wrapAll` binds the resolved per-host settings into the parametric NixOS modules at the terminal (via realize's `bindings` hook); `wrap`/`buildSignature` also drive the standalone binding-metadata probe (`bindings.nix`) with contract validation and provenance |
+| **gen-bind** | `wrapAll` binds the resolved per-host settings into the parametric NixOS modules at the terminal (via realize's `refinements` layer); `wrap`/`buildSignature` also drive the standalone binding-metadata probe (`bindings.nix`) with contract validation and provenance |
+| **gen-delivery** | `project` discovers the DECLARED delivery classes per node (`cnf` + `selectHosts`) and reshapes the flat registry per host; `realize` folds each host's class content through the DATA terminal with the declared contribution-layer order |
 | **gen-dispatch** | the pure dispatch STEP: `mkRule`/`mkActions` + `dispatch` fire policy rules (prod hardening, database backup, dev firewall) across ordered groups with context enrichment; the caller threads the domain state through repeated one-shot dispatch (the LOOP is gen-scope's, the ORDER is gen-graph's) |
 
 ## Key patterns demonstrated
@@ -74,7 +76,7 @@ The terminal here is a pure **DATA terminal** (the design's "attrset builder —
 
 - **Static** — `base-system`, `networking`, `hardening`: plain attrset with tags, settings, nixos class content
 - **Nested** — `services.nginx`, `services.postgres`: auto-nesting creates `services/nginx` identity
-- **Parametric** — `firewall`, `services.nginx`: a STATIC settings schema (introspectable by `flatten`/cascade) plus class content written as `{ settings, host, lib, ... }: { ... }` that CONSUMES resolved per-host settings, injected at the terminal via realize's `bindings` hook
+- **Parametric** — `firewall`, `services.nginx`: a STATIC settings schema (introspectable by `flatten`/cascade) plus class content written as `{ settings, host, lib, ... }: { ... }` that CONSUMES resolved per-host settings, injected at the terminal via realize's `refinements` layer
 
 ### Settings cascade
 
@@ -124,13 +126,13 @@ prodHardening = mkRule {
 };
 ```
 
-### Settings injection via realize's `bindings` hook (full loop)
+### Settings injection via realize's `refinements` layer (full loop)
 
 Parametric class content (`{ settings, host, lib, ... }: { ... }`) reads resolved
 settings that don't exist until the cascade runs. `terminal.nix` closes the loop:
-it passes the cascade's `composedSettings.<host>` (+ host) as realize's per-host
-`bindings`, and `realize` folds each host's class deferredModules through the DATA
-terminal (`genBind.wrapAll` + `lib.evalModules`) into `realized.nixos.<host>`.
+it passes the cascade's `composedSettings.<host>` (+ host) as realize's per-node
+`refinements` layer, and `realize` folds each host's class deferredModules through
+the DATA terminal (`genBind.wrapAll` + `lib.evalModules`) into `realized.nixos.<host>`.
 
 `outputs.nix` exercises this end-to-end against the rendered, COMPOSED system:
 
@@ -158,13 +160,13 @@ dbBackupSubkeyProvenance    # per-subkey on a recursive field:
 ### Warm override + memoization trace
 
 `composed.override edits` re-composes the tree. When `edits` carries ONLY `modules` (a modules-only
-append), gen-flake fires gen-merge's WARM path: it SPLICES the previous eval's declared leaves the edit
-provably cannot touch and re-merges only the rest, byte-identically to a cold re-compose (the standing
-cold-parity oracle pins warm ≡ cold on both values and provenance). `override-trace.nix` overrides the
-composed tree by appending one host-level settings layer and projects the result's `trace` (the engine's
-`warmDecision`), documented under [gen-flake](https://github.com/sini/gen-flake#warm-override--trace)
-`Warm override + trace` and [gen-merge](https://github.com/sini/gen-merge#warm-re-eval-memoized-override)
-`Warm re-eval`.
+append), the successor compose fires gen-merge's WARM path: it SPLICES the previous eval's declared
+leaves the edit provably cannot touch and re-merges only the rest, byte-identically to a cold
+re-compose (the standing cold-parity oracle pins warm ≡ cold on both values and provenance). The
+admission is gen-memo's `warmAdmits`; the trace record is gen-memo's `warmTrace` over the engine's
+`warmDecision`. `override-trace.nix` overrides the composed tree by appending one host-level settings
+layer and projects the result's `trace`, documented under
+[gen-merge](https://github.com/sini/gen-merge#warm-re-eval-memoized-override) `Warm re-eval`.
 
 The reuse turns on the `pureModule` marker: `gen-modules/entities.nix` wraps the fleet inventory in
 `genMerge.pureModule` (it reads only `lib` from `specialArgs`, never `config`/`options` — the
@@ -180,4 +182,7 @@ overrideModeWarm          # true  — a modules-only edit fires the warm path
 overrideFleetReused       # true  — fleet.hosts ∈ reused (the pureModule's leaves)
 overrideSettingsRemerged  # true  — scopeSettings re-merges as dirty-decl (settings.nix), regardless of the edit
 overrideMarkedPureClean   # true  — the pureModule marking took effect (fleet is the sole clean entry)
+
+overrideColdControlMode          # "cold" — RED control: the same edit + a second key (specialArgs) refuses warm
+overrideColdControlFleetDropped  # true   — nothing spliced on the cold path (the invariants measure the warm path, not a constant)
 ```

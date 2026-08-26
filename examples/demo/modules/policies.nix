@@ -5,7 +5,7 @@
 # fixpoint dispatch (sample context: prod-web-1) that feeds the existing
 # `policyIterations` / `policyActionCounts` outputs.
 #
-# READER side (gen-flake value-injection): reads the injected `genValues.fleet` (the gen tree's
+# READER side (value-injection): reads the injected `genValues.fleet` (the gen tree's
 # resolved config) instead of a flake-parts `config.fleet` option tree.
 {
   lib,

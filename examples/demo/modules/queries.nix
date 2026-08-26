@@ -1,7 +1,7 @@
 # Graph traversals and pattern matching over the combined aspect registry.
 # Demonstrates gen-graph and gen-select on a flattened aspect tree.
 #
-# READER side (gen-flake value-injection): reads the injected `genValues.{aspects,namespaces}` (the
+# READER side (value-injection): reads the injected `genValues.{aspects,namespaces}` (the
 # gen tree's resolved config) instead of a flake-parts `config.*` option tree.
 {
   lib,

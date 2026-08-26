@@ -1,6 +1,6 @@
 # Settings composition: gen-scope neron traverse + gen-algebra foldLayers.
 #
-# READER side of the gen-flake value-injection split: the aspect/fleet/scopeSettings definitions are
+# READER side of the value-injection split: the aspect/fleet/scopeSettings definitions are
 # composed PURELY in the gen tree (./gen-modules) and injected here as `genValues`. This module reads
 # `genValues.{aspects,fleet,scopeSettings}` (was `config.*`) and runs the settings cascade on the
 # flake-parts side, threading the results to sibling reader modules via `config._module.args`.

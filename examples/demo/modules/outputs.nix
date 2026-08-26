@@ -1,6 +1,6 @@
 # Expose verification outputs for the demo.
 #
-# READER side (gen-flake value-injection): the demo's encoded invariants render over the injected
+# READER side (value-injection): the demo's encoded invariants render over the injected
 # `genValues.aspects` (the gen tree's resolved config) and the cascade/query/policy/bind results
 # threaded from sibling reader modules via `_module.args` — no flake-parts `config.*` gen option tree.
 {
