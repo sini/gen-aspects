@@ -9,7 +9,9 @@
 #
 # The consumer-side statement (a projection realizes no hosts for such a class) is deliberately NOT
 # reproduced here: proving a consumer-facing fix inside the library's own harness is the divergence
-# den-hoag-gxe4 was closed on. It is asserted at the consumer, in gen-flake's suite.
+# den-hoag-gxe4 was closed on. It is asserted at the consumer: the live cells are gen-delivery's
+# ci/tests/declared-content.nix, re-derived at the surface that realizes; gen-flake's suite still
+# carries the original assertion, but that repo is orphaned as reference (ADR-0031 F3).
 {
   lib,
   mkSchemaEval,
