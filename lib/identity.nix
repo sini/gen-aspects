@@ -113,48 +113,93 @@ let
     in
     go 0;
 
-  # bodyKey: nested guard -> its key; first-order body -> content hash (discriminating +
-  # site-independent); opaque body -> null (caller falls back to source position).
-  # The probe reads BOTH of hasFn's ways of declining a body and treats them alike, which is why the
-  # depth refusal needed no new branch here: `probe.value == false` is "a function is in there", and
-  # `probe.success == false` is "the scan refused to answer" — under either the body is not one this
-  # library will content-address, and the source-position fallback is already that answer.
+  # guardChainMaxDepth / guardChainDepthRefusal: bodyKey's nested-guard arm dispatches straight back
+  # into guardKey, so a guard record whose body eventually recurses back to a guard already on the
+  # chain — most directly, one whose body IS itself — cycles guardKey -> bodyKey -> guardKey WITHOUT
+  # EVER REACHING hasFn, and so never spends from hasFn's budget. It is the unguarded-walk class one
+  # level up from hasFn's own: same remedy, a depth budget over the guard/body HOPS (not value
+  # nesting), exhausted by a NAMED throw so a catcher can take the opaque-body branch instead of
+  # riding the recursion into an uncatchable stack overflow.
+  #
+  # Unlike hasFn's single-function `go`, this walk is mutually recursive across two functions
+  # (bodyKey's guard arm below), and the throw is left UNCAUGHT all the way through both. Catching it
+  # PER HOP would convert only the innermost frame to the opaque answer and let every frame above
+  # re-wrap that answer as ordinary content — for a true self-loop (`g.body == g`) that mints a
+  # content hash instead of ever reaching the position fallback, because "guard-loc:…" is just
+  # another string once it comes back up. The ONE catch, at `guardKey` below, is what makes the
+  # WHOLE chain opaque rather than just its last hop.
+  guardChainMaxDepth = 256;
+
+  guardChainDepthRefusal =
+    "gen-aspects: identity: the guard/body chase exceeded its depth budget of "
+    + "${toString guardChainMaxDepth} hops while resolving a guard's body key. A chain nested that "
+    + "deeply is almost always CYCLIC — a guard record whose body recurses back to a guard already on "
+    + "the chain, most directly one whose body IS itself — and an unbounded chase over one aborts the "
+    + "evaluator UNCATCHABLY, so it refuses by name here instead. The guard is treated as opaque: it "
+    + "keys by source position (`guard-loc:…`) rather than by content. Keep guard nesting finite if the "
+    + "guard needs a content-addressed key.";
+
+  guardLocFallback = g: "guard-loc:" + pathKey (g.meta.loc or [ (g.name or "<anon>") ]);
+
+  mintGuardKey =
+    g: bk:
+    "guard:${g.pred.p}:"
+    + builtins.hashString "sha256" (
+      builtins.toJSON {
+        inherit (g) pred;
+        body = bk;
+      }
+    );
+
+  # bodyKey: nested guard -> its key (depth-budgeted chase, see above); first-order body -> content
+  # hash (discriminating + site-independent); opaque body -> null (caller falls back to source
+  # position). The first-order probe reads BOTH of hasFn's ways of declining a body and treats them
+  # alike, which is why hasFn's OWN depth refusal needed no new branch here: `probe.value == false` is
+  # "a function is in there", and `probe.success == false` is "the scan refused to answer" — under
+  # either the body is not one this library will content-address, and the source-position fallback is
+  # already that answer.
   bodyKey =
-    b:
-    if builtins.isAttrs b && (b.__guard or false) then
-      guardKey b
-    else
-      let
-        probe = builtins.tryEval (!hasFn b);
-      in
-      if probe.success && probe.value then
-        "h:" + builtins.hashString "sha256" (builtins.toJSON b)
-      else
-        null;
+    let
+      go =
+        d: b:
+        if builtins.isAttrs b && (b.__guard or false) then
+          if d >= guardChainMaxDepth then
+            throw guardChainDepthRefusal
+          else
+            let
+              bk = go (d + 1) b.body;
+            in
+            if bk == null then guardLocFallback b else mintGuardKey b bk
+        else
+          let
+            probe = builtins.tryEval (!hasFn b);
+          in
+          if probe.success && probe.value then
+            "h:" + builtins.hashString "sha256" (builtins.toJSON b)
+          else
+            null;
+    in
+    go 0;
 
   # guardKey: pred is ALWAYS structural (pure data). First-order body -> fully structural key
-  # (site-independent -> dedup). For an OPAQUE body (bodyKey null), fall back to SOURCE POSITION.
-  # Once meta.loc is present (attached by types.nix, Task 2) this is SOUND: two different opaque
-  # bodies at different sites never collide. Until then, opaque guards lacking meta.loc share the
-  # "<anon>" fallback; guardKey has no live dedup consumer yet, so that collapse is latent, not a
-  # live bug.
+  # (site-independent -> dedup). For an OPAQUE body (bodyKey null OR the guard-chain budget above
+  # exhausted), fall back to SOURCE POSITION. Once meta.loc is present (attached by types.nix, Task 2)
+  # this is SOUND: two different opaque bodies at different sites never collide. Until then, opaque
+  # guards lacking meta.loc share the "<anon>" fallback; guardKey has no live dedup consumer yet, so
+  # that collapse is latent, not a live bug.
   # Reynolds "Elimination of Higher-Order Functions": the constructor tag (pred.p) is the
   # principled kind identity, replacing source position for the first-order case.
+  #
+  # THE ONE CATCH POINT for the guard-chain depth budget: bodyKey's nested-guard arm never catches its
+  # own throw, so a cyclic chain propagates it, uncaught, all the way back here — where it is caught
+  # ONCE and answered with THIS guard's own position, exactly the answer bodyKey already gives any
+  # body it cannot content-address.
   guardKey =
     g:
     let
-      bk = bodyKey g.body;
+      probe = builtins.tryEval (bodyKey g.body);
     in
-    if bk == null then
-      "guard-loc:" + pathKey (g.meta.loc or [ (g.name or "<anon>") ])
-    else
-      "guard:${g.pred.p}:"
-      + builtins.hashString "sha256" (
-        builtins.toJSON {
-          inherit (g) pred;
-          body = bk;
-        }
-      );
+    if probe.success && probe.value != null then mintGuardKey g probe.value else guardLocFallback g;
 in
 {
   inherit
@@ -169,8 +214,17 @@ in
   # `lib/default.nix`: a consumer asks this library for a KEY, never for the scan behind one, and
   # never renders its refusal. The budget travels with them so the cells that straddle it read the
   # number from here instead of restating it — a restated bound is one that drifts silently past the
-  # thing it is supposed to be testing.
-  inherit hasFn hasFnMaxDepth hasFnDepthRefusal;
+  # thing it is supposed to be testing. `bodyKey` rides along too: it is the ONE path in this file
+  # that lets the guard-chain depth throw escape uncaught, which is what a cell needs to assert
+  # catchability on the real path rather than through `guardKey`'s own graceful fallback.
+  inherit
+    hasFn
+    hasFnMaxDepth
+    hasFnDepthRefusal
+    bodyKey
+    guardChainMaxDepth
+    guardChainDepthRefusal
+    ;
   key =
     a:
     if a.__guard or false then
