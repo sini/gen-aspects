@@ -553,12 +553,44 @@ let
   # namespace as a bare constructor and is never protocol-completed — must answer "nothing to
   # substitute" rather than abort on a missing attribute. `or null` covers the read; the `?` test
   # covers the rebuild, which falls back to the element unchanged.
+  # Merges two ELEMENT types for `aspectsRootWith`'s own functor below. gen-aspects' CI pins
+  # gen-merge at `2701d8bbf5d81ed137ecda3eddfae1241509b728`, a revision that PREDATES the
+  # `carries`/`recarry` gen-native boundary gen-merge grew later (`git show <rev>:lib/interface.nix`
+  # ⇒ no such path at that commit). At this revision every `mkOptionType`-built type — gen-merge's
+  # own `attrsOf`/`listOf`/`nullOr` included, confirmed by reading `lib/types.nix` at that rev, none
+  # of them supply a custom `functor` either — merges through the plain nixpkgs `functor`/`typeMerge`
+  # pair `completeType` derives (`typeMerge = t.typeMerge or (pureTypeMerge functor)`, which calls
+  # `functor.binOp` on the two sides' `functor.payload`). `mergeElemTypes` is that binOp, generalised
+  # to any two mkOptionType-built element types: ask the FIRST element's own `typeMerge` whether it
+  # accepts the SECOND element's `functor` — the exact call gen-merge's own protocol makes were these
+  # elements nested inside a real module tree.
+  mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+
   aspectsRootWith =
     elemType:
     merge.mkOptionType {
       name = "aspectsRoot";
       inherit elemType;
       nestedTypes = { inherit elemType; };
+      # THE FIX (den-hoag-a0gc): `completeType` (gen-merge lib/types.nix, the CI-pinned revision —
+      # see `mergeElemTypes` above) derives every type's `functor` as `t.functor or (pureDefaultFunctor
+      # name // { type = result; })` — a descriptor that supplies no `functor` of its own gets
+      # `payload = null`, and `pureTypeMerge` merges ANY two same-named, null-payload functors
+      # UNCONDITIONALLY (nixpkgs' own `defaultTypeMerge` fallback) — two `aspectsRoot` declarations
+      # typeMerged on the CONTAINER'S NAME ALONE, blind to their elements, the silent-collision shape
+      # den-hoag-k1uv named one layer down. Supplying `functor` directly is `completeType`'s own
+      # documented escape hatch ("each field overridable by the descriptor... a real `.functor` a
+      # type already carries wins") — the elemTypeFunctor pattern: `payload` carries the element
+      # type, `binOp` decides whether two elements merge (via `mergeElemTypes`, recursively), and
+      # `type` rebuilds this same container over the merged element on success. `completeType`'s
+      # default `typeMerge = t.typeMerge or (pureTypeMerge functor)` derives a correct `typeMerge`
+      # from this automatically — no separate override needed.
+      functor = {
+        name = "aspectsRoot";
+        payload = elemType;
+        binOp = a: b: if b == null then null else mergeElemTypes a b;
+        type = aspectsRootWith;
+      };
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
       getSubModules = elemType.getSubModules or null;
       substSubModules =
