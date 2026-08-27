@@ -77,4 +77,44 @@ in
     expr = structuralOptionNames;
     expected = builtins.sort builtins.lessThan aspects.structuralKeys;
   };
+
+  # den-hoag-7cya: keyCategory is the documented "single classification surface" but read
+  # cnf.keySemantics.${key}.category directly, with no validation — a malformed entry rode straight
+  # through as garbage (or a generic, unnamed Nix error on a non-attrset entry), never touching
+  # aspectSubmodule's eager check. SEEDED RED — an unrecognised category string refuses BY NAME,
+  # naming both the key and the bogus value.
+  flake.tests.key-category.test-bad-category-refuses-by-name = {
+    expr =
+      (builtins.tryEval (
+        builtins.deepSeq (aspects.keyCategory {
+          keySemantics = {
+            amd = {
+              category = "bogus";
+            };
+          };
+        } "amd") true
+      )).success;
+    expected = false;
+  };
+  # SEEDED RED — a bare-string keySemantics entry (the shape the 2026-08-02 spike measured pinned
+  # consumers on) refuses by name instead of throwing nixpkgs' generic "value is a string while a set
+  # was expected".
+  flake.tests.key-category.test-bare-string-entry-refuses-by-name = {
+    expr =
+      (builtins.tryEval (
+        builtins.deepSeq (aspects.keyCategory {
+          keySemantics = {
+            amd = "amd";
+          };
+        } "amd") true
+      )).success;
+    expected = false;
+  };
+  # GREEN TWIN — the three well-formed categories still classify exactly as before (test-facet /
+  # test-class / test-channel above already cover this; this cell pins the un-declared-key null
+  # result survives the membership-test rewrite too).
+  flake.tests.key-category.test-green-twin-unknown-key-still-null = {
+    expr = aspects.keyCategory cnf "nixxos";
+    expected = null;
+  };
 }

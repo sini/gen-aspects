@@ -276,6 +276,32 @@ let
           throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
     };
 
+  # The closed keySemantics category vocabulary (ADR-0027 ruling 2). ONE binding so the eager
+  # aspectSubmodule check and the standalone `keyCategory` read below can never drift apart.
+  validCategories = [
+    "class"
+    "channel"
+    "facet"
+  ];
+
+  # checkCategory k e -> e.category — the ONE validation a keySemantics entry must pass before its
+  # category is trusted anywhere: `e` must be an attrset carrying a `category` from the closed
+  # vocabulary. A malformed entry refuses BY NAME here, naming both the offending key and (where
+  # present) its bogus category value, rather than surfacing as a generic Nix type error several
+  # layers downstream (den-hoag-7cya: a bare-string entry, or an unrecognised category string, was
+  # reaching `aspects.keyCategory` — the documented "single classification surface" — silently,
+  # because that read path never went through aspectSubmodule's eager check at all).
+  checkCategory =
+    k: e:
+    if !(builtins.isAttrs e) then
+      throw "gen-aspects: keySemantics key '${k}' must be an attrset with a 'category' field (got ${builtins.typeOf e}); expected { category = \"class\" | \"channel\" | \"facet\"; … }"
+    else if !(e ? category) then
+      throw "gen-aspects: keySemantics key '${k}' is missing its 'category' field (expected class|channel|facet)"
+    else if !(builtins.elem e.category validCategories) then
+      throw "gen-aspects: keySemantics key '${k}' has unknown category '${e.category}' (expected class|channel|facet)"
+    else
+      e.category;
+
   # An `includes` element is EITHER a by-value aspect (aspectOrFn — unchanged) OR a keyRef (an
   # origin-qualified reference to a node possibly outside the local fixpoint, §Kernel fixes / decision
   # 6). keyRef is detected by its `__keyRef` marker and passed through opaquely (gen-link resolves it
@@ -336,17 +362,22 @@ let
   # keyCategory cnf key : "structural" | "class" | "channel" | "facet" | null. The single classification
   # surface — a consumer reads a key's category from HERE, never a parallel membership list. null = the key is
   # neither native-structural nor a declared keySemantics key (a typo, or a freeform nested-aspect child; the
-  # closed gate distinguishes them).
-  # The `or null` here guards the INNER dynamic lookup `.${key}.category`, not `cnf` membership, and
-  # so is NOT the `or` default that the constructed record retires: null is this function's
-  # documented answer for an unregistered key, and a consumer's typo gate is built on exactly that
-  # null. Stripping it would turn every unregistered key into a throw.
+  # closed gate distinguishes them). A key that IS declared but malformed (not an attrset, or an
+  # attrset with an unrecognised category) refuses BY NAME via checkCategory — this is the read site
+  # den-hoag-7cya measured as a silent pass-through (it never went through aspectSubmodule's own eager
+  # check, so a bad entry rode all the way to a consumer as an unvalidated string, or an attribute
+  # lookup on a non-attrset that threw a generic, unnamed Nix error).
+  # The membership test on `cnf.keySemantics` (not `or null` on the dynamic lookup) is what makes
+  # "key absent from keySemantics" (→ null, unchanged) and "key present but malformed" (→ throw, new)
+  # two different outcomes instead of one `or` collapsing them.
   keyCategory =
     cnf: key:
     if builtins.elem key nativeStructuralKeys then
       "structural"
+    else if cnf.keySemantics ? ${key} then
+      checkCategory key cnf.keySemantics.${key}
     else
-      cnf.keySemantics.${key}.category or null;
+      null;
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
@@ -363,20 +394,11 @@ let
     cnf:
     let
       rawKs = cnf.keySemantics;
-      validCats = [
-        "class"
-        "channel"
-        "facet"
-      ];
-      # Force category validation eagerly (a bad category must throw at construction, not silently
-      # never-match a keyOf filter). deepSeq forces each entry's `if`; ks is the validated passthrough.
-      ks = builtins.deepSeq (prelude.mapAttrs (
-        k: e:
-        if builtins.elem e.category validCats then
-          e.category
-        else
-          throw "gen-aspects: keySemantics key '${k}' has unknown category '${e.category}' (expected class|channel|facet)"
-      ) rawKs) rawKs;
+      # Force category validation eagerly (a bad entry must throw at construction, not silently
+      # never-match a keyOf filter). deepSeq forces checkCategory over every entry; ks is the
+      # validated passthrough (checkCategory's own return value is discarded — downstream needs the
+      # full entry, `.option`/`.module` included, not just the extracted category string).
+      ks = builtins.deepSeq (prelude.mapAttrs checkCategory rawKs) rawKs;
       keyOf = category: builtins.attrNames (prelude.filterAttrs (_: e: e.category == category) ks);
       # A declared class with no content reads `null`, never an empty deferredModule. Absence must be
       # REPRESENTABLE in the value: a `{ }` default merges to `{ imports = [ { } ]; }`, which is
