@@ -218,8 +218,8 @@ let
     };
 
   # THE canonical content-address for an aspect of ANY kind — plain, wrapped-fn (__isWrappedFn), or
-  # guard (__guard). Routed through gen-schema's ONE hashIdentity formula (gen-schema
-  # `lib/identity.nix`, `hashIdentity`); origin is just another identity key (design §Identity).
+  # guard (__guard). Routed through the ecosystem's ONE hashIdentity formula (`gen-identity/lib/default.nix`,
+  # binding `hashIdentity`, injected above); origin is just another identity key (design §Identity).
   # `key` = identity.key (the 3-way dispatch in `identity.nix`), so a wrapped-fn / guard record — NOT
   # a submodule instance, carries no `id_hash` option — gets the SAME id as a plain aspect via the
   # SAME formula, and it is an IDENTITY, not a vertex name: gen-link NAMES a federation node by its
