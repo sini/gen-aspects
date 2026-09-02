@@ -59,7 +59,6 @@ Everything downstream — evaluation, scheduling, conflict resolution, dispatch 
 | [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
 | [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject external args into NixOS modules) |
 | [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution) |
-| [gen-resolve](https://github.com/sini/gen-resolve) | Demand-driven RAG evaluator over scope graphs (attribute schedule + convergence loop) |
 | [gen-memo](https://github.com/sini/gen-memo) | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set) |
 | [gen-vars](https://github.com/sini/gen-vars) | Pure-Nix vars/secrets (den-agnostic) |
 | [gen-flake](https://github.com/sini/gen-flake) | Orphaned as reference (ADR-0031 F3) — dissolution complete. Was the nixpkgs boundary; successors: compose → hub `lib.compose`/flakeModule (INTERIM, not ADR-0027), warm/override/trace → gen-memo, projection+realize → gen-delivery, inject/terminals → the crossing's Adapter set via the hub |
