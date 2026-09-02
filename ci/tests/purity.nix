@@ -44,6 +44,9 @@ let
 
   forbidden = [
     "nixpkgs"
+    # The BOUNDARY: any nixpkgs lib call at all. The named `lib.X` entries below are kept for
+    # the sharper message they give on a red, not because they bound the invariant.
+    "lib."
     "lib.types"
     "lib.mkOption"
     "lib.evalModules"
