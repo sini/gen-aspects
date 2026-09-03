@@ -136,6 +136,8 @@ as deferred-include markers under `cnf.deferIncludeResolution` — `lib/types.ni
 
 ## Measured traps
 
+<!-- gen-citations:begin -->
+
 Verified at rev `1689e41` by evaluating against `aspects = import ./. { }` with these shared fixtures:
 `ok e = (builtins.tryEval (builtins.deepSeq e e)).success`; `mkEval cnf modules` mirrors
 `ci/flake.nix`'s `mkSchemaEval` (`mkAspectSchema` + `mkAspectModule { }` through
@@ -195,6 +197,8 @@ freshly verified row among wrong ones is indistinguishable from the wrong ones.
 `cnf.metaModules`, and the `facet` variant carrying a full `module` (only the bare-`option` facet was
 evaluated). Each has named CI coverage — `test-collection-tags`, `test-schema-option-type`,
 `test-meta-module-option-settable`, `test-facet-module-option`.
+
+<!-- gen-citations:end -->
 
 ## Theory
 
