@@ -28,13 +28,13 @@ Dependency class: **Class D** (nixpkgs-lib-tethered). gen-aspects depends on nix
 
 ## Terminology
 
-| Term | Definition |
-|------|-----------|
-| Traits | The aspect type — one type, dispatch in merge (Palmer 2024) |
-| Classes | Output targets (NixOS, darwin, homeManager module systems) |
-| Collections | Named data aggregation (aspect keys matching registered collection names) |
-| Edges | `includes` (forward I) — the one core structural edge, declared inline on each aspect. `neededBy` (reverse I) — a *consumer-declared, predicate-based* reverse reference; its semantics live in the consumer's dispatch layer, not in these types. |
-| Constraints | Pruning rules: meta.guard, meta.drop, meta.substitute |
+| Term        | Definition                                                                                                                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Traits      | The aspect type — one type, dispatch in merge (Palmer 2024)                                                                                                                                                                                        |
+| Classes     | Output targets (NixOS, darwin, homeManager module systems)                                                                                                                                                                                         |
+| Collections | Named data aggregation (aspect keys matching registered collection names)                                                                                                                                                                          |
+| Edges       | `includes` (forward I) — the one core structural edge, declared inline on each aspect. `neededBy` (reverse I) — a *consumer-declared, predicate-based* reverse reference; its semantics live in the consumer's dispatch layer, not in these types. |
+| Constraints | Pruning rules: meta.guard, meta.drop, meta.substitute                                                                                                                                                                                              |
 
 ## Overview
 
@@ -46,22 +46,22 @@ Everything downstream — evaluation, scheduling, conflict resolution, dispatch 
 
 ## Gen Ecosystem
 
-| Library | Role |
-|---------|------|
-| [gen-prelude](https://github.com/sini/gen-prelude) | Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils) |
-| [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (record, search monad, either, intensional identity) |
-| [gen-types](https://github.com/sini/gen-types) | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`) |
-| [gen-merge](https://github.com/sini/gen-merge) | Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset) |
-| [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge |
-| [gen-aspects](https://github.com/sini/gen-aspects) | **This lib** — Aspect type system (traits, classification, dispatch); re-hosted on gen-merge |
-| [gen-scope](https://github.com/sini/gen-scope) | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes) |
-| [gen-graph](https://github.com/sini/gen-graph) | Accessor-based graph query combinators (traversal, condensation, phaseOrder) |
-| [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
-| [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject external args into NixOS modules) |
-| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution) |
-| [gen-memo](https://github.com/sini/gen-memo) | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set) |
-| [gen-vars](https://github.com/sini/gen-vars) | Pure-Nix vars/secrets (den-agnostic) |
-| [gen-flake](https://github.com/sini/gen-flake) | Orphaned as reference (ADR-0031 F3) — dissolution complete. Was the nixpkgs boundary; successors: compose → hub `lib.compose`/flakeModule (INTERIM, not ADR-0027), warm/override/trace → gen-memo, projection+realize → gen-delivery, inject/terminals → the crossing's Adapter set via the hub |
+| Library                                              | Role                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [gen-prelude](https://github.com/sini/gen-prelude)   | Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils)                                                                                                                                                                                                                   |
+| [gen-algebra](https://github.com/sini/gen-algebra)   | Pure primitives (record, search monad, either, intensional identity)                                                                                                                                                                                                                            |
+| [gen-types](https://github.com/sini/gen-types)       | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`)                                                                                                                                                                                                            |
+| [gen-merge](https://github.com/sini/gen-merge)       | Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset)                                                                                                                                                                          |
+| [gen-schema](https://github.com/sini/gen-schema)     | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge                                                                                                                                                                                                                  |
+| [gen-aspects](https://github.com/sini/gen-aspects)   | **This lib** — Aspect type system (traits, classification, dispatch); re-hosted on gen-merge                                                                                                                                                                                                    |
+| [gen-scope](https://github.com/sini/gen-scope)       | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes)                                                                                                                                                                                                             |
+| [gen-graph](https://github.com/sini/gen-graph)       | Accessor-based graph query combinators (traversal, condensation, phaseOrder)                                                                                                                                                                                                                    |
+| [gen-select](https://github.com/sini/gen-select)     | Selector algebra (pattern matching over graph positions)                                                                                                                                                                                                                                        |
+| [gen-bind](https://github.com/sini/gen-bind)         | Module binding (inject external args into NixOS modules)                                                                                                                                                                                                                                        |
+| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution)                                                                                                                                                                                                                          |
+| [gen-memo](https://github.com/sini/gen-memo)         | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set)                                                                                                                                                                                                       |
+| [gen-vars](https://github.com/sini/gen-vars)         | Pure-Nix vars/secrets (den-agnostic)                                                                                                                                                                                                                                                            |
+| [gen-flake](https://github.com/sini/gen-flake)       | Orphaned as reference (ADR-0031 F3) — dissolution complete. Was the nixpkgs boundary; successors: compose → hub `lib.compose`/flakeModule (INTERIM, not ADR-0027), warm/override/trace → gen-memo, projection+realize → gen-delivery, inject/terminals → the crossing's Adapter set via the hub |
 
 ## Usage
 
@@ -174,16 +174,16 @@ schema = aspects.mkAspectSchema cnf;
 
 `mkAspectSchema cnf` returns:
 
-| Field | Description |
-|-------|-------------|
-| `schemaOption` | gen-schema option wrapping `aspectType` as the custom entry type |
-| `mkAspectOption { providerPrefix? }` | Declares `options.aspects` with `lazyAttrsOf aspectType` |
+| Field                                | Description                                                                                                                             |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaOption`                       | gen-schema option wrapping `aspectType` as the custom entry type                                                                        |
+| `mkAspectOption { providerPrefix? }` | Declares `options.aspects` with `lazyAttrsOf aspectType`                                                                                |
 | `mkAspectModule { providerPrefix? }` | NixOS module declaring both `options.aspects` and `options.schema`, lazily threading schema-declared options into every aspect instance |
-| `mkNamespaceType { }` | Submodule type for namespace composition — includes `schema`, `classes`, and freeform aspect content |
-| `aspectType` | Re-exported aspect type |
-| `identity` | Bundled identity functions (`aspectPath`, `pathKey`, `key`, `isMeaningfulName`) |
-| `canTake` | Re-exported function arg introspection |
-| `mkIsModuleFn` | Re-exported module function predicate |
+| `mkNamespaceType { }`                | Submodule type for namespace composition — includes `schema`, `classes`, and freeform aspect content                                    |
+| `aspectType`                         | Re-exported aspect type                                                                                                                 |
+| `identity`                           | Bundled identity functions (`aspectPath`, `pathKey`, `key`, `isMeaningfulName`)                                                         |
+| `canTake`                            | Re-exported function arg introspection                                                                                                  |
+| `mkIsModuleFn`                       | Re-exported module function predicate                                                                                                   |
 
 ### Schema extensions
 
@@ -348,11 +348,11 @@ nix shell nixpkgs#nix-unit -c nix-unit \
 
 ## Theoretical Foundations
 
-| Paper | Relationship | Mechanism |
-|-------|-------------|-----------|
-| Palmer et al. (2024) "Intensional Functions" | Implements | Flat dispatch via one type in merge §2, identity §2.2; identity keys enable consumer-side dedup |
-| Lorenzen et al. (2025) "First-Order Laziness" | Informed by | `deferredModule` inspectable before forcing (via Nix native laziness, not Lorenzen's mechanism) §1-2.3 |
-| Reynolds (1972) "Definitional Interpreters" · Danvy & Nielsen (2001) "Defunctionalization at Work" | Implements | §6 "Elimination of Higher-Order Functions" for the guard **predicate vocabulary** (`mkGuardVocab`/`pred`/`applyGuard`/`guardKey`, obligations O1–O7): predicates are first-order data dispatched by one global `applyGuard`, keyed by a site-independent `guardKey`. Raw `{ host, … }:` closures remain the non-defunctionalized escape hatch (`functionTo`) |
+| Paper                                                                                              | Relationship | Mechanism                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Palmer et al. (2024) "Intensional Functions"                                                       | Implements   | Flat dispatch via one type in merge §2, identity §2.2; identity keys enable consumer-side dedup                                                                                                                                                                                                                                                              |
+| Lorenzen et al. (2025) "First-Order Laziness"                                                      | Informed by  | `deferredModule` inspectable before forcing (via Nix native laziness, not Lorenzen's mechanism) §1-2.3                                                                                                                                                                                                                                                       |
+| Reynolds (1972) "Definitional Interpreters" · Danvy & Nielsen (2001) "Defunctionalization at Work" | Implements   | §6 "Elimination of Higher-Order Functions" for the guard **predicate vocabulary** (`mkGuardVocab`/`pred`/`applyGuard`/`guardKey`, obligations O1–O7): predicates are first-order data dispatched by one global `applyGuard`, keyed by a site-independent `guardKey`. Raw `{ host, … }:` closures remain the non-defunctionalized escape hatch (`functionTo`) |
 
 **Palmer et al. (2024) "Intensional Functions"** — One type dispatches by value shape in merge (§2). Guard functions are defunctionalized as callable first-order data with inspectable args (§5.1). Identity keys enable consumer-side diamond dedup (Lemma 5.12 + Theorem 1, closure consistency); gen-aspects supplies the keys, the dedup lives in the consumer.
 

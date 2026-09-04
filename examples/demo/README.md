@@ -58,16 +58,16 @@ The terminal here is a pure **DATA terminal** (the design's "attrset builder —
 
 ## What each library does here
 
-| Library | Role in demo |
-|---------|-------------|
-| **gen-algebra** | `record.foldLayersTraced` merges settings layers (per-field replace/append/recursive) and returns a per-field provenance trace alongside the value |
-| **gen-schema** | `mkAspectSchema` registers the aspect kind with collections (settings, tags) and schema extensions (priority, tier) |
-| **gen-aspects** | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, parametric class content; flat registry for queries |
-| **gen-scope** | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order; `circular` (Kleene ascent) drives the policy dispatch convergence loop |
-| **gen-graph** | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch groups |
-| **gen-select** | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching |
-| **gen-bind** | `wrapAll` binds the resolved per-host settings into the parametric NixOS modules at the terminal (via realize's `refinements` layer); `wrap`/`buildSignature` also drive the standalone binding-metadata probe (`bindings.nix`) with contract validation and provenance |
-| **gen-delivery** | `project` discovers the DECLARED delivery classes per node (`cnf` + `selectHosts`) and reshapes the flat registry per host; `realize` folds each host's class content through the DATA terminal with the declared contribution-layer order |
+| Library          | Role in demo                                                                                                                                                                                                                                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **gen-algebra**  | `record.foldLayersTraced` merges settings layers (per-field replace/append/recursive) and returns a per-field provenance trace alongside the value                                                                                                                                                    |
+| **gen-schema**   | `mkAspectSchema` registers the aspect kind with collections (settings, tags) and schema extensions (priority, tier)                                                                                                                                                                                   |
+| **gen-aspects**  | `aspectsType` + `flatten` — type system for aspects with identity, classes, includes, parametric class content; flat registry for queries                                                                                                                                                             |
+| **gen-scope**    | Scope graph with env/host nodes, P-edges, neron traverse to collect settings in D > I > P order; `circular` (Kleene ascent) drives the policy dispatch convergence loop                                                                                                                               |
+| **gen-graph**    | `reachableFrom`, `dependentsOf`, `roots`, `leaves`, `cycles` over the aspect include graph; `phaseOrder` (over `entryAnywhere`/`entryAfter`) linearizes the policy dispatch groups                                                                                                                    |
+| **gen-select**   | `when`, `and`, `within` selectors — tag queries, tier filtering, namespace prefix matching                                                                                                                                                                                                            |
+| **gen-bind**     | `wrapAll` binds the resolved per-host settings into the parametric NixOS modules at the terminal (via realize's `refinements` layer); `wrap`/`buildSignature` also drive the standalone binding-metadata probe (`bindings.nix`) with contract validation and provenance                               |
+| **gen-delivery** | `project` discovers the DECLARED delivery classes per node (`cnf` + `selectHosts`) and reshapes the flat registry per host; `realize` folds each host's class content through the DATA terminal with the declared contribution-layer order                                                            |
 | **gen-dispatch** | the pure dispatch STEP: `mkRule`/`mkActions` + `dispatch` fire policy rules (prod hardening, database backup, dev firewall) across ordered groups with context enrichment; the caller threads the domain state through repeated one-shot dispatch (the LOOP is gen-scope's, the ORDER is gen-graph's) |
 
 ## Key patterns demonstrated
