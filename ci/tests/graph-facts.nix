@@ -264,6 +264,50 @@ let
   };
   localGoodFacts = aspects.graphFacts { providerPrefix = [ "acme" ]; } localGoodEval.config.aspects;
 
+  # THE TWO keyRef FORMS OVER THE SAME TARGET, under the default empty provider prefix. `lib/base`
+  # IS a node here, so the two forms differ in nothing a consumer can see unless the relation says so.
+  sugarSelfFacts =
+    let
+      eval = mkIncludes { elems = _: [ (aspects.keyRef "lib/base") ]; };
+    in
+    aspects.graphFacts { } eval.config.aspects;
+  structSelfFacts =
+    let
+      eval = mkIncludes {
+        elems = _: [
+          (aspects.keyRef {
+            origin = [ ];
+            path = [
+              "lib"
+              "base"
+            ];
+          })
+        ];
+      };
+    in
+    aspects.graphFacts { } eval.config.aspects;
+
+  # The prefix lengths at which the STRING sugar cannot name a local node at all: its origin is
+  # always exactly one segment (`identity.nix`'s `keyRef` takes `head parts`), so the locality
+  # comparison can only succeed at `length providerPrefix == 1`.
+  twoSegPrefix = [
+    "acme"
+    "sub"
+  ];
+  twoSegFacts =
+    let
+      eval = mkIncludes {
+        providerPrefix = twoSegPrefix;
+        elems = _: [ (aspects.keyRef "acme/sub/nope") ];
+      };
+    in
+    aspects.graphFacts { providerPrefix = twoSegPrefix; } eval.config.aspects;
+  bareSegFacts =
+    let
+      eval = mkIncludes { elems = _: [ (aspects.keyRef "nope") ]; };
+    in
+    aspects.graphFacts { } eval.config.aspects;
+
   caught = e: (builtins.tryEval e).success;
 
   # The refusal message, rendered from the same binding the throw path calls.
@@ -445,6 +489,7 @@ in
       nodeCount = builtins.length facts.nodes;
       parentDomain = sorted (builtins.attrNames facts.parentOf) == sorted facts.nodes;
       includesDomain = sorted (builtins.attrNames facts.includesOf) == sorted facts.nodes;
+      foreignDomain = sorted (builtins.attrNames facts.foreignIncludesOf) == sorted facts.nodes;
       unresolvedDomain = sorted (builtins.attrNames facts.unresolvedIncludesOf) == sorted facts.nodes;
       nodeDataDomain = sorted (builtins.attrNames facts.nodeData) == sorted facts.nodes;
       # A ROOT is present in the relation with an explicit `null`, never absent from it.
@@ -457,6 +502,7 @@ in
       nodeCount = 11;
       parentDomain = true;
       includesDomain = true;
+      foreignDomain = true;
       unresolvedDomain = true;
       nodeDataDomain = true;
       rootIsPresent = true;
@@ -474,8 +520,17 @@ in
       # A by-value reference produces an edge and nothing unresolved, in the same record.
       byValueUnresolved = refFacts.unresolvedIncludesOf."app";
       # A FOREIGN keyRef qualifies with the REFERENT's origin, not the reading container's — that
-      # is what makes it a cross-source reference — and is not checkable here, so not refused.
+      # is what makes it a cross-source reference — and is not checkable here, so not refused. It is
+      # therefore NOT an edge of this graph: `includesOf` carries what this library checked, and the
+      # reference itself is published beside it.
       foreignKeyRef = foreignFacts.includesOf."acme/app";
+      foreignKeyRefIsPublished = foreignFacts.foreignIncludesOf."acme/app";
+      # CARDINALITY, so neither side can pass by having gone empty: the foreign fixture declares
+      # exactly one include, and it is accounted for exactly once across the two relations.
+      foreignDeclaredCount =
+        builtins.length foreignFacts.includesOf."acme/app"
+        + builtins.length foreignFacts.foreignIncludesOf."acme/app"
+        + builtins.length foreignFacts.unresolvedIncludesOf."acme/app";
       # A LOCAL, sound keyRef resolves. This is the control for the refusal below.
       localKeyRef = localGoodFacts.includesOf."acme/app";
       # CONTROL: a node with no includes is PRESENT in both relations with empty lists, so an
@@ -486,7 +541,18 @@ in
     expected = {
       byValue = [ "lib/base" ];
       byValueUnresolved = [ ];
-      foreignKeyRef = [ "other/lib/base" ];
+      foreignKeyRef = [ ];
+      foreignKeyRefIsPublished = [
+        {
+          origin = [ "other" ];
+          path = [
+            "lib"
+            "base"
+          ];
+          key = "lib/base";
+        }
+      ];
+      foreignDeclaredCount = 1;
       localKeyRef = [ "acme/lib/base" ];
       emptyIsPresent = true;
       emptyIsEmpty = [ ];
@@ -538,7 +604,11 @@ in
   # targets into its node set, so the fabricated id would have been ADMITTED as a node.
   flake.tests.graph-facts.test-no-include-edge-names-a-non-node = {
     expr = {
-      # Across every LOCAL-origin fixture in this suite, in one record.
+      # Across EVERY fixture in this suite, foreign ones included. The scope used to be "every
+      # LOCAL-origin fixture" because a foreign keyRef put a non-node into `includesOf` and the
+      # property was simply false for it; the relation now carries only what this library checked,
+      # so the claim is universal and the fixtures that used to be excluded are the ones that
+      # discriminate.
       inlineTargetsAreNodes = builtins.all (t: builtins.elem t inlineFacts.nodes) (
         lib.concatLists (builtins.attrValues inlineFacts.includesOf)
       );
@@ -552,16 +622,42 @@ in
       # having gone empty everywhere.
       fabricatedIdIsAbsent =
         !(builtins.elem "app/includes/3" (lib.concatLists (builtins.attrValues inlineFacts.includesOf)));
+      foreignTargetsAreNodes = builtins.all (t: builtins.elem t foreignFacts.nodes) (
+        lib.concatLists (builtins.attrValues foreignFacts.includesOf)
+      );
+      sugarTargetsAreNodes = builtins.all (t: builtins.elem t sugarSelfFacts.nodes) (
+        lib.concatLists (builtins.attrValues sugarSelfFacts.includesOf)
+      );
+      twoSegTargetsAreNodes = builtins.all (t: builtins.elem t twoSegFacts.nodes) (
+        lib.concatLists (builtins.attrValues twoSegFacts.includesOf)
+      );
       # WITNESS: a real edge IS emitted somewhere in the suite, so "all targets are nodes" is not
       # vacuously true over an empty relation.
       aRealEdgeExists = refFacts.includesOf."app" == [ "lib/base" ];
+      # CARDINALITY, read off the relation that exists either side of the change: each of the three
+      # fixtures the widening added contributes ZERO checked edges. Paired with `aRealEdgeExists`
+      # above — which is non-zero — this says the universal claim holds over a relation that is not
+      # empty everywhere, and says exactly where the foreign ones went from.
+      foreignEdgeCounts = map (f: builtins.length (lib.concatLists (builtins.attrValues f.includesOf))) [
+        foreignFacts
+        sugarSelfFacts
+        twoSegFacts
+      ];
     };
     expected = {
       inlineTargetsAreNodes = true;
       refTargetsAreNodes = true;
       wrappedTargetsAreNodes = true;
       fabricatedIdIsAbsent = true;
+      foreignTargetsAreNodes = true;
+      sugarTargetsAreNodes = true;
+      twoSegTargetsAreNodes = true;
       aRealEdgeExists = true;
+      foreignEdgeCounts = [
+        0
+        0
+        0
+      ];
     };
   };
 
@@ -576,8 +672,11 @@ in
       # NEGATIVE CONTROL, same predicate, same run: the sound local keyRef does NOT refuse.
       localSoundDoesNotRefuse = caught (builtins.head localGoodFacts.includesOf."acme/app");
       # SECOND CONTROL: a FOREIGN keyRef to an equally absent target does not refuse either, so the
-      # refusal is keyed on locality and not merely on absence.
-      foreignAbsentDoesNotRefuse = caught (builtins.head foreignFacts.includesOf."acme/app");
+      # refusal is keyed on locality and not merely on absence. It is read through
+      # `foreignIncludesOf`, which is where such a reference is published — forcing it runs `resolve`
+      # on the element exactly as forcing `includesOf` did, so this is the same code path under a
+      # different relation and not a weaker check.
+      foreignAbsentDoesNotRefuse = caught (builtins.head foreignFacts.foreignIncludesOf."acme/app");
       messageNamesTheNode = lib.hasInfix "'acme/app'" danglingMsg;
       messageNamesTheTarget = lib.hasInfix "'acme/lib/bsae'" danglingMsg;
       messageNamesThePosition = lib.hasInfix "position 0" danglingMsg;
@@ -589,6 +688,103 @@ in
       messageNamesTheNode = true;
       messageNamesTheTarget = true;
       messageNamesThePosition = true;
+    };
+  };
+
+  # The references did not VANISH when they left `includesOf` — they are in the relation that names
+  # them, one per fixture. Separate from the cell above on purpose: that one must fail with a legible
+  # diff against a library without `foreignIncludesOf`, and a row reading a missing attribute aborts
+  # the whole cell instead (`tryEval` cannot catch it), burying the claim it was written to make.
+  flake.tests.graph-facts.test-foreign-references-are-published-not-dropped = {
+    expr = {
+      foreignRefCounts =
+        map (f: builtins.length (lib.concatLists (builtins.attrValues f.foreignIncludesOf)))
+          [
+            foreignFacts
+            sugarSelfFacts
+            twoSegFacts
+          ];
+      # CONTROL: a fixture with no foreign reference publishes an empty relation, not a missing one.
+      localOnlyRefCount = builtins.length (
+        lib.concatLists (builtins.attrValues localGoodFacts.foreignIncludesOf)
+      );
+      localOnlyRelationIsPresent = localGoodFacts.foreignIncludesOf ? "acme/app";
+    };
+    expected = {
+      foreignRefCounts = [
+        1
+        1
+        1
+      ];
+      localOnlyRefCount = 0;
+      localOnlyRelationIsPresent = true;
+    };
+  };
+
+  # ★ THE TWO keyRef FORMS MUST NOT BE INDISTINGUISHABLE. Under the default empty provider prefix
+  # the string sugar's origin (`[ "lib" ]`, its first segment) never equals the corpus's (`[ ]`), so
+  # the sugar takes the FOREIGN arm and is never checked, while the structured form with an explicit
+  # empty origin takes the LOCAL arm and is. Both used to render the same target string into the same
+  # relation, so a consumer could not tell a checked edge from an unchecked one — this cell is the
+  # discriminator, and it reads only relations that exist either side of the change so it fails with
+  # a legible diff rather than an abort.
+  flake.tests.graph-facts.test-the-two-keyref-forms-are-distinguishable = {
+    expr = {
+      viaSugar = sugarSelfFacts.includesOf."app";
+      # CONTROL, same target, same fixture shape: the checked arm still emits its edge.
+      viaStructured = structSelfFacts.includesOf."app";
+      indistinguishable = sugarSelfFacts.includesOf."app" == structSelfFacts.includesOf."app";
+      # CARDINALITY: the fixtures are the same size, so the difference is the arm and nothing else.
+      sugarNodeCount = builtins.length sugarSelfFacts.nodes;
+      structuredNodeCount = builtins.length structSelfFacts.nodes;
+    };
+    expected = {
+      viaSugar = [ ];
+      viaStructured = [ "lib/base" ];
+      indistinguishable = false;
+      sugarNodeCount = 3;
+      structuredNodeCount = 3;
+    };
+  };
+
+  # The same split at the prefix lengths the string sugar can never match. `keyRef`'s string arm
+  # takes `head parts` as the origin, so the origin is ALWAYS one segment: at length 0 and at
+  # length >= 2 the locality comparison is unconditionally false and the local refusal is
+  # unreachable through the sugar. Both are read here, with the reference each publishes.
+  flake.tests.graph-facts.test-string-sugar-is-foreign-at-every-prefix-length-but-one = {
+    expr = {
+      twoSegEdges = twoSegFacts.includesOf."acme/sub/app";
+      twoSegRefs = twoSegFacts.foreignIncludesOf."acme/sub/app";
+      # A single-segment sugar ref carries an EMPTY path, so its rendered target is a bare name in
+      # the same string space as an unqualified node id.
+      bareSegEdges = bareSegFacts.includesOf."app";
+      bareSegRefs = bareSegFacts.foreignIncludesOf."app";
+      # CONTROL: at length 1 the sugar DOES name a local node and the edge is checked and emitted.
+      oneSegEdges = localGoodFacts.includesOf."acme/app";
+      oneSegRefs = localGoodFacts.foreignIncludesOf."acme/app";
+    };
+    expected = {
+      twoSegEdges = [ ];
+      twoSegRefs = [
+        {
+          origin = [ "acme" ];
+          path = [
+            "sub"
+            "nope"
+          ];
+          key = "sub/nope";
+        }
+      ];
+      bareSegEdges = [ ];
+      bareSegRefs = [
+        {
+          origin = [ "nope" ];
+          path = [ ];
+          key = "";
+        }
+      ];
+      oneSegEdges = [ "acme/lib/base" ];
+      oneSegRefs = [ ];
     };
   };
 

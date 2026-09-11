@@ -40,7 +40,7 @@ Dependency class: **Class D** (nixpkgs-lib-tethered). gen-aspects depends on nix
 
 gen-aspects gives you the *types*, not a framework. An **aspect** is a submodule carrying structural identity (`name`, `key`, `meta`, `includes`) plus freeform, class-separated content. You register your target module systems as **classes** (`nixos`, `homeManager`, `darwin`); each class becomes a clean `deferredModule` option so content stays free of the structural keys.
 
-One flat type (`aspectType`) dispatches by value shape at merge time (Palmer 2024): attrsets and module functions become aspect submodules, context-dependent guard functions are wrapped as inspectable, tagged functors, and primitives pass through unchanged. The library computes stable identity keys, and via `graphFacts` publishes the aspect graph's facts — the node set, the parent and includes relations, and the node values — for a framework to assemble a graph from. `flatten` renders the same walk as a flat path-keyed registry.
+One flat type (`aspectType`) dispatches by value shape at merge time (Palmer 2024): attrsets and module functions become aspect submodules, context-dependent guard functions are wrapped as inspectable, tagged functors, and primitives pass through unchanged. The library computes stable identity keys, and via `graphFacts` publishes the aspect graph's facts — the node set, the parent and include relations, and the node values — for a framework to assemble a graph from. `flatten` renders the same walk as a flat path-keyed registry.
 
 Everything downstream — evaluation, scheduling, conflict resolution, dispatch policy — is the consumer's job. gen-aspects supplies the type surface and the identity keys; the pipeline lives in [gen-resolve](https://github.com/sini/gen-resolve) / [gen-dispatch](https://github.com/sini/gen-dispatch) / [den](https://github.com/sini/den).
 
@@ -231,13 +231,14 @@ Detection is structural rather than relying on a hardcoded key list:
 
 ### Published facts
 
-`graphFacts` publishes what a graph is built FROM — the node set, the two edge relations and the node values — as plain data. gen-aspects imports no query library for this: the query libraries are needed to *query* a graph, never to *state* one, and every fact here is an attrset, a list or a string.
+`graphFacts` publishes what a graph is built FROM — the node set, the edge relations and the node values — as plain data. gen-aspects imports no query library for this: the query libraries are needed to *query* a graph, never to *state* one, and every fact here is an attrset, a list or a string.
 
 ```nix
 facts = aspects.graphFacts cnf eval.config.aspects;
 # => { nodes                = [ "networking" "networking/firewall" … ];
 #      parentOf             = { "networking" = null; "networking/firewall" = "networking"; … };
 #      includesOf           = { "networking" = [ ]; … };
+#      foreignIncludesOf    = { "networking" = [ ]; … };
 #      unresolvedIncludesOf = { "networking" = [ ]; … };
 #      nodeData             = { "networking" = <the aspect value, unchanged>; … }; }
 ```
@@ -245,7 +246,8 @@ facts = aspects.graphFacts cnf eval.config.aspects;
 - **A node id is `pathKey(cnf.providerPrefix ++ walkPath)`** — the walk position the registry already keys on, qualified by origin. It is deliberately *not* `identity.key`: that function content-addresses a guard record, which would move every guard node's name off its position.
 - **`parentOf` is the node's own WALK POSITION, and the id and the parent come from one source.** A framework holding only the registry and the values would have to join on `meta`, and that join is wrong rather than merely redundant — a nested guard leaf carries no `meta.aspect-chain` at all, so `meta.aspect-chain or [ ]` answers root for it, indistinguishably from a genuine root. That is why the relation is published here. It is *not* why it should be computed from `meta` here: this library holds the walk, and reading a position out of `meta` instead is wrong on its own public constructors — `wrapFn` stamps `meta.loc` from the siting name its caller passes, and `wrapGatedFn` defaults `meta` to `{ }`.
 - **`parentOf` is total, and `null` means root and only root.** Every node has an answer. Totality holds *by construction* rather than by a check: the walk descends only into values it also emits, so a non-root node's parent is necessarily already a node — there is no dangling case for a refusal to guard.
-- **`includesOf` resolves the include elements that REFERENCE a node**, taking a `keyRef`'s own origin for a cross-source reference. Every *locally-qualified* target it emits is in `nodes`. A **foreign** `keyRef` is the deliberate exception: its target names a node in a fixpoint gen-aspects does not hold, so it is emitted unresolved and unrefused, and the framework — which unions providers — is what resolves it. That is what `keyRef` is for.
+- **`includesOf` carries the edges this library CHECKED, and every target it emits is in `nodes`** — universally, with no exception and at every provider-prefix length. It resolves the include elements that reference a *local* node.
+- **`foreignIncludesOf` carries the references it could NOT check.** A **foreign** `keyRef` names a node in a fixpoint gen-aspects does not hold, so it is not an edge of this graph; it is published as a reference in the declaration's own `{ origin; path; key; }` shape, and the framework — which unions providers — is what resolves it. That is what `keyRef` is for. The shape is structured rather than a rendered `"origin/path"` string on purpose: a rendering has to be re-split downstream to recover the qualifier, and that re-split is a second source for a fact the declaration already stated. The two relations are **exclusive**, which is the point — left together, an unchecked reference is spelled exactly like a checked edge, and a consumer unioning edge targets into a node set widens the graph past its own membership predicate on a value nothing refused.
 - **`unresolvedIncludesOf` names the declared positions that reference no node.** An `includes` list holds two kinds of thing, and only one is an edge: a *reference* (a `keyRef`, or a by-value aspect whose key is a node), and *inline content* written at the include position (a wrapped fn, a guard record, a deferred closure or policy record, an aspect literal). The walk never descends into `includes`, so inline content has no node for an edge to reach. Its position is published rather than dropped — index back into `nodeData.<id>.includes` for the element itself.
 - **One refusal, and it fires only where the input is unambiguously broken:** a `keyRef` carrying *this* tree's own origin, and so naming a local node, when no such node exists. A genuinely foreign origin names a node in a fixpoint this library does not hold and is not checkable here.
 
@@ -330,7 +332,7 @@ aspectsType {
 
 - **`mkAspectSchema cnf`** — bridges aspect types to gen-schema kind-level infrastructure. Returns `schemaOption`, `mkAspectOption`, `mkAspectModule`, `mkNamespaceType`, plus re-exports (`aspectType`, `identity`, `canTake`, `mkIsModuleFn`). See [Schema Integration](#schema-integration).
 - **`flatten aspects`** — walks the recursive aspect tree into a flat attrset keyed by `path` identity (`"parent/child"`), structurally detecting nested aspects vs class content. The key is a rendering of a parent edge, never the edge; read `graphFacts` for parenthood. See [Flat Registry](#flat-registry).
-- **`graphFacts cnf aspects`** — the aspect graph's facts as plain data: `{ nodes; parentOf; includesOf; unresolvedIncludesOf; nodeData; }`, keyed by origin-qualified node id. `parentOf` is the walk position and is total by construction; include elements that reference no node are published as positions rather than refused. See [Published facts](#published-facts).
+- **`graphFacts cnf aspects`** — the aspect graph's facts as plain data: `{ nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }`, keyed by origin-qualified node id. `parentOf` is the walk position and is total by construction; include elements that reference no node are published as positions rather than refused. See [Published facts](#published-facts).
 
 ## Demo
 

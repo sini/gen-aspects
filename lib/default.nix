@@ -80,7 +80,8 @@ in
   # New API
   inherit (schemaModule) mkAspectSchema;
   inherit flatten;
-  # `graphFacts cnf aspects` → `{ nodes; parentOf; includesOf; unresolvedIncludesOf; nodeData; }` —
+  # `graphFacts cnf aspects` →
+  # `{ nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }` —
   # THE aspect graph's facts as plain data. The node set, the edge relations and the node values,
   # published so a framework assembles the graph from them instead of parsing `flatten`'s key for
   # parenthood (ADR-0012: the flat registry is a projection, never a source). The id and the parent

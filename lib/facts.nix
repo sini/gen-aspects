@@ -69,7 +69,8 @@ in
   # reads a refusal, never renders one.
   inherit danglingIncludeRefusal;
 
-  # `graphFacts cnf aspects` → { nodes; parentOf; includesOf; unresolvedIncludesOf; nodeData; }
+  # `graphFacts cnf aspects` →
+  #   { nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }
   #
   # `nodes` is the membership predicate's answer as a list of ids; the rest are attrsets keyed by
   # that same id, so `attrNames` over any of them IS the node set — totality, asserted in
@@ -153,26 +154,53 @@ in
           let
             target = render (elem.origin ++ elem.path);
           in
-          if elem.origin != origin || nodeSet ? ${target} then
-            target
+          if elem.origin != origin then
+            {
+              kind = "foreign";
+              ref = { inherit (elem) origin path key; };
+            }
+          else if nodeSet ? ${target} then
+            {
+              kind = "local";
+              inherit target;
+            }
           else
             throw (danglingIncludeRefusal id i target)
         else if builtins.isAttrs elem && elem ? key && nodeSet ? ${qualify elem.key} then
-          qualify elem.key
+          {
+            kind = "local";
+            target = qualify elem.key;
+          }
         else
-          null;
+          { kind = "inline"; };
 
       indexed =
         e:
         prelude.imap0 (i: elem: { inherit i elem; }) (
           if isGuardLeaf e.value then [ ] else e.value.includes
         );
-      resolved = e: map (x: x // { target = resolve (idOf e.path) x.i x.elem; }) (indexed e);
+      resolved = e: map (x: x // { r = resolve (idOf e.path) x.i x.elem; }) (indexed e);
+      ofKind = k: e: builtins.filter (x: x.r.kind == k) (resolved e);
 
       includesOf = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
-          value = map (x: x.target) (builtins.filter (x: x.target != null) (resolved e));
+          value = map (x: x.r.target) (ofKind "local" e);
+        }) entries
+      );
+
+      # THE REFERENCES THIS LIBRARY COULD NOT CHECK, published apart from the ones it could. A
+      # foreign keyRef names a node in a fixpoint gen-aspects does not hold, so its target is not a
+      # node here and never becomes one; left in `includesOf` it is an UNCHECKED edge spelled
+      # exactly like a checked one, and a consumer unioning edge targets into a node set widens the
+      # graph past the membership predicate on a value nothing refused. The reference is published
+      # in the declaration's own `{ origin; path; key; }` shape rather than rendered to a string:
+      # a rendering has to be re-split downstream to recover the qualifier, and that re-split is a
+      # second source for a fact the declaration already stated.
+      foreignIncludesOf = builtins.listToAttrs (
+        map (e: {
+          name = idOf e.path;
+          value = map (x: x.r.ref) (ofKind "foreign" e);
         }) entries
       );
 
@@ -183,7 +211,7 @@ in
       unresolvedIncludesOf = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
-          value = map (x: x.i) (builtins.filter (x: x.target == null) (resolved e));
+          value = map (x: x.i) (ofKind "inline" e);
         }) entries
       );
     in
@@ -192,6 +220,7 @@ in
         nodes
         parentOf
         includesOf
+        foreignIncludesOf
         unresolvedIncludesOf
         nodeData
         ;
