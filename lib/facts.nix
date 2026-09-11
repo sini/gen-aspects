@@ -3,8 +3,8 @@
 # ADR-0012 rules that the flat registry is a PROJECTION OF THE GRAPH, NEVER A SOURCE FOR IT, and
 # that an aspect's slash-joined path key is a RENDERING of a parent edge rather than the edge.
 # `flatten` was every structural consumer's only source for the node set, so the edges were
-# recoverable from it only by parsing that rendering. This file ends that: the node set, the two
-# edge relations and the node values are published as plain data, and nothing downstream re-derives
+# recoverable from it only by parsing that rendering. This file ends that: the node set, the edge
+# relations and the node values are published as plain data, and nothing downstream re-derives
 # an edge from a string.
 #
 # ★ WHY THE RELATION MUST BE PUBLISHED HERE AND CANNOT BE RE-DERIVED BY A FRAMEWORK. A framework

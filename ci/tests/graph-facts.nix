@@ -1,4 +1,4 @@
-# The published aspect-graph FACTS: the node set, the two edge relations, the node values.
+# The published aspect-graph FACTS: the node set, the edge relations, the node values.
 #
 # THE ORACLE THIS SUITE EXISTS FOR is that the published parent is the node's OWN WALK POSITION and
 # not a re-derivation from `meta`. Two readings must be discriminated against, not one:
@@ -594,14 +594,17 @@ in
     };
   };
 
-  # ★ NO LOCALLY-QUALIFIED EDGE TARGET IS OUTSIDE `nodes`. The general form of the fabrication this
-  # repairs — and the scope is the claim, not a hedge: a FOREIGN keyRef emits a target that is
-  # deliberately not a node here (asserted at `foreignKeyRef` above), because it names one in a
-  # fixpoint this library does not hold. Hence every fixture below is local-origin:
-  # an inline aspect literal carries a `.key`, but that key is its MERGE position under `includes`
-  # (`app/includes/0`), so taking the `? key` branch on shape alone minted an id for a node that
-  # does not exist. Left standing it does not merely mislead — `gen-graph.mkGraph` unions edge
-  # targets into its node set, so the fabricated id would have been ADMITTED as a node.
+  # ★ NO INCLUDE EDGE TARGET IS OUTSIDE `nodes` — UNIVERSALLY, with no local-origin hedge. The claim
+  # was once scoped to local-origin fixtures because a FOREIGN keyRef put its uncheckable target into
+  # `includesOf` and the property was simply false for it. That target is now published as a
+  # REFERENCE in `foreignIncludesOf` — `foreignKeyRef` above asserts `includesOf` holds `[ ]` for it —
+  # so this relation carries only what the library checked and the property is total over it.
+  #
+  # The fabrication this repairs, in its general form: an inline aspect literal carries a `.key`, but
+  # that key is its MERGE position under `includes` (`app/includes/0`), so taking the `? key` branch
+  # on shape alone minted an id for a node that does not exist. Left standing it does not merely
+  # mislead — `gen-graph.mkGraph` unions edge targets into its node set, so the fabricated id would
+  # have been ADMITTED as a node.
   flake.tests.graph-facts.test-no-include-edge-names-a-non-node = {
     expr = {
       # Across EVERY fixture in this suite, foreign ones included. The scope used to be "every
