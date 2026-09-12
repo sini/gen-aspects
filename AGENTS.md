@@ -1,5 +1,7 @@
 # gen-aspects — agent capability sheet
 
+> **Library class: reference-grade.** Deletion requires a domain argument — wrong abstraction, subsumption by another construct, or theory-unsoundness; a usage count is inadmissible as a deletion ground (P7, 2026-08-17).
+
 ## Scope
 
 Aspect-oriented composition types: a flat option type (`aspectType`) that dispatches by value shape in
