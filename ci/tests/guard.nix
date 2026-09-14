@@ -421,4 +421,76 @@ in
         plainSiblingParent = "acme/top";
       };
     };
+
+  # APPLYING A WRAPPED FN GROWS THE TREE BY EXACTLY ONE LEVEL. `applyGuard`'s callable arm is `g ctx`
+  # with no recursion, so depth is exactly the caller's application count and the termination bound
+  # belongs to whoever drives the channel — see AGENTS.md `## Not this library's job`.
+  #
+  # ★★ WHY THE THIRD FIXTURE: A SELF-REPRODUCING FIXTURE IS BLIND TO OFF-BY-k. `selfw` reproduces
+  # forever, so its `includes` head is a wrap after ANY number of applications; `leafw` bottoms out at
+  # level 1, so it reads `false` for every k >= 1. Between them they separate k=0 from k>=1 and nothing
+  # else — the identical two-fixture cell under a 1-, 2- and 7-level applier reads BYTE-IDENTICAL. Only
+  # a FINITE chain longer than one level can see k=2, and `chainw` is that fixture: one application
+  # leaves `leafw` itself unexpanded at the head, and `chainNextIsWrapped` is the conjunct that flips
+  # the moment the channel expands a second level.
+  flake.tests.guard.test-application-is-one-level-per-application =
+    let
+      cnf = {
+        keySemantics = {
+          classOne = {
+            category = "class";
+          };
+          classTwo = {
+            category = "class";
+          };
+        };
+      };
+      ctx = {
+        host = "h1";
+      };
+      selfw =
+        let
+          w = aspects.wrapFn cnf "selfw" (
+            { host, ... }:
+            {
+              includes = [ w ];
+            }
+          );
+        in
+        w;
+      leafw = aspects.wrapFn cnf "leafw" (
+        { host, ... }:
+        {
+          includes = [ { description = "leaf"; } ];
+        }
+      );
+      chainw = aspects.wrapFn cnf "chainw" (
+        { host, ... }:
+        {
+          includes = [ leafw ];
+        }
+      );
+      nextOf = r: builtins.head (r.includes or [ ]);
+      isWrap = x: x.__isWrappedFn or false;
+    in
+    {
+      expr = {
+        # The result is a merged aspect, not a wrap: the application happened.
+        appliedOnce = !(isWrap (aspects.applyGuard ctx selfw));
+        # Its `includes` head is STILL a wrap — the channel stopped at one level although the next
+        # level was available.
+        nextIsWrapped = isWrap (nextOf (aspects.applyGuard ctx selfw));
+        # CONTROL: the identical predicate over a fixture that bottoms out ⇒ `false`, which is what
+        # makes `nextIsWrapped` a result rather than an artefact of a predicate that cannot say no.
+        controlNextIsWrapped = isWrap (nextOf (aspects.applyGuard ctx leafw));
+        # The level counter: one application of a TWO-level chain leaves `leafw` unexpanded.
+        chainNextIsWrapped = isWrap (nextOf (aspects.applyGuard ctx chainw));
+      };
+      expected = {
+        appliedOnce = true;
+        nextIsWrapped = true;
+        controlNextIsWrapped = false;
+        chainNextIsWrapped = true;
+      };
+    };
 }
