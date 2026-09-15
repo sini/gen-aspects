@@ -31,8 +31,21 @@ Quoted text is the owner's own `flake.nix` `description` field, verbatim.
 
 ## Exports
 
-Entry: `inputs.gen-aspects.lib` (flake). Root `default.nix` is a function of `{ prelude, merge, schema }`,
-each defaulting to a `fetchTree` of the flake-locked rev, so `import ./. { }` self-constructs.
+Entry: `inputs.gen-aspects.lib` (flake). Root `default.nix` is a function of
+`{ prelude, merge, schema, identity }`, each defaulting to a `fetchTree` of the flake-locked rev, so
+`import ./. { }` self-constructs.
+
+Root `default.nix`'s `wire ? { deps, resolve }: import ./lib deps` formal is the seam that hands
+this exact substrate attrset to `./lib` as `deps`, and it is also the only channel by which the shim
+publishes anything outward — a formal is an INPUT channel and cannot carry a value out, so the
+lock-parameterised `follows` resolver rides out on the same record. Overriding `wire` is how a cell
+reads the shim's own formal-to-path map AND its own resolver, instead of restating either by hand;
+the `follows` rule is therefore declared once in this repository, in `default.nix`. The unresolved
+defaults resolve all four from `ci/flake.lock`, never the root `flake.lock` — and this repository's
+own `ci/flake.lock` is one where `gen-prelude`'s node key (`gen-prelude_3`) differs from the literal
+label, so the resolver walks the `follows` path rather than indexing by label. `identity` stays the
+one minting authority: resolved through this same shim's own lock so the whole construction mints
+through one content-address encoding.
 
 **Types** — `lib/types.nix`
 
