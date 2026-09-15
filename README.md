@@ -346,7 +346,7 @@ nix shell nixpkgs#nix-unit -c nix-unit \
   --flake './ci#.tests'
 ```
 
-247 tests across 34 suites (verified `247/247 successful` via nix-unit) — one file per suite under `ci/tests/`, which is the count's own source rather than a list restated here, since the last two restatements (`115/17`, then `236/33`) both went stale by the next landing. Coverage spans class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, the guard predicate vocabulary + defunctionalized identity (`mkGuardVocab`/`applyGuard`/`guardKey`) including the guard/body depth budgets behind a cyclic guard record, lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
+272 tests across 35 suites (`nix-unit --flake ./ci#tests` ⇒ `272/272 successful`, `277e65b`) — one file per suite under `ci/tests/`, which is the count's own source rather than a list restated here, since the last three restatements (`115/17`, `236/33`, then `247/34`) each went stale by the next landing. Coverage spans class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, the guard predicate vocabulary + defunctionalized identity (`mkGuardVocab`/`applyGuard`/`guardKey`) including the guard/body depth budgets behind a cyclic guard record, lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
 
 ## Theoretical Foundations
 
