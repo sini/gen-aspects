@@ -194,12 +194,52 @@ let
   # own throw, so a cyclic chain propagates it, uncaught, all the way back here — where it is caught
   # ONCE and answered with THIS guard's own position, exactly the answer bodyKey already gives any
   # body it cannot content-address.
-  guardKey =
+  # Multi-def guard carrier identity (den-hoag-sezf Arm B). A carrier of RECORD/unconditional
+  # fragments is inert first-order structure, so it mints structurally over its ordered fragment
+  # list, exactly as a single guard record mints over its body (ADR-0034/ADR-0016 ruling 5: one
+  # mint, and what the mint cannot take gets no identity at all — a total tagged field and a
+  # named refusal when identity is demanded). A carrier holding ANY function-bodied fragment — or
+  # any fragment whose body itself fails `bodyKey` — is a sealed site: the same `guardLocFallback`
+  # a single opaque-bodied guard already falls back to, now for the whole carrier rather than one
+  # fragment, because a partial mint is not a mint (R-2, the fragment-order-in-preimage question,
+  # is carried separately and NOT settled by this — see the spec's §4).
+  fragmentToken =
+    f:
+    if f.kind == "fn" then
+      null
+    else
+      let
+        probe = builtins.tryEval (bodyKey f.body);
+      in
+      if !(probe.success && probe.value != null) then
+        null
+      else if f.kind == "record" then
+        {
+          pred = f.pred;
+          body = probe.value;
+        }
+      else
+        { body = probe.value; };
+
+  carrierKey =
     g:
     let
-      probe = builtins.tryEval (bodyKey g.body);
+      toks = map fragmentToken g.fragments;
     in
-    if probe.success && probe.value != null then mintGuardKey g probe.value else guardLocFallback g;
+    if builtins.any (t: t == null) toks then
+      guardLocFallback g
+    else
+      "guard:carrier:" + builtins.hashString "sha256" (builtins.toJSON { fragments = toks; });
+
+  guardKey =
+    g:
+    if g ? fragments then
+      carrierKey g
+    else
+      let
+        probe = builtins.tryEval (bodyKey g.body);
+      in
+      if probe.success && probe.value != null then mintGuardKey g probe.value else guardLocFallback g;
 in
 {
   inherit

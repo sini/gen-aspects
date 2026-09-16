@@ -324,14 +324,21 @@ in
       expected = false;
     };
 
-  # multi-def limitation (documented, not fixed — feedback_no_deferral): a guard record defined
-  # TWICE under one key takes the merge `length != 1` path, which folds the two attrs guard
-  # records into an aspect submodule rather than passing either through. ACTUAL observed behavior
-  # (2026-07-02): it does NOT throw, but `__guard` is folded as a freeform bool key and becomes a
-  # `genMerge.mkMerge [ true true ]` wrapper ({ _type = "merge"; ... }) — NOT the clean `true` a real
-  # guard record carries. So the result is not a usable guard record. Single-def is the real usage.
-  # TODO(guard): multi-def guard records not supported (single-def only) — see lib/types.nix branch.
-  flake.tests.guard.test-guard-multidef-limitation =
+  # O8 (den-hoag-sezf): the above "multi-def limitation" fixture RETIRES here — it asserted the
+  # shape LOSS as correct behaviour, and that loss is exactly what Arm B's fragment carrier fixes.
+  # Replaced by the carrier cells below (test-guard-multidef-carrier-*), not deleted silently: the
+  # limitation retires by becoming expressible, per spec §3 O8. `dup` still resolves, still holds
+  # `__guard == true` (never lost), and now carries BOTH fragments rather than one shredded blend.
+
+  # den-hoag-sezf Arm B (O4/O12): a guard record defined twice under one key merges to a fragment
+  # carrier rather than folding through `(aspectSubmodule cnf).merge` — witness 2's fix. RED
+  # (measured this session by execution, gen-aspects f0d9d14c, pre-fix): `aspects.flatten
+  # eval.config.aspects` aborted `expected a Boolean but found a set` at `lib/walk.nix:25`, and
+  # `builtins.tryEval` wrapped around `builtins.deepSeq` did NOT catch it — the whole eval died,
+  # unpiped exit 1. That RED is out-of-suite only (an uncatchable abort kills the runner before it
+  # can report a ❌) — captured as a probe transcript in the build report, not as an in-suite cell.
+  # GREEN, in-suite, three parts:
+  flake.tests.guard.test-guard-multidef-carrier-flattens-as-single-leaf =
     let
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
@@ -340,23 +347,375 @@ in
           { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
         ];
       };
-      guardField = eval.config.aspects.dup.__guard or false;
+      flat = aspects.flatten eval.config.aspects;
     in
     {
-      # single-def would give `true`; multi-def folds into the submodule -> a mkMerge attrset,
-      # so the guard-record shape is lost (guardField == true is FALSE).
+      # (i) flatten succeeds, one leaf — not a shredded subtree.
+      expr = builtins.attrNames flat;
+      expected = [ "dup" ];
+    };
+
+  flake.tests.guard.test-guard-multidef-carrier-both-fragments-recoverable =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+        ];
+      };
+      carrier = eval.config.aspects.dup;
+    in
+    {
+      # (ii) both fragments recoverable, predicates distinguishable, neither body merged into
+      # the other. Order is gen-merge's declared reverse-flattened-module-order invariant
+      # (measured live this session, same as O1a's list/string-concat cells) — NOT authored
+      # order; an oracle asserting authored order would be wrong per spec §3.
       expr = {
-        guardShapeIsLost = guardField == true;
-        # WITNESS, in the same record: `dup` IS in the fixture. Held apart, `… .__guard or false`
-        # swallows the absence — drop `dup` entirely and the negative goes green with no subject
-        # left anywhere in the tree. `or` is not the hazard by itself; `or` together with a falsy
-        # expectation is what turns a missing subject into a pass.
-        dupIsInTheTree = eval.config.aspects ? dup;
+        isGuard = carrier.__guard or false;
+        fragmentCount = builtins.length carrier.fragments;
+        preds = map (f: f.pred.a.host.v) carrier.fragments;
+        bodies = map (f: f.body.classOne.setting) carrier.fragments;
       };
       expected = {
-        guardShapeIsLost = false;
-        dupIsInTheTree = true;
+        isGuard = true;
+        fragmentCount = 2;
+        preds = [
+          "blade"
+          "cortex"
+        ];
+        bodies = [
+          "y"
+          "x"
+        ];
       };
+    };
+
+  flake.tests.guard.test-guard-multidef-carrier-discharges-firing-fragment =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+        ];
+      };
+      carrier = eval.config.aspects.dup;
+    in
+    {
+      # (iii) discharge at a context where exactly one guard fires yields that fragment's body
+      # alone.
+      expr = gv.applyGuard { host.name = "cortex"; } carrier;
+      expected = {
+        classOne.setting = "x";
+      };
+    };
+
+  flake.tests.guard.test-guard-multidef-carrier-discharges-to-null-when-none-fire =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+        ];
+      };
+      carrier = eval.config.aspects.dup;
+    in
+    {
+      # (iii, continued) where neither fires, null.
+      expr = gv.applyGuard { host.name = "vault"; } carrier;
+      expected = null;
+    };
+
+  # O12: two guards at one key, BOTH firing at the same host, with directly conflicting INT
+  # bodies — proves discharge routes survivors through Arm A's own refusal law (a catchable named
+  # `throw`), not a pick-one shortcut. The bodies must be the bare ints themselves, not ints
+  # NESTED inside an attrset key (`classOne.count = 1` vs `= 2`): measured live this session, an
+  # attrset-nested collision never reaches Arm A's scalar arm at all — `mergeDefaultOption` sees
+  # two ATTRSETS at the top level and takes the ADR-0031 shallow-`//`-fold arm instead (silent
+  # last-wins, no refusal; already scoped away, den-hoag-z5rvp), which would have made this cell
+  # pass for the wrong reason. The key must be an int specifically: differing strings/bools
+  # concatenate or `or` rather than refusing (O1a/O1b), and would red against a correct build.
+  flake.tests.guard.test-guard-multidef-discharge-routes-int-collision-through-arm-a-refusal =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = gv.vocab.whenHost "cortex" 1; }
+          { config.aspects.dup = gv.vocab.whenHost "cortex" 2; }
+        ];
+      };
+      carrier = eval.config.aspects.dup;
+    in
+    {
+      expr =
+        !(builtins.tryEval (builtins.deepSeq (gv.applyGuard { host.name = "cortex"; } carrier) true))
+        .success;
+      expected = true;
+    };
+
+  # O5: guard control, byte-identical — single-def dispatch is untouched by either arm.
+  flake.tests.guard.test-guard-singledef-control-byte-identical =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [ { config.aspects.solo = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+      };
+    in
+    {
+      expr = {
+        isGuard = eval.config.aspects.solo.__guard or false;
+        pred = eval.config.aspects.solo.pred.a.host.v;
+        body = eval.config.aspects.solo.body;
+        flatKeys = builtins.attrNames (aspects.flatten eval.config.aspects);
+      };
+      expected = {
+        isGuard = true;
+        pred = "cortex";
+        body = {
+          classOne.setting = "x";
+        };
+        flatKeys = [ "solo" ];
+      };
+    };
+
+  # O6: no shredding, non-enumeratively. `A` is derived LIVE from a third, plain-attrset fixture
+  # that legitimately routes to `aspectSubmodule.merge` (two attrset defs at one key, the same
+  # shape `multi-def.nix`'s `test-attrset-multi-def-preserves-both-keys` exercises) — never an
+  # enumerated literal name list (a prior enumerated form omitted a name and would have passed an
+  # implementation that left it behind).
+  flake.tests.guard.test-guard-multidef-carrier-no-shredding =
+    let
+      gv = aspects.mkGuardVocab { };
+      carrierEval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+        ];
+      };
+      carrier = carrierEval.config.aspects.dup;
+      singleDefEval = mkSchemaEval {
+        modules = [ { config.aspects.solo = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+      };
+      singleDefNames = builtins.attrNames singleDefEval.config.aspects.solo;
+      thirdEval = mkSchemaEval {
+        modules = [
+          { config.aspects.plain.x = "from-a"; }
+          { config.aspects.plain.y = "from-b"; }
+        ];
+      };
+      a = builtins.attrNames thirdEval.config.aspects.plain;
+      carrierNames = builtins.attrNames carrier;
+      shredded = builtins.filter (n: builtins.elem n a && !(builtins.elem n singleDefNames)) carrierNames;
+    in
+    {
+      expr = shredded;
+      expected = [ ];
+    };
+
+  # O9: the silent heterogeneous case — a guard record plus a plain attrset def at one key.
+  # Nothing in O1-O8/O12 sees this shape. RED (measured this session by execution, pre-fix):
+  # `flatten` SUCCEEDS today, byte-identical at the registry surface (`["mixed"]`, one leaf) to
+  # the correct single-def case — the fully silent form. The difference is invisible at `flatten`;
+  # it surfaces only on the node itself, which picked up `aspectSubmodule`'s own structural option
+  # names (`description`, `id_hash`, `includes`, `key`) alongside the plain attrset's content —
+  # never assert on `flatten` merely succeeding. GREEN: the plain attrset becomes an unconditional
+  # fragment (condition ≡ true) riding beside the guarded one; O6's no-shredding predicate holds;
+  # discharge where the guard does not fire yields the unconditional body alone.
+  flake.tests.guard.test-guard-heterogeneous-multidef-flattens-as-single-leaf =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.mixed = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.mixed.classTwo.other = "y"; }
+        ];
+      };
+    in
+    {
+      expr = builtins.attrNames (aspects.flatten eval.config.aspects);
+      expected = [ "mixed" ];
+    };
+
+  flake.tests.guard.test-guard-heterogeneous-multidef-no-shredding =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.mixed = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.mixed.classTwo.other = "y"; }
+        ];
+      };
+      singleDefEval = mkSchemaEval {
+        modules = [ { config.aspects.solo = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+      };
+    in
+    {
+      expr = {
+        # the aspectSubmodule structural names a shredded merge would have added, absent here
+        noSubmoduleContamination =
+          !(builtins.any (
+            n:
+            builtins.elem n [
+              "description"
+              "id_hash"
+              "includes"
+              "key"
+            ]
+          ) (builtins.attrNames eval.config.aspects.mixed));
+        # the plain attrset's own content survived as a fragment, not shredded away
+        hasClassTwoFragment = builtins.any (
+          f: f.kind == "unconditional" && (f.body.classTwo.other or null) == "y"
+        ) eval.config.aspects.mixed.fragments;
+      };
+      expected = {
+        noSubmoduleContamination = true;
+        hasClassTwoFragment = true;
+      };
+    };
+
+  flake.tests.guard.test-guard-heterogeneous-multidef-discharge-when-guard-does-not-fire =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.mixed = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.mixed.classTwo.other = "y"; }
+        ];
+      };
+      carrier = eval.config.aspects.mixed;
+    in
+    {
+      # guard does not fire ("vault" != "cortex") -> the unconditional fragment's body alone.
+      expr = gv.applyGuard { host.name = "vault"; } carrier;
+      expected = {
+        classTwo.other = "y";
+      };
+    };
+
+  # O10: multi-def guard FUNCTIONS. RED (measured this session by execution, pre-fix): attrNames
+  # gain the six aspect-option names, `includes` length 2, `__isWrappedFn` absent — a guard
+  # function collision was silently folded through `(aspectSubmodule cnf).merge` exactly as a
+  # module-function collision is, losing the distinction F4(b) rules must exist. GREEN, under
+  # F4(b)'s ruled arm (in): two fragments, neither wearing `includes`; arity and discharge only —
+  # a fragment's contributed content stays opaque pre-discharge (ADR-0013's declared limit), so
+  # this oracle does not read into one. Two controls, same run: a single-def guard function still
+  # yields `__isWrappedFn`; two MODULE functions at one key still coerce to `includes` length 2.
+  flake.tests.guard.test-guard-multidef-functions-carrier-not-submodule-shape =
+    let
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.provider =
+              { who }:
+              {
+                classOne.a = "hi ${who}";
+              };
+          }
+          {
+            config.aspects.provider =
+              { who }:
+              {
+                classTwo.b = "yo ${who}";
+              };
+          }
+        ];
+      };
+      node = eval.config.aspects.provider;
+    in
+    {
+      expr = {
+        isGuard = node.__guard or false;
+        fragmentCount = builtins.length node.fragments;
+        hasIncludes = node ? includes;
+        hasIsWrappedFn = node.__isWrappedFn or false;
+      };
+      expected = {
+        isGuard = true;
+        fragmentCount = 2;
+        hasIncludes = false;
+        hasIsWrappedFn = false;
+      };
+    };
+
+  flake.tests.guard.test-guard-multidef-functions-discharge-arity-only =
+    let
+      gv = aspects.mkGuardVocab { };
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.provider =
+              { who }:
+              {
+                classOne.a = "hi ${who}";
+              };
+          }
+          {
+            config.aspects.provider =
+              { who }:
+              {
+                classTwo.b = "yo ${who}";
+              };
+          }
+        ];
+      };
+      node = eval.config.aspects.provider;
+    in
+    {
+      # arity + discharge only — both closures apply without an arity error, both survivors reach
+      # the tree (different top-level keys, so this asserts nothing about mergeDefaultOption's own
+      # interim shallow-attrset fold, out of scope per ADR-0031 / den-hoag-z5rvp).
+      expr = gv.applyGuard { who = "world"; } node;
+      expected = {
+        classOne.a = "hi world";
+        classTwo.b = "yo world";
+      };
+    };
+
+  flake.tests.guard.test-guard-singledef-function-control-still-wrapped =
+    let
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.soloFn =
+              { who }:
+              {
+                classOne.a = "hi ${who}";
+              };
+          }
+        ];
+      };
+    in
+    {
+      expr = eval.config.aspects.soloFn.__isWrappedFn or false;
+      expected = true;
+    };
+
+  flake.tests.guard.test-guard-multidef-module-functions-still-coerce-to-includes =
+    let
+      eval = mkSchemaEval {
+        modules = [
+          {
+            config.aspects.modfn =
+              { aspect, ... }:
+              {
+                classOne.a = "1";
+              };
+          }
+          {
+            config.aspects.modfn =
+              { aspect, ... }:
+              {
+                classOne.b = "2";
+              };
+          }
+        ];
+      };
+    in
+    {
+      expr = builtins.length eval.config.aspects.modfn.includes;
+      expected = 2;
     };
 
   # a defunctionalized guard record flattens as a LEAF (like __isWrappedFn), never recursed

@@ -3,7 +3,7 @@
 # md:874/1318) as formalized by Danvy & Nielsen 2001 (obligations O1-O7). A guard = predicate +
 # body; the predicate is pure first-order data, so identity (identity.nix guardKey) never hashes a
 # closure. Raw closures remain the non-defunctionalized escape hatch (functionTo, see types.nix).
-{ prelude }:
+{ prelude, merge }:
 let
   inherit (import ./cnf.nix) checkedEntry;
   # Vendored attrByPath (gen-prelude has no attrByPath): walk `path` into `set`, `default` if absent.
@@ -152,6 +152,20 @@ in
         in
         core.${pr.p} or (throw "gen-aspects.guard: unknown predicate form '${pr.p}'");
       fires = ctx: g: evalPred ctx g.pred;
+      # Multi-def guard carrier discharge (den-hoag-sezf Arm B) — one fragment per definition,
+      # included iff its condition holds, evaluated HERE at the stratum where guards are
+      # evaluable (per-host, downstream). A record fragment's condition is `evalPred`, unchanged;
+      # a function fragment IS its own condition-and-body, computed together by the closure
+      # (opaque before this call, per the declared limit at the carrier's construction site,
+      # `lib/types.nix`); an unconditional fragment always survives.
+      dischargeFragment =
+        ctx: f:
+        if f.kind == "record" then
+          (if evalPred ctx f.pred then f.body else null)
+        else if f.kind == "fn" then
+          f.fn ctx
+        else
+          f.body;
     in
     {
       inherit
@@ -171,10 +185,29 @@ in
         always = body: guard pred.always body;
       };
       # O2/O5: single entry point. Vocabulary guards dispatch as data; raw closures /
-      # functionTo functors take the escape hatch (NOT defunctionalized).
+      # functionTo functors take the escape hatch (NOT defunctionalized). A multi-def carrier
+      # (`g ? fragments`) widens the codomain from *one body or `null`* to *the Arm A merge of
+      # the surviving fragments' bodies, or `null` when none survive* — `mkIf`'s discharge-at-merge
+      # cannot transfer here because a guard's condition is a function of a host context that
+      # does not exist at merge time; the carrier is what carries the undischarged condition
+      # across that gap. A single survivor reduces to itself by construction, via
+      # `mergeDefaultOption`'s own singleton arm — not a special case here.
       applyGuard =
         ctx: g:
-        if g.__guard or false then
+        if g ? fragments then
+          let
+            survivors = builtins.filter (v: v != null) (map (dischargeFragment ctx) g.fragments);
+          in
+          if survivors == [ ] then
+            null
+          else
+            merge.mergeDefaultOption (g.meta.loc or [ "<guard-carrier>" ]) (
+              map (v: {
+                file = g.meta.file or "<unknown>";
+                value = v;
+              }) survivors
+            )
+        else if g.__guard or false then
           (if fires ctx g then g.body else null)
         else if prelude.isFunction g || (g.__isWrappedFn or false) then
           g ctx

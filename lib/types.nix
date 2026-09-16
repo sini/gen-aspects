@@ -159,6 +159,66 @@ let
     cnf:
     let
       isModuleFn = mkIsModuleFn cnf;
+      # Arm B (witness 2, den-hoag-sezf §2): a def at a multi-def key is guard-shaped either as
+      # a guard RECORD (guard.nix, `__guard`) or as a guard FUNCTION (a raw closure that is not
+      # a module fn — `wrapGuardFn`'s single-def sibling). Reused verbatim from the single-def
+      # dispatch below (`:207`/`:209`-equivalent), never duplicated, per F4(b)'s ruling.
+      isGuardRecordDef = d: builtins.isAttrs d.value && (d.value.__guard or false);
+      isGuardFnDef = d: builtins.isFunction d.value && !(isModuleFn d.value);
+      # Every definition at a guard-bearing multi-def key becomes a FRAGMENT — nothing rejected,
+      # nothing shredded (spec §2 Arm B, table). `__guard = true` here is a literal Boolean, not
+      # the unresolved gen-merge marker witness 1 produces, so `walk.nix`'s `isGuardLeaf` already
+      # admits this carrier as a leaf with no edit of its own.
+      toFragment =
+        d:
+        if isGuardRecordDef d then
+          {
+            kind = "record";
+            inherit (d.value) pred body;
+          }
+        else if isGuardFnDef d then
+          # A function-bodied fragment is OPAQUE before discharge. Flatten and every projection
+          # over the aspect tree cannot read into it — not the keys it contributes, not its
+          # condition — until the guard stratum supplies the context that runs it. Derivation is
+          # impossible because the fragment's content is the return value of a closure whose
+          # argument does not exist yet: at merge there is nothing to inspect but the closure.
+          # This is the same seal `__isWrappedFn` already carries (`wrapGuardFn` above), not a
+          # new one. What would have to change for the fact to become derivable: the fragment
+          # would have to be defunctionalized — its body expressed as first-order data in the
+          # `guard.nix` vocabulary — at which point the content is readable and this limit
+          # retires for that fragment; it does not retire for the escape hatch, which exists
+          # precisely to admit closures the vocabulary cannot express (ADR-0013's form).
+          {
+            kind = "fn";
+            fn = d.value;
+          }
+        else if builtins.isFunction d.value then
+          # A module function among guard-shaped siblings keeps today's `includes` coercion
+          # (F4(b): guard functions join the carrier, module functions do not) — riding beside
+          # the guarded fragments as an UNCONDITIONAL one, exactly as a plain attrset def would.
+          {
+            kind = "unconditional";
+            body = {
+              includes = [ d.value ];
+            };
+          }
+        else
+          # Plain attrset or primitive def alongside a guard-shaped sibling: an UNCONDITIONAL
+          # fragment, condition ≡ true, riding beside the guarded ones (F4(a)'s dissolution made
+          # mechanism — the heterogeneous list has defined semantics, no refusal owed).
+          {
+            kind = "unconditional";
+            body = d.value;
+          };
+      mkGuardCarrier = loc: defs: {
+        __guard = true;
+        fragments = map toFragment defs;
+        name = prelude.last loc;
+        meta = {
+          inherit loc;
+          file = (builtins.head defs).file or "<unknown>";
+        };
+      };
     in
     merge.mkOptionType {
       name = "aspect";
@@ -167,7 +227,9 @@ let
         loc: defs:
         if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
-            merge.mkMerge (map (d: d.value) defs)
+            merge.mergeDefaultOption loc defs
+          else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
+            mkGuardCarrier loc defs
           else
             (aspectSubmodule cnf).merge loc (
               map (
@@ -189,9 +251,9 @@ let
           in
           if builtins.isAttrs v && (v.__isWrappedFn or false) then
             v
-          # TODO(guard): multi-def guard records not supported (single-def only) — a guard
-          # record defined twice under one key loses guard-record shape (multi-def folds via
-          # the `length defs != 1` path above; see ci/tests/guard.nix multidef limitation).
+          # Single-def guard record: dispatched here directly (never reaches the multi-def
+          # branch above, whose `mkGuardCarrier` is what now supports a guard record — or guard
+          # function — defined more than once under one key; den-hoag-sezf Arm B).
           else if builtins.isAttrs v && (v.__guard or false) then
             # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
             # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
