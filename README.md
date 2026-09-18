@@ -6,7 +6,9 @@ Aspect-oriented composition types for Nix module systems.
 
 A pure type library: no resolve, no pipeline, no framework. It provides the structural types for defining aspects — composable configuration units with identity, includes, and class-separated content. Consumers (like [den](https://github.com/sini/den)) bring their own evaluation pipeline.
 
-Dependency class: **Class D** (nixpkgs-lib-tethered). gen-aspects depends on nixpkgs `lib` (`lib.types` + `evalModules`) and on [gen-schema](https://github.com/sini/gen-schema). It is not nixpkgs-lib-free — the module-system machinery it builds on is nixpkgs `lib.types`.
+**nixpkgs-lib-free.** The type system is re-hosted on [gen-merge](https://github.com/sini/gen-merge): `evalModuleTree`, the structural types and `mkOption`/`mkMerge` stand in for `lib.types` and `lib.evalModules`, with leaf checkers arriving from [gen-types](https://github.com/sini/gen-types) through merge. The grammar in `lib/types.nix` produces the aspect node set without `evalModules` at all, and nixpkgs is pulled only in `ci/`, for the harness. Enforced by `ci/tests/purity.nix` rather than by convention.
+
+Sibling dependencies: [gen-identity](https://github.com/sini/gen-identity), [gen-merge](https://github.com/sini/gen-merge), [gen-prelude](https://github.com/sini/gen-prelude) and [gen-schema](https://github.com/sini/gen-schema).
 
 ## Table of Contents
 
