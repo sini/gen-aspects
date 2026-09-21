@@ -1,19 +1,21 @@
 # `aspectsRoot`'s TYPE-MERGE relation (den-hoag-a0gc) — before this fix, `aspectsRootWith` supplied
-# no `functor` of its own, so `completeType` (gen-merge lib/types.nix) derived the nixpkgs-default
-# `pureDefaultFunctor "aspectsRoot"`: `payload = null`. `pureTypeMerge` merges any two same-named,
-# null-payload functors UNCONDITIONALLY — two `aspectsRoot` declarations typeMerged on the
-# CONTAINER'S NAME ALONE, blind to their elements, the silent-collision shape den-hoag-k1uv named
-# one layer down (gen-types' name-only `__id`, since fixed there).
+# no `functor` of its own, so the protocol's own default applied: a descriptor that states no
+# relation merges any two same-named operands UNCONDITIONALLY — two `aspectsRoot` declarations
+# typeMerged on the CONTAINER'S NAME ALONE, blind to their elements, the silent-collision shape
+# den-hoag-k1uv named one layer down (gen-types' name-only `__id`, since fixed there).
 #
-# ★ THE CI PIN, MEASURED NOT ASSUMED: gen-aspects' `ci/flake.lock` pins gen-merge at
-# `2701d8bbf5d81ed137ecda3eddfae1241509b728`, a revision that PREDATES `lib/interface.nix`'s
-# `carries`/`recarry` gen-native boundary entirely (`git show <rev>:lib/interface.nix` ⇒ no such
-# path at that commit). At this revision, `completeType`'s own escape hatch is the nixpkgs-shaped
-# `functor = { name; payload; binOp; type; }` field directly — the "elemTypeFunctor pattern" the fix
-# implements: `payload` carries the element type, `binOp` asks whether two elements merge, and
-# `type` rebuilds the container over the merged element. `typeMerge` is then AUTO-DERIVED from that
-# functor by `pureTypeMerge` — this suite calls `.typeMerge` directly (the real protocol hook
-# `evalModuleTree` itself would call), never a hand-rolled stand-in.
+# ★ WHAT THE FIX RESTS ON, AND IT IS A PROPERTY OF THE DEPENDENCY: gen-merge HONOURS A CALLER'S
+# STATED `functor.binOp` (the owner's 2026-09-08 fork-1 ruling). `importType` RETAINS the relation
+# an author states — `statesRelation` keys on `functor.binOp` precisely because that asks what the
+# author said rather than which library built the record — and `exportType` republishes it, so the
+# relation stated here is the one a foreign engine reads back. `protoTypeMerge` is the combinator
+# that relation is read through. THAT is the sentence a future pin bump must be checked against;
+# the pin itself is the lock's to state, never a comment's.
+#
+# The shape is the "elemTypeFunctor pattern": `payload` carries the element type, `binOp` asks
+# whether two elements merge, and `type` rebuilds the container over the merged element. This suite
+# calls `.typeMerge` directly (the real protocol hook `evalModuleTree` itself would call), never a
+# hand-rolled stand-in.
 #
 # ★ HONEST SCOPE, MEASURED NOT ASSUMED: `aspectType` itself (gen-aspects' element type) answers
 # every partner named `"aspect"` with a merge — its own functor carries no payload either (it does
@@ -78,11 +80,14 @@ in
     expected = "MERGED:aspectsRoot";
   };
 
-  # A partner merely NAMED "aspectsRoot" with no payload of its own (`functor.payload` absent, the
-  # nixpkgs-default shape). Under the pre-fix behaviour (own functor also null-payload) this
-  # silently MERGED — literally any same-named functor did, element or no. It now refuses: the
-  # container's `binOp` sees a `null` partner payload and refuses rather than picking one side.
-  flake.tests.root-type-merge.test-refuses-a-same-named-partner-with-no-element = {
+  # ★ THIS CELL ASSERTS THE DEPENDENCY'S BEHAVIOUR, NOT THIS LIBRARY'S — named for whose guard it
+  # is, in the same register as the honest-scope cell below. A partner carrying neither `type` nor
+  # `payload` never reaches this container's `binOp` at all: gen-merge's `importedPartner`
+  # (`lib/interface.nix`) returns null for a functor with no `type`, and `protoTypeMerge` refuses on
+  # payload asymmetry one clause earlier. BOTH refusals are the boundary's. It is kept rather than
+  # deleted because that boundary property is exactly what the `type` key in the cell above depends
+  # on — delete this and the record of why that key is there goes with it (den-hoag-a0gc report §2).
+  flake.tests.root-type-merge.test-boundary-refuses-an-incomplete-partner-before-this-relation = {
     expr = verdict (
       root1.typeMerge {
         name = "aspectsRoot";
@@ -100,6 +105,22 @@ in
       root1.typeMerge {
         name = "aspectsRoot";
         payload = t.str;
+      }
+    );
+    expected = "REFUSED";
+  };
+
+  # A second `aspectsRoot` DECLARATION over a genuinely different element, in the shape the foreign
+  # protocol actually hands over. `protoTypeMerge` (gen-merge `lib/interface.nix`) APPLIES
+  # `functor.type` to recover the partner TYPE, so a partner without one is refused by the boundary
+  # before this container's `binOp` is ever consulted — which is why the two partner shapes above
+  # cannot fail on a defect in this library (den-hoag-a0gc report §2).
+  flake.tests.root-type-merge.test-refuses-a-well-formed-partner-over-a-different-element = {
+    expr = verdict (
+      root1.typeMerge {
+        name = "aspectsRoot";
+        payload = t.str;
+        type = _: root1;
       }
     );
     expected = "REFUSED";

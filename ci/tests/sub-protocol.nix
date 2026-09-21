@@ -2,7 +2,7 @@
 # as opposed to about its values: what it declares (`getSubOptions`), the module set it carries
 # (`getSubModules`), and how it rebuilds itself over a replacement one (`substSubModules`).
 #
-# `aspectsRoot` carries an element type, so it owes all three. Left on gen-merge `completeType`'s
+# `aspectsRoot` carries an element type, so it owes all three. Left on the protocol's own
 # defaults (`_prefix: { }` / `null` / `_m: null`) it would report a LEAF's answers — "declares
 # nothing" indistinguishable from "protocol unimplemented here" — and a consumer reflecting a
 # declared surface off the type fails closed and silently.
@@ -89,7 +89,7 @@ in
   };
 
   # `substSubModules` rebuilds THIS container over the substituted element. The rebuild is what the
-  # stub cannot fake: `completeType`'s default answers `null`, so `TYPE<aspectsRoot>` is reachable
+  # stub cannot fake: the protocol's own default answers `null`, so `TYPE<aspectsRoot>` is reachable
   # only from a supplied field. The element it rebuilds over is the element's OWN answer — NULL for
   # `aspectType`, which is why `rootElement` is NULL rather than a type: nixpkgs calls
   # `substSubModules` only where `getSubModules != null` (`fixupOptionType`), so that rebuild is live
@@ -155,9 +155,11 @@ in
   # Each answer is STORED, not absent — a NULL that is stored is a supplied answer ("no module set
   # here"), where a missing field is the protocol left unimplemented.
   #
-  # ★ WHAT THIS CELL CANNOT SEPARATE, MEASURED BOTH ARMS WITH THE FIX ARCHIVED OUT. On the current
-  # lock (pre-W4a gen-merge) it stays GREEN without the fix: `completeType` stamps all three fields
-  # onto every type it completes, so the stubbed `aspectsRoot` answers "stored" too. On the W4a arm it
+  # ★ WHAT THIS CELL CANNOT SEPARATE, MEASURED BOTH ARMS WITH THE FIX ARCHIVED OUT — and the
+  # measurement is reported at the lock it was TAKEN at, which the lock has since moved past. On the
+  # pre-W4a gen-merge of that run it stayed GREEN without the fix: the completion step stamped all
+  # three fields onto every type it completed, so the stubbed `aspectsRoot` answered "stored" too.
+  # On the W4a arm it
   # never evaluates — construction refuses `aspectsRoot` by name first and all four cells in this file
   # abort together. Neither arm discriminates the fix, so what this cell documents is STORAGE: that
   # the NULLs above are supplied answers rather than gaps, which the shape rows alone cannot say. The

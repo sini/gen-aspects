@@ -592,9 +592,9 @@ let
   # a container that CARRIES an element type owes the nixpkgs sub-protocol over that element
   # (getSubOptions/getSubModules/substSubModules), and `substSubModules` can only answer by rebuilding
   # ITSELF over the substituted element — so the constructor has to take the element, not `cnf`.
-  # `completeType`'s defaults (`{ }` / null / `_m: null`) are a LEAF's answers: on a wrapper they report
-  # "declares nothing" indistinguishably from "protocol unimplemented here", which is the ambiguity a
-  # supplied field cannot fall into.
+  # The protocol's own defaults for those three (`{ }` / null / `_m: null`) are a LEAF's answers: on a
+  # wrapper they report "declares nothing" indistinguishably from "protocol unimplemented here", which
+  # is the ambiguity a supplied field cannot fall into.
   #
   # `getSubOptions` threads the caller's prefix (`prefix ++ [ "<name>" ]`, the per-key placeholder
   # segment) rather than re-rooting the way `merge` does. The two are not in tension: this type keeps
@@ -615,17 +615,15 @@ let
   # namespace as a bare constructor and is never protocol-completed — must answer "nothing to
   # substitute" rather than abort on a missing attribute. `or null` covers the read; the `?` test
   # covers the rebuild, which falls back to the element unchanged.
-  # Merges two ELEMENT types for `aspectsRootWith`'s own functor below. gen-aspects' CI pins
-  # gen-merge at `2701d8bbf5d81ed137ecda3eddfae1241509b728`, a revision that PREDATES the
-  # `carries`/`recarry` gen-native boundary gen-merge grew later (`git show <rev>:lib/interface.nix`
-  # ⇒ no such path at that commit). At this revision every `mkOptionType`-built type — gen-merge's
-  # own `attrsOf`/`listOf`/`nullOr` included, confirmed by reading `lib/types.nix` at that rev, none
-  # of them supply a custom `functor` either — merges through the plain nixpkgs `functor`/`typeMerge`
-  # pair `completeType` derives (`typeMerge = t.typeMerge or (pureTypeMerge functor)`, which calls
-  # `functor.binOp` on the two sides' `functor.payload`). `mergeElemTypes` is that binOp, generalised
-  # to any two mkOptionType-built element types: ask the FIRST element's own `typeMerge` whether it
-  # accepts the SECOND element's `functor` — the exact call gen-merge's own protocol makes were these
-  # elements nested inside a real module tree.
+  # Merges two ELEMENT types for `aspectsRootWith`'s own functor below. `mergeElemTypes` IS that
+  # functor's `binOp`, generalised to any two mkOptionType-built element types: ask the FIRST
+  # element's own `typeMerge` whether it accepts the SECOND element's `functor` — the exact call
+  # gen-merge's own protocol makes were these elements nested inside a real module tree.
+  #
+  # ★ IT IS TOTAL ON WHAT IT IS CALLED WITH, and that is a property of the caller, not a guard here:
+  # `protoTypeMerge` (gen-merge `lib/interface.nix`) reaches `binOp` only once it has established
+  # both operands carry a non-null payload, so a null second operand is a state this function is
+  # never handed. A `b == null` arm here would check for a state the protocol cannot produce.
   mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
 
   aspectsRootWith =
@@ -634,23 +632,28 @@ let
       name = "aspectsRoot";
       inherit elemType;
       nestedTypes = { inherit elemType; };
-      # THE FIX (den-hoag-a0gc): `completeType` (gen-merge lib/types.nix, the CI-pinned revision —
-      # see `mergeElemTypes` above) derives every type's `functor` as `t.functor or (pureDefaultFunctor
-      # name // { type = result; })` — a descriptor that supplies no `functor` of its own gets
-      # `payload = null`, and `pureTypeMerge` merges ANY two same-named, null-payload functors
-      # UNCONDITIONALLY (nixpkgs' own `defaultTypeMerge` fallback) — two `aspectsRoot` declarations
-      # typeMerged on the CONTAINER'S NAME ALONE, blind to their elements, the silent-collision shape
-      # den-hoag-k1uv named one layer down. Supplying `functor` directly is `completeType`'s own
-      # documented escape hatch ("each field overridable by the descriptor... a real `.functor` a
-      # type already carries wins") — the elemTypeFunctor pattern: `payload` carries the element
-      # type, `binOp` decides whether two elements merge (via `mergeElemTypes`, recursively), and
-      # `type` rebuilds this same container over the merged element on success. `completeType`'s
-      # default `typeMerge = t.typeMerge or (pureTypeMerge functor)` derives a correct `typeMerge`
-      # from this automatically — no separate override needed.
+      # THE FIX (den-hoag-a0gc): a descriptor that states NO relation of its own gets the protocol's
+      # nullary one, which merges ANY two same-named operands unconditionally — two `aspectsRoot`
+      # declarations typeMerged on the CONTAINER'S NAME ALONE, blind to their elements, the
+      # silent-collision shape den-hoag-k1uv named one layer down. Stating `functor` here is the
+      # elemTypeFunctor pattern: `payload` carries the element type, `binOp` decides whether two
+      # elements merge (via `mergeElemTypes`, recursively), and `type` rebuilds this same container
+      # over the merged element on success.
+      #
+      # ★★ WHY STATING IT IS ENOUGH, AND IT IS THE DEPENDENCY'S RULING THAT MAKES IT SO: gen-merge
+      # HONOURS A CALLER'S STATED `functor.binOp` (owner, 2026-09-08, fork 1). `importType` RETAINS
+      # the author's relation rather than taking it back — keyed on `statesRelation`, i.e. on
+      # `functor.binOp` being present, which asks what the author SAID and not which library built
+      # the record — and `exportType` republishes it, so what is stated here is what a foreign
+      # engine reads back. `protoTypeMerge` is the combinator the retained relation is read through,
+      # and it derives the `typeMerge` accessor from this functor automatically; no separate
+      # override is needed. ⇒ THAT RULING IS WHAT A FUTURE PIN BUMP MUST BE CHECKED AGAINST. The
+      # revision itself belongs to the lock, which is the coordinate; a rev written into this
+      # comment is a figure that decays the moment the relock runs.
       functor = {
         name = "aspectsRoot";
         payload = elemType;
-        binOp = a: b: if b == null then null else mergeElemTypes a b;
+        binOp = mergeElemTypes;
         type = aspectsRootWith;
       };
       getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
