@@ -441,6 +441,40 @@ let
     else
       null;
 
+  # hasClassContent v : does this class VALUE carry a definition. The has-content fact `classOptions`
+  # below makes representable, NAMED here so a consumer composes with it instead of re-deriving it
+  # privately — ADR-0012 clause 2: every derived view has a name and a defining query at its source,
+  # or it is not a view. The companion of `keyCategory`, and deliberately the same thin shape: a key
+  # is a class WITH content when `keyCategory cnf k == "class" && hasClassContent entry.${k}`, two
+  # composable primitives rather than one composite that also takes the cnf and the entry.
+  #
+  # BOTH CLAUSES ARE LOAD-BEARING, and the second is not incidental to the first.
+  #   `v != null` is this library's own representation of absence (`classOptions`, below).
+  #   The attrset arm is the FABRICATED EMPTY deferredModule — a module carrying nothing, the state
+  #   ADR-0028's Rider hazard turns on. This library never PRODUCES it (that is the whole point of
+  #   the `null` default), but the predicate is exported, so it answers for values it did not build:
+  #   a registry handed in directly, or another representation of emptiness arriving from a
+  #   framework. A consumer that realizes on the mere DECLARATION is the defect, whichever way the
+  #   emptiness was spelled, so the exported predicate excludes both spellings rather than only the
+  #   one this library happens to emit. The test is on the WHOLE key set, not on `imports` alone, so
+  #   a module carrying a definition beside an empty `imports` still counts as content.
+  #
+  # DOMAIN: class VALUES only. An undeclared key never reaches here — it falls through to the
+  # freeform fallback and becomes a nested aspect (it has a `name`), a different node kind entirely.
+  #
+  # WHAT IT DOES NOT ANSWER: whether the merged module carries non-vacuous FIELDS. A class declared
+  # with an empty def (`aspects.x.classKey = { }`) reads `true`, identically to real content, because
+  # the deferredModule merge wraps any non-null def into a one-entry `imports` list regardless of
+  # that def's own contents. Telling those two apart would mean forcing the deferred body, which is
+  # exactly the invariant `test-inspection-does-not-force-class-body` holds. The question this
+  # predicate answers is "was this class key given a defining module", and that is the question a
+  # delivery projection needs.
+  #
+  # LAZINESS: forces the value's own outermost tag, its top-level key set, and (on the fabricated
+  # shape alone) one list's spine. Never the deferred body.
+  hasClassContent =
+    v: v != null && !(builtins.isAttrs v && builtins.attrNames v == [ "imports" ] && v.imports == [ ]);
+
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
   # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
@@ -712,11 +746,12 @@ in
   keyCategory = checkedEntry keyCategory;
   # Not entry points, and the reason is structural rather than per-name: `canTake` carries no
   # configuration at all, `wrapGatedFn`'s first argument is a `{ functionArgs; … }` spec, `aspectId`
-  # takes an origin path, and `structuralKeys` is a value.
+  # takes an origin path, `hasClassContent`'s is a class value, and `structuralKeys` is a value.
   inherit
     canTake
     wrapGatedFn
     aspectId
+    hasClassContent
     ;
   structuralKeys = nativeStructuralKeys;
 }

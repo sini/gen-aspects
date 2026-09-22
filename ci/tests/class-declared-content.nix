@@ -19,7 +19,7 @@
   ...
 }:
 let
-  inherit (aspects) flatten graphFacts;
+  inherit (aspects) flatten graphFacts hasClassContent;
 
   # TWO classes declared, content on ONE. `metrics` is declared and never set.
   eval = mkSchemaEval {
@@ -66,6 +66,40 @@ let
     else
       null;
 
+  # THE FABRICATED EMPTY deferredModule, hand-built because this library never renders one — the
+  # `null` default above is precisely the construction in which it never forms. The predicate is
+  # EXPORTED, so it answers for values this library did not build: a registry handed to a consumer
+  # directly, or another framework's spelling of emptiness. Same fixture shape gen-delivery's
+  # ci/tests/realization-predicate.nix hand-builds, for the same reason.
+  fabricatedEmpty = {
+    imports = [ ];
+  };
+
+  # The BOUNDARY fixture: a key declared NOWHERE in keySemantics. `fixtureKeySemantics` replaces the
+  # harness default rather than extending it, so `loose` below is undeclared by construction and
+  # takes gen-aspects' freeform fallback — becoming a nested ASPECT, a different node kind that never
+  # reaches a class predicate's domain at all. Kept as its own eval: adding a nested aspect to the
+  # fixture above would add a node and move the projection cell's key set.
+  boundaryCnf = {
+    keySemantics = {
+      nixos = {
+        category = "class";
+      };
+    };
+  };
+  boundaryEval = mkSchemaEval {
+    fixtureKeySemantics = boundaryCnf.keySemantics;
+    modules = [
+      {
+        config.aspects.web = {
+          nixos.networking.hostName = "set";
+          loose.child.setting = "freeform";
+        };
+      }
+    ];
+  };
+  boundaryEntry = boundaryEval.config.aspects.web;
+
   # Multi-definition: two modules contributing to the SAME class of the SAME aspect still collect.
   multiEval = mkSchemaEval {
     fixtureKeySemantics = {
@@ -106,6 +140,76 @@ in
     expected = {
       isNull = false;
       hasImports = true;
+    };
+  };
+
+  # ── the fact NAMED: `aspects.hasClassContent` ───────────────────────────────
+  # The cells above pin the REPRESENTATION (declared-without-content reads `null`). These pin the
+  # exported PREDICATE over it — the name a consumer composes with instead of privately re-deriving
+  # the fact (ADR-0012 clause 2). Asserted on the same fixture the representation cells use, so the
+  # predicate is measured against this library's real merge output and not a restatement of itself.
+  flake.tests.class-declared-content.test-has-class-content-separates-declared-fixtures = {
+    expr = {
+      declaredWithContent = hasClassContent entry.nixos;
+      declaredWithoutContent = hasClassContent entry.metrics;
+      # The check destructured nothing: the value is still the deferredModule it was.
+      valueSurvivesTheCheck = entry.nixos ? imports;
+      # LAZINESS, on the fixture whose class body THROWS when called. The predicate reads `true`
+      # without calling it. Its positive control is next door in this same file and this same run:
+      # `test-inspection-does-not-force-class-body`'s `lazyBodyReachable` proves the throw IS
+      # reachable, so a clean read here is laziness rather than an unreachable body.
+      lazyBodyNotForced = hasClassContent lazyClass;
+    };
+    expected = {
+      declaredWithContent = true;
+      declaredWithoutContent = false;
+      valueSurvivesTheCheck = true;
+      lazyBodyNotForced = true;
+    };
+  };
+
+  # BOTH CLAUSES, and the second one is why this cell exists. `v != null` alone admits the fabricated
+  # empty deferredModule, which is the state ADR-0028's Rider hazard turns on — a delivery class
+  # realizing on the mere DECLARATION. The arming arm is in the same expectation: it asserts the first
+  # clause alone WOULD admit the fixture, so dropping the second clause reds this cell instead of
+  # quietly widening every consumer of the export.
+  flake.tests.class-declared-content.test-has-class-content-excludes-the-fabricated-empty-module = {
+    expr = {
+      fabricatedEmptyIsNotContent = hasClassContent fabricatedEmpty;
+      firstClauseAloneWouldAdmitIt = fabricatedEmpty != null;
+      # And the exclusion is SHAPE-EXACT, not a blanket refusal of attrsets or of empty `imports`:
+      # the test is on the whole key set, so a definition sitting beside an empty `imports` counts.
+      definitionBesideEmptyImportsIsContent = hasClassContent {
+        imports = [ ];
+        setting = "real";
+      };
+      nonEmptyImportsIsContent = hasClassContent { imports = [ { } ]; };
+    };
+    expected = {
+      fabricatedEmptyIsNotContent = false;
+      firstClauseAloneWouldAdmitIt = true;
+      definitionBesideEmptyImportsIsContent = true;
+      nonEmptyImportsIsContent = true;
+    };
+  };
+
+  # THE DOMAIN, stated so the predicate is not read as discriminating a case it never sees. An
+  # undeclared key is not a contentless class — it is a nested ASPECT, and `keyCategory` says so.
+  # This is the companion boundary to the pair above: the two primitives compose as
+  # `keyCategory cnf k == "class" && hasClassContent entry.${k}`, and this cell pins what the first
+  # of them keeps out of the second's way.
+  flake.tests.class-declared-content.test-has-class-content-domain-is-declared-class-values = {
+    expr = {
+      undeclaredKeyIsNestedAspect = boundaryEntry.loose ? name;
+      undeclaredKeyHasNoCategory = aspects.keyCategory boundaryCnf "loose" == null;
+      declaredClassIsNotAnAspect = !(boundaryEntry.nixos ? name);
+      declaredClassHasTheCategory = aspects.keyCategory boundaryCnf "nixos" == "class";
+    };
+    expected = {
+      undeclaredKeyIsNestedAspect = true;
+      undeclaredKeyHasNoCategory = true;
+      declaredClassIsNotAnAspect = true;
+      declaredClassHasTheCategory = true;
     };
   };
 

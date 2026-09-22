@@ -68,7 +68,14 @@ in
   inherit (types) aspectId;
   # `structuralKeys` (the six native structural option names as ONE binding) + `keyCategory cnf key` — the
   # single aspect-key classification surface a consumer reads a key's category from. See lib/types.nix.
-  inherit (types) structuralKeys keyCategory;
+  # `hasClassContent v` is its companion over the class VALUE: the has-content fact this library's
+  # `null` class default makes representable, named at its source so a consumer composes with it
+  # instead of privately re-deriving it (ADR-0012 clause 2). A key is a class carrying content when
+  # `keyCategory cnf k == "class" && hasClassContent entry.${k}`. Both of its clauses are
+  # load-bearing — it also excludes the FABRICATED EMPTY deferredModule this library never emits but
+  # a directly-supplied registry can — and it answers "was this key given a defining module", never
+  # "does that module carry non-vacuous fields", which would force the deferred body. See lib/types.nix.
+  inherit (types) structuralKeys keyCategory hasClassContent;
   inherit (aspectIdentity)
     aspectPath
     pathKey
