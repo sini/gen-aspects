@@ -209,6 +209,81 @@ in
       expected = false;
     };
 
+  # den-hoag-cr72: custom-form validation is EAGER at `applyGuard`, not lazy at dispatch-by-name.
+  # The cell above only reaches the refusal because it dispatches the offending form BY NAME; the
+  # defect at full strength is a vocabulary whose malformed entry is NEVER named by any dispatch —
+  # which refused nothing at all, so `guard.nix`'s own "MUST be { eval; reads; }" / "may NOT shadow a
+  # core form" held for exactly the forms a given run happened to look up.
+  #
+  # BOTH POLARITIES ARE ASSERTED IN THIS ONE CELL, which is what makes it discriminate without a
+  # separate harness control: a dead `ok` that always answered `true` fails the two refusal rows, and
+  # one that always answered `false` fails the three total rows.
+  #
+  # The two `construct…StaysTotal` rows are the PERMANENT FENCE against this fix's own rejected first
+  # draft. Forcing `checkedUserForms` from `mkGuardVocab`'s RETURNED RECORD instead of from
+  # `applyGuard`'s body makes that return's WHNF depend on `guardForms`' full key set, and a caller
+  # whose key is derived from a sibling option inside its own config fixpoint then cycles with an
+  # `infinite recursion` that escapes `tryEval` entirely. Any future change that moves the check back
+  # onto the return path flips these two rows to `false` first.
+  flake.tests.guard.test-custom-form-eager-validation =
+    let
+      okForm = {
+        eval = _ctx: _a: true;
+        reads = [ ];
+      };
+      mk = forms: aspects.mkGuardVocab { guardForms = forms; };
+      malformed = mk {
+        brokenForm = {
+          eval = _ctx: _a: true;
+        }; # no `reads`
+        inherit okForm;
+      };
+      colliding = mk {
+        host = okForm; # shadows a core predicate form
+        inherit okForm;
+      };
+      control = mk { inherit okForm; };
+      # deepSeq, not WHNF: a refusal living in a lazy attribute value is invisible to a bare tryEval.
+      ok = e: (builtins.tryEval (builtins.deepSeq e true)).success;
+      # A dispatch through an unrelated CORE predicate — it names no declared custom form at all.
+      unrelatedCore = gv: gv.applyGuard { host.name = "cortex"; } (gv.vocab.always { fired = true; });
+      # A dispatch through the RAW-CLOSURE escape hatch, which evaluates no predicate whatsoever.
+      rawClosure =
+        gv:
+        gv.applyGuard { host.name = "cortex"; } (_ctx: {
+          fired = true;
+        });
+    in
+    {
+      expr = {
+        unrelatedCoreRefusesMalformed = ok (unrelatedCore malformed);
+        unrelatedCoreRefusesColliding = ok (unrelatedCore colliding);
+        # LIVE CONTROL, same predicate, same run: a vocabulary of sound forms still dispatches
+        # through that same unrelated predicate, so the refusals above are the check discriminating
+        # rather than `applyGuard` refusing unconditionally on every call.
+        unrelatedCoreControl = ok (unrelatedCore control);
+        # THE TWO HALVES OF THE FIX ARE SEPARABLE AND BOTH ARE PINNED. `evalPred` builds its case
+        # table as `{ core… } // mapAttrs … checkedUserForms`, and `//` forces its operand to WHNF —
+        # so the `deepSeq` alone already answers every PREDICATE dispatch, and the row above stays
+        # green if the `builtins.seq checkedUserForms` wrap on `applyGuard` is deleted (measured, all
+        # three arms, one run). The raw-closure arm forces no predicate at all, so it is reached by
+        # that wrap and by nothing else — delete the wrap and this row is the one that goes red.
+        rawClosureRefusesMalformed = ok (rawClosure malformed);
+        rawClosureControl = ok (rawClosure control);
+        constructMalformedStaysTotal = ok malformed;
+        constructCollidingStaysTotal = ok colliding;
+      };
+      expected = {
+        unrelatedCoreRefusesMalformed = false;
+        unrelatedCoreRefusesColliding = false;
+        unrelatedCoreControl = true;
+        rawClosureRefusesMalformed = false;
+        rawClosureControl = true;
+        constructMalformedStaysTotal = true;
+        constructCollidingStaysTotal = true;
+      };
+    };
+
   # site-independence: same predicate + first-order body at two "sites" -> equal key
   flake.tests.guard.test-guardkey-site-independent =
     let

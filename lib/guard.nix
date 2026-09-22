@@ -125,15 +125,27 @@ in
         "any"
         "always"
       ];
-      checkedUserForms = builtins.mapAttrs (
+      checkForm =
         name: form:
         if builtins.elem name coreFormNames then
           throw "gen-aspects.guard: custom form '${name}' collides with a core predicate form"
         else if !(form ? eval && form ? reads) then
           throw "gen-aspects.guard: custom form '${name}' must be { eval; reads; }"
         else
-          form
-      ) cnf.guardForms;
+          name;
+      # Force every custom form's validation eagerly (den-hoag-cr72): a bad or colliding form must
+      # throw at the vocabulary's first use, not silently never-fire until the one dispatch that
+      # happens to look it up — the same idiom as lib/types.nix's checkCategory/ks, and completing
+      # checkedEntry's own stated intent (lib/cnf.nix): "put that construction on the STRICT path of
+      # the result." The forcing point is applyGuard's body, NOT this record or mkGuardVocab's
+      # return: a `guardForms` KEY may be derived from a sibling option inside a caller's config
+      # fixpoint, and making the return's own WHNF depend on that key set cycles with an `infinite
+      # recursion` that escapes tryEval (den-hoag-fvxh's mkInstanceRegistry, same shape — the
+      # forcing point MOVES to the guaranteed downstream call site, eagerness is not abandoned).
+      # checkForm returns the NAME, never the form: deepSeq over a returned form would additionally
+      # make every entry's `reads` and `eval` strict, which is not what the check needs and is a
+      # strictness the caller never asked for. checkedUserForms is the validated passthrough.
+      checkedUserForms = builtins.deepSeq (builtins.mapAttrs checkForm cnf.guardForms) cnf.guardForms;
       # O2: ONE global dispatcher, case-analysis on the predicate tag.
       evalPred =
         ctx: pr:
@@ -194,25 +206,31 @@ in
       # `mergeDefaultOption`'s own singleton arm — not a special case here.
       applyGuard =
         ctx: g:
-        if g ? fragments then
-          let
-            survivors = builtins.filter (v: v != null) (map (dischargeFragment ctx) g.fragments);
-          in
-          if survivors == [ ] then
-            null
+        # checkedUserForms is forced HERE, before any dispatch answers: every real guard evaluation
+        # passes through this one entry point, so a malformed or colliding custom form refuses on the
+        # first call through a vocab regardless of which predicate that call names — and memoizes,
+        # one shared thunk per vocab, for every later call.
+        builtins.seq checkedUserForms (
+          if g ? fragments then
+            let
+              survivors = builtins.filter (v: v != null) (map (dischargeFragment ctx) g.fragments);
+            in
+            if survivors == [ ] then
+              null
+            else
+              merge.mergeDefaultOption (g.meta.loc or [ "<guard-carrier>" ]) (
+                map (v: {
+                  file = g.meta.file or "<unknown>";
+                  value = v;
+                }) survivors
+              )
+          else if g.__guard or false then
+            (if fires ctx g then g.body else null)
+          else if prelude.isFunction g || (g.__isWrappedFn or false) then
+            g ctx
           else
-            merge.mergeDefaultOption (g.meta.loc or [ "<guard-carrier>" ]) (
-              map (v: {
-                file = g.meta.file or "<unknown>";
-                value = v;
-              }) survivors
-            )
-        else if g.__guard or false then
-          (if fires ctx g then g.body else null)
-        else if prelude.isFunction g || (g.__isWrappedFn or false) then
-          g ctx
-        else
-          throw "gen-aspects.guard: applyGuard: not a guard record or callable";
+            throw "gen-aspects.guard: applyGuard: not a guard record or callable"
+        );
     }
   );
 }
