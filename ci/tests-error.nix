@@ -43,5 +43,9 @@ in
       path = "s";
       origin = [ { } ];
     } "origin = list holding a non-string";
+    # `splitSlash` drops empty segments, so these reached `builtins.head [ ]` (den-hoag-6c5s3).
+    test-empty-string = cell "" "the string \"\", which has no non-empty segment";
+    test-all-slash = cell "/" "the string \"/\", which has no non-empty segment";
+    test-all-slashes = cell "///" "the string \"///\", which has no non-empty segment";
   };
 }

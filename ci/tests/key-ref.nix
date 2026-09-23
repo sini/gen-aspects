@@ -170,6 +170,10 @@ in
         path = [ "a" ];
       }
       { path = "a/b"; }
+      ""
+      "/"
+      "///"
+      "y"
     ];
     expected = [
       false
@@ -179,6 +183,10 @@ in
       false
       false
       true
+      true
+      false
+      false
+      false
       true
     ];
   };

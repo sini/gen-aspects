@@ -45,10 +45,14 @@ let
             let
               parts = splitSlash ref;
             in
-            {
-              origin = [ (builtins.head parts) ];
-              path = builtins.tail parts;
-            }
+            # "" or all separators leaves no origin segment, and `head []` is an uncatchable abort.
+            if parts == [ ] then
+              throw (keyRefRefusal "the string \"${ref}\", which has no non-empty segment")
+            else
+              {
+                origin = [ (builtins.head parts) ];
+                path = builtins.tail parts;
+              }
           )
         else if builtins.isAttrs ref && ref ? path then
           ref
