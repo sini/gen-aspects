@@ -113,5 +113,10 @@
         # scan itself through this channel, and its refusal renderer with it.
         identityInternals = import ../lib/identity.nix { prelude = gen-prelude.lib; };
       };
+      # Cells whose subject is an error MESSAGE: outside `testModules`, read by
+      # `nix-unit --flake ./ci#testsError` (see the file's header).
+      extraModules = [
+        ./tests-error.nix
+      ];
     };
 }

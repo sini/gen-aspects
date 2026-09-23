@@ -147,4 +147,45 @@ in
     expr = (builtins.head byVal) ? name;
     expected = true;
   };
+
+  # A wrong-typed reference is REFUSED, catchably (den-hoag-bkdkg). Before the guard every shape
+  # below aborted past `tryEval`, which crashes this cell rather than failing it. What the refusal
+  # says is pinned in `ci/tests-error.nix`. The structured and path-only arms are the controls.
+  flake.tests.key-ref.test-wrong-typed-refs-refused-catchably = {
+    expr = map (ref: (builtins.tryEval (builtins.deepSeq (aspects.keyRef ref) null)).success) [
+      { name = "a"; }
+      3
+      { path = 3; }
+      { path = [ { name = "a"; } ]; }
+      {
+        path = "s";
+        origin = 3;
+      }
+      {
+        path = "s";
+        origin = [ { } ];
+      }
+      {
+        origin = [ "y" ];
+        path = [ "a" ];
+      }
+      { path = "a/b"; }
+    ];
+    expected = [
+      false
+      false
+      false
+      false
+      false
+      false
+      true
+      true
+    ];
+  };
+  # The guard sits in the body, so the door stays a plain lambda: a wrapper that made it a functor
+  # set would make `functionArgs` abort here.
+  flake.tests.key-ref.test-keyref-is-a-plain-lambda = {
+    expr = builtins.functionArgs aspects.keyRef;
+    expected = { };
+  };
 }

@@ -13,6 +13,29 @@ let
   # uniformly with an aspect's own `.key`. `builtins.split "/"` is a single-literal-char regex (no `.*`
   # backtracking — safe on short key strings, cf. the whole-file hasInfix stack overflow split fixes).
   splitSlash = s: builtins.filter (seg: builtins.isString seg && seg != "") (builtins.split "/" s);
+
+  # keyRef's refusal (ADR-0025 item 1). It names the TYPE and never interpolates the value, because
+  # interpolating a non-string is itself the coercion abort the refusal replaces, and `typeOf` is
+  # total. Both segment fields are checked, not just `path`'s presence: a `path = 3` or a
+  # `path = [ { … } ]` otherwise aborts inside `pathKey`, and a bad `origin` is admitted here and
+  # aborts downstream in gen-link. The checks are forced ahead of the result, so the refusal fires
+  # where the reference is written.
+  keyRefRefusal =
+    got:
+    "gen-aspects.keyRef: got ${got}, expected a reference: an origin-qualified string "
+    + "(\"<origin>/<path>\") or { path; origin ? [ ]; }, each a \"/\"-joined string or a list of strings";
+  keyRefSegments =
+    field: v:
+    if builtins.isString v then
+      splitSlash v
+    else if builtins.isList v && builtins.all builtins.isString v then
+      v
+    else
+      throw (
+        keyRefRefusal (
+          "${field} = ${builtins.typeOf v}" + (if builtins.isList v then " holding a non-string" else "")
+        )
+      );
   keyRef =
     ref:
     let
@@ -27,18 +50,23 @@ let
               path = builtins.tail parts;
             }
           )
+        else if builtins.isAttrs ref && ref ? path then
+          ref
         else
-          ref;
-      originRaw = r.origin or [ ];
-      originList = if builtins.isString originRaw then splitSlash originRaw else originRaw;
-      pathList = if builtins.isString r.path then splitSlash r.path else r.path;
+          throw (
+            keyRefRefusal (if builtins.isAttrs ref then "a set with no 'path' field" else builtins.typeOf ref)
+          );
+      originList = keyRefSegments "origin" (r.origin or [ ]);
+      pathList = keyRefSegments "path" r.path;
     in
-    {
-      __keyRef = true;
-      origin = originList;
-      path = pathList;
-      key = pathKey pathList;
-    };
+    builtins.seq originList (
+      builtins.seq pathList {
+        __keyRef = true;
+        origin = originList;
+        path = pathList;
+        key = pathKey pathList;
+      }
+    );
 
   isMeaningfulName =
     name: name != "<anon>" && name != "<function body>" && !(prelude.hasPrefix "[definition " name);
