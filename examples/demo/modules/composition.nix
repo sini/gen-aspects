@@ -1,14 +1,14 @@
 # Settings composition: gen-scope neron traverse + gen-algebra foldLayers.
 #
-# READER side of the value-injection split: the aspect/fleet/scopeSettings definitions are
+# READER side of the value-injection split: the aspect/haberdashery/scopeSettings definitions are
 # composed PURELY in the gen tree (./gen-modules) and injected here as `genValues`. This module reads
-# `genValues.{aspects,fleet,scopeSettings}` (was `config.*`) and runs the settings cascade on the
+# `genValues.{aspects,haberdashery,scopeSettings}` (was `config.*`) and runs the settings cascade on the
 # flake-parts side, threading the results to sibling reader modules via `config._module.args`.
 #
 # Pipeline:
 # 1. Extract settings schemas from all aspects (defaults + merge strategies)
-# 2. Build scope graph: env nodes as roots, host nodes with P-edges to env
-# 3. Neron traverse collects settings layers ordered D > I > P (host > env)
+# 2. Build scope graph: env nodes as roots, thimble nodes with P-edges to env
+# 3. Neron traverse collects settings layers ordered D > I > P (thimble > env)
 # 4. foldLayers merges with per-field strategies; result unflattened to nested attrsets
 {
   lib,
@@ -49,7 +49,7 @@ let
     ) { } (builtins.attrNames settings);
 
   # Walk all flattened aspects, namespace settings under the aspect's leaf name.
-  # e.g. "services/nginx" → namespace "nginx", "define-user" → namespace "define-user"
+  # e.g. "services/nginx" → namespace "nginx", "define-basting" → namespace "define-basting"
   allSchemas =
     let
       leafName =
@@ -76,16 +76,18 @@ let
 
   # --- 2. Build scope graph ---
 
-  envNames = builtins.attrNames genValues.fleet.environments;
-  hostNames = builtins.attrNames genValues.fleet.hosts;
+  envNames = builtins.attrNames genValues.haberdashery.environments;
+  thimbleNames = builtins.attrNames genValues.haberdashery.thimbles;
 
   envNodeIds = map (e: "env:${e}") envNames;
-  hostNodeIds = map (h: "host:${h}") hostNames;
+  thimbleNodeIds = map (h: "thimble:${h}") thimbleNames;
 
-  # P-edges: host:<name> → env:<envName>
-  parentEdges = map (h: genScope.edge "host:${h}" "env:${genValues.fleet.hosts.${h}.env}") hostNames;
+  # P-edges: thimble:<name> → env:<envName>
+  parentEdges = map (
+    h: genScope.edge "thimble:${h}" "env:${genValues.haberdashery.thimbles.${h}.env}"
+  ) thimbleNames;
 
-  roots = genScope.buildNodes {
+  scope = genScope.buildRoots {
     parentGraph = genScope.overlays parentEdges;
     decls =
       # Env nodes carry their settings overrides
@@ -94,21 +96,21 @@ let
           name = "env:${e}";
           value = {
             settings = genValues.scopeSettings.${"env:${e}"} or { };
-            tier = genValues.fleet.environments.${e}.tier;
+            tier = genValues.haberdashery.environments.${e}.tier;
           };
         }) envNames
       )
       //
-        # Host nodes carry their settings overrides
+        # Thimble nodes carry their settings overrides
         lib.listToAttrs (
           map (h: {
-            name = "host:${h}";
+            name = "thimble:${h}";
             value = {
-              settings = genValues.scopeSettings.${"host:${h}"} or { };
-              role = genValues.fleet.hosts.${h}.role;
-              env = genValues.fleet.hosts.${h}.env;
+              settings = genValues.scopeSettings.${"thimble:${h}"} or { };
+              role = genValues.haberdashery.thimbles.${h}.role;
+              env = genValues.haberdashery.thimbles.${h}.env;
             };
-          }) hostNames
+          }) thimbleNames
         );
   };
 
@@ -148,12 +150,12 @@ let
     ) { } (builtins.attrNames flat');
 
   scopeResult = genScope.eval {
-    inherit roots;
-    parseParent = id: (roots.${id} or { parent = null; }).parent;
+    inherit scope;
+    parseParent = id: (scope.nodes.${id} or { parent = null; }).parent;
 
     attributes = {
-      # Children: host nodes whose parent is this env node.
-      children = _self: id: lib.filterAttrs (_: n: n.parent == id) roots;
+      # Children: thimble nodes whose parent is this env node.
+      children = _self: id: lib.filterAttrs (_: n: n.parent == id) scope.nodes;
 
       # No import edges in this graph.
       imports = _self: _id: [ ];
@@ -164,30 +166,30 @@ let
         extract =
           _self: id:
           let
-            nodeSettings = (roots.${id} or { decls.settings = { }; }).decls.settings;
+            nodeSettings = (scope.nodes.${id} or { decls.settings = { }; }).decls.settings;
           in
           if nodeSettings == { } then null else nodeSettings;
       };
 
       # Parallel to raw-settings: the node ID of each contributing layer, so
-      # composeForHost can label layers (env vs host) without guessing. Same
+      # composeForThimble can label layers (env vs thimble) without guessing. Same
       # neron traverse + same null-drop, so it stays length-aligned with raw-settings.
       raw-settings-ids = genScope.collectionAttr {
         traverse = "neron";
         extract =
           _self: id:
           let
-            nodeSettings = (roots.${id} or { decls.settings = { }; }).decls.settings;
+            nodeSettings = (scope.nodes.${id} or { decls.settings = { }; }).decls.settings;
           in
           if nodeSettings == { } then null else id;
       };
     };
   };
 
-  # --- 4. Compose settings per host ---
+  # --- 4. Compose settings per thimble ---
 
-  # Policy layer: per-host fixpoint dispatch produces `configure` actions that
-  # become the FINAL cascade layer (wins by position over env/host settings). The
+  # Policy layer: per-thimble fixpoint dispatch produces `configure` actions that
+  # become the FINAL cascade layer (wins by position over env/thimble settings). The
   # convergence LOOP is gen-resolve's / gen-scope.circular's (Kleene ascent); gen-dispatch
   # supplies only the pure STEP. `_policy-rules.resolve` threads the plain domain state
   # (context) through repeated one-shot dispatch and reads the policy actions off the
@@ -202,45 +204,45 @@ let
   };
   inherit (policyRules) resolve;
 
-  dispatchForHost =
-    hostName:
+  dispatchForThimble =
+    thimbleName:
     let
-      h = genValues.fleet.hosts.${hostName};
+      h = genValues.haberdashery.thimbles.${thimbleName};
     in
     resolve {
-      env = genValues.fleet.environments.${h.env};
-      host = h // {
-        name = hostName;
+      env = genValues.haberdashery.environments.${h.env};
+      thimble = h // {
+        name = thimbleName;
       };
     };
-  policyResultsByHost = lib.genAttrs hostNames dispatchForHost;
+  policyResultsByThimble = lib.genAttrs thimbleNames dispatchForThimble;
 
-  # Collapse one host's configure actions into ONE aspect-namespaced patch:
+  # Collapse one thimble's configure actions into ONE aspect-namespaced patch:
   #   [ {aspect="postgres";settings={...};} {aspect="firewall";settings={...};} ]
   #   => { postgres = {...}; firewall = {...}; }
   # The inner `//` is a SHALLOW merge at the aspect's top level: safe because each
   # rule targets a distinct aspect (or disjoint keys). Two configure actions on the
   # same aspect with overlapping top-level keys would clobber — use recursiveUpdate
   # if that becomes possible.
-  policyPatchForHost =
-    hostName:
+  policyPatchForThimble =
+    thimbleName:
     builtins.foldl' (
       acc: a:
       acc
       // {
         ${a.aspect} = (acc.${a.aspect} or { }) // a.settings;
       }
-    ) { } (policyResultsByHost.${hostName}.actions.configuration or [ ]);
+    ) { } (policyResultsByThimble.${thimbleName}.actions.configuration or [ ]);
 
-  composeForHost =
-    hostName:
+  composeForThimble =
+    thimbleName:
     let
-      nodeId = "host:${hostName}";
+      nodeId = "thimble:${thimbleName}";
       rawLayers = scopeResult.get nodeId "raw-settings"; # most-specific first
       rawIds = scopeResult.get nodeId "raw-settings-ids"; # parallel ids, identical null-drop
       entityLayers = map (l: flattenAttrs "" l) (lib.reverseList rawLayers); # least-specific first
-      entityNames = map (id: lib.head (lib.splitString ":" id)) (lib.reverseList rawIds); # "env" | "host"
-      policyLayer = flattenAttrs "" (policyPatchForHost hostName);
+      entityNames = map (id: lib.head (lib.splitString ":" id)) (lib.reverseList rawIds); # "env" | "thimble"
+      policyLayer = flattenAttrs "" (policyPatchForThimble thimbleName);
       traced = record.foldLayersTraced {
         inherit strategies defaults;
         layers = entityLayers ++ [ policyLayer ]; # policy appended LAST → wins by position
@@ -253,7 +255,7 @@ let
       provenance = traced.provenance;
     };
 
-  composedResults = lib.genAttrs hostNames composeForHost;
+  composedResults = lib.genAttrs thimbleNames composeForThimble;
   composedSettings = lib.mapAttrs (_: r: r.value) composedResults;
   settingsProvenance = lib.mapAttrs (_: r: r.provenance) composedResults;
 
@@ -264,7 +266,7 @@ in
       composedSettings
       settingsProvenance
       scopeResult
-      policyResultsByHost
+      policyResultsByThimble
       ;
   };
   # Interim flake outputs so the cascade is verifiable now; a later task adds the

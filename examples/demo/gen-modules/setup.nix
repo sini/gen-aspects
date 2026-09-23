@@ -2,8 +2,8 @@
 #
 # The old flake-parts `modules/setup.nix` embedded `options.schema`/`options.aspects` gen TYPES into
 # flake-parts' nixpkgs `lib.evalModules`, which walked them via `substSubModules`/`getSubOptions` and
-# threw under the pure re-host. Relocating them here is the crux of the migration: gen-merge's
-# `evalModuleTree` — gen-aspects' own host engine — handles the gen aspect type natively, whereas
+# threw once moved onto the pure evaluator. Relocating them here is the crux of the migration: gen-merge's
+# `evalModuleTree` — gen-aspects' own evaluation engine — handles the gen aspect type natively, whereas
 # flake-parts' nixpkgs `lib.evalModules` could not. The kind definitions (`config.aspects.*`) live in
 # ./aspects/*.nix; the resolved VALUES cross to the flake-parts reader as the injected
 # `genValues`, and the gen type never leaves this pure eval.

@@ -1,14 +1,14 @@
-# User management aspect.
+# Account-shaped settings aspect (an invented name: gen names no entities, ADR-0035).
 { config, lib, ... }:
 {
-  config.aspects.define-user = {
+  config.aspects.define-basting = {
     tags = [ "identity" ];
     settings = {
       shell = {
         default = "/run/current-system/sw/bin/bash";
       };
       groups = {
-        default = [ "users" ];
+        default = [ "basting" ];
         merge = "append";
       };
       ssh.authorized-keys = {

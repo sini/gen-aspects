@@ -338,7 +338,7 @@ aspectsType {
 
 ## Demo
 
-The `examples/demo/` directory exercises eight gen libraries together: gen-algebra, gen-schema, gen-aspects, gen-graph, gen-scope, gen-select, gen-bind, and gen-dispatch. It demonstrates entities, aspects, namespaces, policies, queries, bindings, composition, and settings in a single integrated flake.
+The `examples/demo/` directory exercises nine gen libraries together: gen-algebra, gen-schema, gen-aspects, gen-graph, gen-scope, gen-select, gen-bind, gen-dispatch, and gen-delivery. It demonstrates entities, aspects, namespaces, policies, queries, bindings, composition, settings, and delivery-class realization in a single integrated flake, over invented node kinds (ADR-0035: gen names no entities).
 
 ## Testing
 

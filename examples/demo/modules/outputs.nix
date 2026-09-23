@@ -12,7 +12,7 @@
   flat,
   queryResults,
   policyResult,
-  policyResultsByHost,
+  policyResultsByThimble,
   bindResults,
   realized,
   ...
@@ -31,8 +31,8 @@ let
   fwTcpDevAll = composedSettings.dev-all.firewall.allowed-tcp; # [8080 8443 9090 3000]
   fwTcpProdWeb1 = composedSettings.prod-web-1.firewall.allowed-tcp; # []
 
-  # The REALIZED per-host nixos systems (realize + the bindings hook; modules/terminal.nix). Each is the
-  # host's firewall (+ nginx, on web/all hosts) class content COMPOSED into one config — contrast the
+  # The REALIZED per-thimble nixos systems (realize + the bindings hook; modules/terminal.nix). Each is the
+  # thimble's firewall (+ nginx, on web/all thimbles) class content COMPOSED into one config — contrast the
   # old reader terminal, which rendered one aspect in isolation.
   devAllSys = realized.nixos.dev-all;
   prodWeb1Sys = realized.nixos.prod-web-1;
@@ -52,15 +52,15 @@ in
     firewallIsPlain = !(flat.firewall.__isWrappedFn or false); # true
     firewallSettingsReachable = (flat.firewall.settings.allowed-tcp.merge or null) == "append"; # true
 
-    # --- (i) POLICY OVERRIDES HOST (replace) — discriminating: env sets "warn",
+    # --- (i) POLICY OVERRIDES THIMBLE (replace) — discriminating: env sets "warn",
     # policy sets "error"; only reachable if the policy layer is folded LAST ---
     loggingLevelProdWeb1 = composedSettings.prod-web-1.app.logging.level; # "error"
     loggingLevelProdWeb1Winner = effectiveLayerReplace settingsProvenance.prod-web-1 "app.logging.level"; # "policy"
     loggingLevelProdWeb1Chain = map (e: e.layer) settingsProvenance.prod-web-1."app.logging.level"; # ["default" "env" "policy"]
 
-    # --- NEGATIVE CONTROL: policy doesn't touch nginx workers → host still wins ---
+    # --- NEGATIVE CONTROL: policy doesn't touch nginx workers → thimble still wins ---
     workersProdWeb1 = composedSettings.prod-web-1.nginx.performance.workers; # 32
-    workersProdWeb1Winner = effectiveLayerReplace settingsProvenance.prod-web-1 "nginx.performance.workers"; # "host"
+    workersProdWeb1Winner = effectiveLayerReplace settingsProvenance.prod-web-1 "nginx.performance.workers"; # "thimble"
 
     # --- (ii) APPEND: firewall.allowed-tcp accumulates the policy contribution ---
     inherit fwTcpDevAll fwTcpProdWeb1; # [8080 8443 9090 3000] / []
@@ -68,12 +68,12 @@ in
 
     # --- (iii) RECURSIVE: per-subkey attribution on postgres.backup ---
     dbBackupSubkeyProvenance = recursiveSubkeyProvenance settingsProvenance.prod-db-1 "postgres.backup";
-    # => { schedule="policy"; retention="policy"; method="host"; destination="host"; }
+    # => { schedule="policy"; retention="policy"; method="thimble"; destination="thimble"; }
 
     # --- (iv) FIREWALL FULL LOOP: the cascade-resolved settings injected into the PARAMETRIC nixos via
     # realize's `bindings` hook → assert the rendered module value. v1 delta vs the reader terminal: a
-    # host's system COMPOSES all its aspects, so the firewall ports UNION the cascade firewall ports with
-    # nginx's public port (443) on web/all hosts. ---
+    # thimble's system COMPOSES all its aspects, so the firewall ports UNION the cascade firewall ports with
+    # nginx's public port (443) on web/all thimbles. ---
     inherit fwPortsDevAll fwPortsProdWeb1; # dev-all = cascade ∪ {443}; prod-web-1 = [443]
     fwEnableDevAll = devAllSys.networking.firewall.enable; # true (firewall aspect, mkDefault)
     # The cascade firewall ports survive the compose (subset), and nginx contributes exactly its port.
@@ -83,7 +83,7 @@ in
     nginxPortAddDevAll = lib.subtractLists fwTcpDevAll fwPortsDevAll; # [443] (merged − cascade)
     nginxPortAddProdWeb1 = lib.subtractLists fwTcpProdWeb1 fwPortsProdWeb1; # [443]
 
-    # DISCRIMINATING (membership drives the build): a database host runs firewall ONLY (no nginx), so its
+    # DISCRIMINATING (membership drives the build): a database thimble runs firewall ONLY (no nginx), so its
     # ports carry no 443 and its nginx config is empty.
     dbHasNoNginxPort = !(builtins.elem 443 prodDb1Sys.networking.firewall.allowedTCPPorts); # true
     dbNginxConfigEmpty = prodDb1Sys.services.nginx.config == ""; # true
@@ -91,10 +91,10 @@ in
     # --- (v) NGINX FULL LOOP (second aspect): resolved settings reach nginx ---
     nginxInjectionResolved = lib.hasInfix "worker_processes 32" prodWeb1Sys.services.nginx.config; # true
 
-    # --- per-host policy dispatch smoke ---
-    policyActionCountsByHost = lib.mapAttrs (
+    # --- per-thimble policy dispatch smoke ---
+    policyActionCountsByThimble = lib.mapAttrs (
       _: r: lib.mapAttrs (_: builtins.length) r.actions
-    ) policyResultsByHost;
+    ) policyResultsByThimble;
 
     # Settings cascade verification
     nginxWorkersProdWeb1 = composedSettings.prod-web-1.nginx.performance.workers;

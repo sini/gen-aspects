@@ -1,5 +1,5 @@
 # Entity-level settings overrides.
-# Plain attrsets keyed by scope node ID ("env:<name>" or "host:<name>").
+# Plain attrsets keyed by scope node ID ("env:<name>" or "thimble:<name>").
 # Nested paths match aspect settings schemas.
 { lib, ... }:
 {
@@ -53,9 +53,9 @@
       app.database.pool-size = 3;
     };
 
-    # --- Host-level overrides ---
+    # --- Thimble-level overrides ---
 
-    "host:prod-web-1" = {
+    "thimble:prod-web-1" = {
       nginx.performance.workers = 32;
       nginx.performance.worker-connections = 4096;
       nginx.upstream.servers = [
@@ -69,7 +69,7 @@
       };
     };
 
-    "host:prod-db-1" = {
+    "thimble:prod-db-1" = {
       postgres.memory.shared-buffers = "8GB";
       postgres.memory.work-mem = "16MB";
       postgres.connection.max-connections = 1000;

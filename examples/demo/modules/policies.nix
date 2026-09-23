@@ -1,12 +1,12 @@
 # Legacy single-sample policy dispatch.
 #
-# The action vocabulary and the per-host rules now live in the shared
+# The action vocabulary and the per-thimble rules now live in the shared
 # `_policy-rules.nix` helper. This module keeps only the legacy single-sample
 # fixpoint dispatch (sample context: prod-web-1) that feeds the existing
 # `policyIterations` / `policyActionCounts` outputs.
 #
-# READER side (value-injection): reads the injected `genValues.fleet` (the gen tree's
-# resolved config) instead of a flake-parts `config.fleet` option tree.
+# READER side (value-injection): reads the injected `genValues.haberdashery` (the gen tree's
+# resolved config) instead of a flake-parts `config.haberdashery` option tree.
 {
   lib,
   genValues,
@@ -27,8 +27,8 @@ let
   inherit (policyRules) resolve;
 
   # Sample context: prod-web-1
-  sampleEnv = genValues.fleet.environments.prod;
-  sampleHost = genValues.fleet.hosts.prod-web-1 // {
+  sampleEnv = genValues.haberdashery.environments.prod;
+  sampleThimble = genValues.haberdashery.thimbles.prod-web-1 // {
     name = "prod-web-1";
   };
 
@@ -37,7 +37,7 @@ let
   # policy actions off the converged context (one post-convergence dispatch).
   policyResult = resolve {
     env = sampleEnv;
-    host = sampleHost;
+    thimble = sampleThimble;
   };
 in
 {

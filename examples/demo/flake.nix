@@ -3,22 +3,22 @@
 
   # Value-injection over the SUCCESSOR COMPOSE (`gen.lib.compose`, the hub's S2 core — formerly
   # gen-flake v1, dissolving under ADR-0031). The gen definition tree (./gen-modules — aspect schema +
-  # aspect/fleet/namespace/scopeSettings definitions) is composed PURELY via gen-merge's byte-mode
+  # aspect/haberdashery/namespace/scopeSettings definitions) is composed PURELY via gen-merge's byte-mode
   # `evalModuleTree` (NOT flake-parts' nixpkgs `lib.evalModules`). The resolved config VALUES are
   # injected as the `genValues` module arg; NO gen TYPE enters the flake-parts options tree (the old
   # `options.schema`/`options.aspects`/`options.namespaces` embeds made flake-parts walk a gen type via
-  # `substSubModules`/`getSubOptions` and throw under the pure re-host). The `modules/*` READERS render
+  # `substSubModules`/`getSubOptions` and throw once moved onto the pure evaluator). The `modules/*` READERS render
   # over `genValues`.
   #
   # DIRECT compose/project/realize (not `gen.flakeModules.default`). The other demos consume the hub
   # flakeModule for its one-line ergonomics, but this demo drives the lower-level surfaces directly,
   # because it needs two knobs the flakeModule does not surface:
-  #   * `project { selectHosts; }` (gen-delivery) — the fleet lives under `fleet.hosts`, not the
-  #     top-level `hosts` the default projection reads, and the projection needs each host tagged with
-  #     the aspects it runs (the fleet schema carries only env/role, so membership is synthesized in
-  #     `selectHosts`).
-  #   * `realize { refinements; }` (gen-delivery) — the TERMINAL. The reader-computed per-(host,
-  #     aspect) settings cascade is a per-host contribution layer, and the terminal
+  #   * `project { selectNodes; }` (gen-delivery) — the node selector, required and without a default:
+  #     it names `haberdashery.thimbles` as the node registry, and the projection needs each thimble
+  #     tagged with the aspects it runs (the thimble kind carries only env/role, so membership is
+  #     synthesized in `selectNodes`).
+  #   * `realize { refinements; }` (gen-delivery) — the TERMINAL. The reader-computed per-(thimble,
+  #     aspect) settings cascade is a per-thimble contribution layer, and the terminal
   #     (`modules/terminal.nix`, a pure DATA terminal) does the wrapping.
   #
   # The successor compose takes `specialArgs` CALLER-TOTAL (it binds no constructor vocabulary), so
@@ -60,24 +60,24 @@
           };
         };
 
-        # The per-host build projection (gen-delivery `project` — the successor compose deliberately
-        # does not project hosts). `cnf` is the demo's own mkAspectSchema argument
+        # The per-thimble build projection (gen-delivery `project` — the successor compose deliberately
+        # does not project thimbles). `cnf` is the demo's own mkAspectSchema argument
         # (./gen-modules/_aspect-cnf.nix): the key-category DECLARATION the realization predicate
         # reads — a delivery class realizes on DECLARED content, never on structural shape.
-        # `selectHosts` projects the `fleet.hosts` registry, tagging each host with the aspects its
-        # role runs; web/all hosts run the firewall + nginx parametric aspects, database hosts run
+        # `selectNodes` projects the `haberdashery.thimbles` registry, tagging each thimble with the aspects its
+        # role runs; web/all thimbles run the firewall + nginx parametric aspects, database thimbles run
         # firewall only.
         projected = roster.delivery.project {
           values = composed.values;
           cnf = import ./gen-modules/_aspect-cnf.nix { inherit lib; };
-          selectHosts =
+          selectNodes =
             values:
             lib.mapAttrs (
-              _name: host:
-              host
+              _name: thimble:
+              thimble
               // {
                 aspects =
-                  if host.role == "database" then
+                  if thimble.role == "database" then
                     [ "firewall" ]
                   else
                     [
@@ -85,7 +85,7 @@
                       "services/nginx"
                     ];
               }
-            ) values.fleet.hosts;
+            ) values.haberdashery.thimbles;
         };
       in
       {
@@ -95,7 +95,7 @@
 
         # QUERY surface — inject the resolved VALUES as `genValues` (what the hub flakeModule's
         # inject would do), plus the compose result (`genComposed`, carrying the `.override` handle
-        # the trace showcase drives), the per-host build projection (`genProjected`) and the
+        # the trace showcase drives), the per-thimble build projection (`genProjected`) and the
         # constructed delivery surface (`genDelivery`, for `realize`) the terminal reader folds. The
         # reader-side gen LIBRARIES come off the same roster — the rendering tools the `modules/*`
         # readers run over `genValues` (distinct from the injected VALUES).
@@ -123,7 +123,7 @@
     # (`inputs.gen.inputs.import-tree`, nixpkgs-lib-free) the tree load uses.
     gen.url = "github:sini/gen";
 
-    # The reader-side tree loader (flake-parts) + its nixpkgs/flake-parts host. Distinct from the
+    # The reader-side tree loader (flake-parts) + the nixpkgs/flake-parts it runs on. Distinct from the
     # hub's import-tree fork (which loads ./gen-modules purely).
     import-tree.url = "github:vic/import-tree";
     flake-parts.url = "github:hercules-ci/flake-parts";

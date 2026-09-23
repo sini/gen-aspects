@@ -51,7 +51,7 @@
       nixos =
         {
           settings,
-          host,
+          thimble,
           lib,
           ...
         }:

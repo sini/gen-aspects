@@ -2,7 +2,7 @@
 { config, lib, ... }:
 {
   config.aspects = {
-    # Demoted from guard fn: nixos uses no host/settings, so a plain attrset suffices.
+    # Demoted from guard fn: nixos uses no thimble/settings, so a plain attrset suffices.
     hardening = {
       tags = [ "security" ];
       nixos = {
@@ -42,13 +42,13 @@
           merge = "recursive";
         };
       };
-      # Receives resolved per-host settings (+ host) via the injection construct
+      # Receives resolved per-thimble settings (+ thimble) via the injection construct
       # BEFORE evalModules; lib/config/pkgs still flow from the module system.
       # Kebab schema keys map to camelCase NixOS option names here.
       nixos =
         {
           settings,
-          host,
+          thimble,
           lib,
           ...
         }:

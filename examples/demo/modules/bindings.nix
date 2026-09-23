@@ -28,11 +28,11 @@ let
   #
   # For the signature/wrapped METADATA we call genBind.wrap / buildSignature
   # directly with the SAME uniform binding shape the terminal uses (settings
-  # namespaced under the aspect leaf + host). Uniform `settings` arg name — never
+  # namespaced under the aspect leaf + thimble). Uniform `settings` arg name — never
   # `nginxSettings`.
   #
   # We sign over the underlying parametric fn (unwrapped from the deferredModule
-  # imports-form) so the signature reflects the real `settings`/`host`/`lib`
+  # imports-form) so the signature reflects the real `settings`/`thimble`/`lib`
   # interface; wrapping the imports-attrset directly would erase arg metadata.
   # deferredModule nests the fn under `{ imports = [ { _file; imports = [ fn ]; } ]; }`,
   # so descend `imports` lists until the parametric function surfaces.
@@ -46,14 +46,14 @@ let
       v;
   nginxFn = unwrapToFn nginxClass;
 
-  # Mirrors the construct's binding shape; `host` omits the construct's fleet-host
-  # enrichment (`// genValues.fleet.hosts.<h>`) — fine here since the signature only
-  # reads arg presence, not host fields.
+  # Mirrors the construct's binding shape; `thimble` omits the construct's haberdashery-thimble
+  # enrichment (`// genValues.haberdashery.thimbles.<h>`) — fine here since the signature only
+  # reads arg presence, not thimble fields.
   uniformBindings = {
     settings = {
       nginx = composedSettings.prod-web-1.nginx;
     };
-    host = {
+    thimble = {
       name = "prod-web-1";
     };
   };
@@ -64,7 +64,7 @@ let
     contracts.settings = genBind.contract.isType "set";
     provenance.settings = {
       source = "scope-settings";
-      scope = "host:prod-web-1";
+      scope = "thimble:prod-web-1";
     };
   };
 
@@ -75,7 +75,7 @@ let
     mergeStrategies = { };
     provenance.settings = {
       source = "scope-settings";
-      scope = "host:prod-web-1";
+      scope = "thimble:prod-web-1";
     };
   };
 
