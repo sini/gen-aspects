@@ -405,6 +405,12 @@ let
           + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
           + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
           + "content key."
+        else if builtins.length defs == 1 && isBareModuleInclude then
+          # Default OFF: the bare module is absorbed AS A MODULE. The aspect submodule reads an
+          # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
+          # `imports` a freeform key and drop the imported content, so the def is handed over as a
+          # function module, which the submodule reads as a module.
+          (aspectSubmodule cnf).merge loc (map (d: d // { value = _: d.value; }) defs)
         else
           (aspectOrFn cnf).merge loc defs;
     };
