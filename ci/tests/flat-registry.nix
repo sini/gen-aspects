@@ -93,7 +93,9 @@ let
         config.aspects.infra = {
           nixos.networking.domain = "example";
           networking.dns.nixos.networking.nameservers = [ "1.1.1.1" ];
-          g = (aspects.mkGuardVocab { }).vocab.whenHost "cortex" { nixos.networking.hostName = "c"; };
+          g = (aspects.mkGuardVocab { }).vocab.whenEq [ "thimble" "name" ] "cortex" {
+            nixos.networking.hostName = "c";
+          };
           w =
             { host }:
             {

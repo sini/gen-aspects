@@ -1,8 +1,8 @@
-# gen-aspects — re-hosted on the pure-gen stack (gen-prelude + gen-merge), bypassing nixpkgs.
+# gen-aspects — ported to the pure-gen stack (gen-prelude + gen-merge), bypassing nixpkgs.
 #   prelude : gen-prelude.lib (pure utility base)
 #   merge   : gen-merge.lib (evalModuleTree + structural types + mkOption/mkMerge/… ; the lib.types
 #             + lib.evalModules replacement — leaf checkers come from gen-types via merge.types)
-#   schema  : the (re-hosted, pure) gen-schema.lib — mkAspectSchema wraps aspectType for its
+#   schema  : the (ported, pure) gen-schema.lib — mkAspectSchema wraps aspectType for its
 #             kind-level infrastructure.
 # The grammar (types.nix) produces the aspect node set WITHOUT evalModules; nixpkgs.lib-free.
 {

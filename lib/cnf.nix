@@ -25,7 +25,7 @@
 # receive an already-constructed record and are never re-checked.
 let
   # Module functions take known module args — evaluated by the submodule. Guard functions take
-  # context args (host/user/etc.) — wrapped for later. The default set is the standard NixOS args
+  # context args (whatever the caller's context carries) — wrapped for later. The default set is the standard NixOS args
   # plus `aspect`, which gen-aspects provides.
   defaultModuleArgs = {
     lib = true;

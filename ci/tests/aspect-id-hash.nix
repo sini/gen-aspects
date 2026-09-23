@@ -77,11 +77,19 @@ let
   # order body.
   g1 =
     (mkSchemaEval {
-      modules = [ { config.aspects.g = aspects.guard (aspects.pred.host "h1") { classOne = { }; }; } ];
+      modules = [
+        {
+          config.aspects.g = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "h1") { classOne = { }; };
+        }
+      ];
     }).config.aspects.g;
   g2 =
     (mkSchemaEval {
-      modules = [ { config.aspects.g = aspects.guard (aspects.pred.host "h1") { classOne = { }; }; } ];
+      modules = [
+        {
+          config.aspects.g = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "h1") { classOne = { }; };
+        }
+      ];
     }).config.aspects.g;
 
   # providerPrefix feeds the option's origin: bypass mkSchemaEval (which hardcodes providerPrefix = []).

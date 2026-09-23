@@ -1,6 +1,6 @@
 # gen-schema integration: mkAspectSchema wraps aspectType for gen-schema's
 # kind-level infrastructure (collections, introspection, extension).
-# Re-hosted: genSchema is the pure (gen-merge-backed) gen-schema; types/mkOption come from gen-merge.
+# Ported: genSchema is the pure (gen-merge-backed) gen-schema; types/mkOption come from gen-merge.
 {
   prelude,
   merge,
@@ -35,7 +35,7 @@ in
             kind,
           }:
           let
-            # Build a module from user-declared defs on the schema kind entry
+            # Build a module from caller-declared defs on the schema kind entry
             # (e.g. options.priority = mkOption {...}). These defs extend each
             # aspect instance with the declared options.
             defsModules = map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
@@ -99,7 +99,7 @@ in
                 inherit providerPrefix;
                 # Lazily inject schema-declared option modules into every instance.
                 # config.schema.aspect.__defsModule carries the merged module built
-                # from user defs on the schema kind entry (e.g. options.priority).
+                # from caller defs on the schema kind entry (e.g. options.priority).
                 aspectModules =
                   cnf.aspectModules
                   ++ prelude.optional (

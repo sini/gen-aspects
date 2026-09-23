@@ -1,4 +1,4 @@
-# gen-aspects type system — re-hosted on gen-merge (was nixpkgs lib.types/evalModules).
+# gen-aspects type system — ported to gen-merge (was nixpkgs lib.types/evalModules).
 #
 # Palmer et al. (2024) "Intensional Functions" §2: one type, dispatch in merge.
 # aspectType dispatches by value shape — attrsets and module functions to
@@ -13,11 +13,11 @@
 # constructor (deferredModule) — inspectable before forcing, evaluated only when
 # the consuming NixOS/homeManager evaluation imports it.
 #
-# Guard functions ({ host, ... }: { ... }) are preserved via a functor wrap
+# Guard functions ({ thimble, ... }: { ... }) are preserved via a functor wrap
 # (inspectable `__functor` wrapping; cf. Reynolds 1972 defunctionalization by ANALOGY —
 # the closure is preserved inside __functor, not eliminated; there is no per-form
 # constructor and no single global apply, so this is not the literal §6 transform).
-# Re-host note: the wrap is now a hand-built functor (gen-merge has no `functionTo`);
+# Port note: the wrap is now a hand-built functor (gen-merge has no `functionTo`);
 # it reproduces the old `(lib.types.functionTo aspectSubmodule).merge … // { __isWrappedFn; … }`
 # functor byte-for-byte (isAttrs + callable via __functor, tagged __isWrappedFn/name/meta).
 # The pipeline resolves them when context is available — they are NOT evaluated by
@@ -554,7 +554,7 @@ let
         # branch (also loc-keyed and re-rooted, `aspectType`'s `__guard` branch),
         # is origin-invariant (§3a: the container root is the proto-namespace root; an origin
         # qualifier prepends additively), and byte-matches den-hoag's root-relative `__provider`.
-        # mkDefault so a user-set meta.aspect-chain still wins.
+        # mkDefault so a caller-set meta.aspect-chain still wins.
         config.meta.aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
 
         options = {

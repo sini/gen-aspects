@@ -75,9 +75,7 @@ let
     pr:
     if pr ? p && pr ? a then pr else throw "gen-aspects.guard: all/any expects predicates, not guards";
   pred = {
-    host = name: mkP "host" { host = name; };
     class = name: mkP "class" { class = name; };
-    user = name: mkP "user" { user = name; };
     tagEq = tag: value: mkP "tagEq" { inherit tag value; };
     eq = path: value: mkP "eq" { inherit path value; };
     all = ps: {
@@ -116,9 +114,7 @@ in
       # `reads` is required (load-bearing for read-set congruence, OQ-A) though not consulted at dispatch —
       # it is for downstream read-set analysis. A custom form may NOT shadow a core form.
       coreFormNames = [
-        "host"
         "class"
-        "user"
         "tagEq"
         "eq"
         "all"
@@ -144,29 +140,35 @@ in
       # forcing point MOVES to the guaranteed downstream call site, eagerness is not abandoned).
       # checkForm returns the NAME, never the form: deepSeq over a returned form would additionally
       # make every entry's `reads` and `eval` strict, which is not what the check needs and is a
-      # strictness the caller never asked for. checkedUserForms is the validated passthrough.
-      checkedUserForms = builtins.deepSeq (builtins.mapAttrs checkForm cnf.guardForms) cnf.guardForms;
+      # strictness the caller never asked for. checkedCustomForms is the validated passthrough.
+      checkedCustomForms = builtins.deepSeq (builtins.mapAttrs checkForm cnf.guardForms) cnf.guardForms;
       # O2: ONE global dispatcher, case-analysis on the predicate tag.
       evalPred =
         ctx: pr:
         let
           core = {
-            host = (getPath [ "host" "name" ] ctx) == pr.a.host.v;
             class = (getPath [ "class" ] ctx) == pr.a.class.v;
-            user = (getPath [ "user" "name" ] ctx) == pr.a.user.v;
             tagEq = (getPath [ "tags" pr.a.tag.v ] ctx) == pr.a.value.v;
             eq = (getPath (map (s: s.v) pr.a.path.v) ctx) == pr.a.value.v;
             all = builtins.all (evalPred ctx) pr.a.preds;
             any = builtins.any (evalPred ctx) pr.a.preds;
             always = true;
           }
-          // builtins.mapAttrs (_: form: form.eval ctx pr.a) checkedUserForms;
+          // builtins.mapAttrs (_: form: form.eval ctx pr.a) checkedCustomForms;
         in
-        core.${pr.p} or (throw "gen-aspects.guard: unknown predicate form '${pr.p}'");
+        # The refusal is the door: it renders the recognised set (never restated) and names the
+        # path-parameterised form, so a caller holding a form name this vocabulary does not declare
+        # learns both what exists and how to address any context path without a named form.
+        core.${pr.p} or (throw (
+          "gen-aspects.guard: unknown predicate form '${pr.p}'. Recognised forms: "
+          + builtins.concatStringsSep ", " (coreFormNames ++ builtins.attrNames checkedCustomForms)
+          + ". `eq` compares the value at a caller-supplied context path; a form this vocabulary "
+          + "does not declare enters through the vocabulary's guardForms."
+        ));
       fires = ctx: g: evalPred ctx g.pred;
       # Multi-def guard carrier discharge (den-hoag-sezf Arm B) — one fragment per definition,
       # included iff its condition holds, evaluated HERE at the stratum where guards are
-      # evaluable (per-host, downstream). A record fragment's condition is `evalPred`, unchanged;
+      # evaluable (per evaluation context, downstream). A record fragment's condition is `evalPred`, unchanged;
       # a function fragment IS its own condition-and-body, computed together by the closure
       # (opaque before this call, per the declared limit at the carrier's construction site,
       # `lib/types.nix`); an unconditional fragment always survives.
@@ -187,9 +189,7 @@ in
         evalPred
         ;
       vocab = {
-        whenHost = name: guard (pred.host name);
         whenClass = name: guard (pred.class name);
-        whenUser = name: guard (pred.user name);
         whenTagEq = tag: value: guard (pred.tagEq tag value);
         whenEq = path: value: guard (pred.eq path value);
         whenAll = ps: guard (pred.all ps);
@@ -200,17 +200,17 @@ in
       # functionTo functors take the escape hatch (NOT defunctionalized). A multi-def carrier
       # (`g ? fragments`) widens the codomain from *one body or `null`* to *the Arm A merge of
       # the surviving fragments' bodies, or `null` when none survive* — `mkIf`'s discharge-at-merge
-      # cannot transfer here because a guard's condition is a function of a host context that
+      # cannot transfer here because a guard's condition is a function of an evaluation context that
       # does not exist at merge time; the carrier is what carries the undischarged condition
       # across that gap. A single survivor reduces to itself by construction, via
       # `mergeDefaultOption`'s own singleton arm — not a special case here.
       applyGuard =
         ctx: g:
-        # checkedUserForms is forced HERE, before any dispatch answers: every real guard evaluation
+        # checkedCustomForms is forced HERE, before any dispatch answers: every real guard evaluation
         # passes through this one entry point, so a malformed or colliding custom form refuses on the
         # first call through a vocab regardless of which predicate that call names — and memoizes,
         # one shared thunk per vocab, for every later call.
-        builtins.seq checkedUserForms (
+        builtins.seq checkedCustomForms (
           if g ? fragments then
             let
               survivors = builtins.filter (v: v != null) (map (dischargeFragment ctx) g.fragments);

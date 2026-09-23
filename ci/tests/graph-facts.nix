@@ -48,7 +48,9 @@ let
           { config, ... }:
           {
             config.aspects.infra.networking.dns.nixos.networking.nameservers = [ "1.1.1.1" ];
-            config.aspects.top.g = gv.vocab.whenHost "cortex" { nixos.networking.domain = "x"; };
+            config.aspects.top.g = gv.vocab.whenEq [ "thimble" "name" ] "cortex" {
+              nixos.networking.domain = "x";
+            };
             config.aspects.top.w =
               { host }:
               {
@@ -198,7 +200,7 @@ let
         fn = { host, ... }: [ ];
       }
       { nixos.networking.domain = "inline"; } # inline aspect literal
-      (gv.vocab.whenHost "cortex" { nixos.networking.domain = "g"; }) # inline guard record
+      (gv.vocab.whenEq [ "thimble" "name" ] "cortex" { nixos.networking.domain = "g"; }) # inline guard record
     ];
   };
   inlineFacts = aspects.graphFacts { } inlineEval.config.aspects;

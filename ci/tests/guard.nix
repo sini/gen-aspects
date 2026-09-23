@@ -11,9 +11,9 @@
 let
   v = aspects.mkGuardVocab { };
   ctxCortex = {
-    host.name = "cortex";
+    thimble.name = "cortex";
     class = "nixos";
-    user.name = "sini";
+    spool.name = "sini";
     tags = {
       role = "db";
     };
@@ -42,18 +42,21 @@ in
     expected = false;
   };
   flake.tests.guard.test-applyguard-fires = {
-    expr = v.applyGuard ctxCortex (v.vocab.whenHost "cortex" { ok = true; });
+    expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "thimble" "name" ] "cortex" { ok = true; });
     expected = {
       ok = true;
     };
   };
   flake.tests.guard.test-applyguard-not-fires = {
-    expr = v.applyGuard ctxCortex (v.vocab.whenHost "blade" { ok = true; });
+    expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "thimble" "name" ] "blade" { ok = true; });
     expected = null;
   };
   flake.tests.guard.test-all-recurses = {
     expr = v.applyGuard ctxCortex (
-      v.vocab.whenAll [ (v.pred.host "cortex") (v.pred.class "nixos") ] { ok = true; }
+      v.vocab.whenAll [
+        (v.pred.eq [ "thimble" "name" ] "cortex")
+        (v.pred.class "nixos")
+      ] { ok = true; }
     );
     expected = {
       ok = true;
@@ -61,7 +64,10 @@ in
   };
   flake.tests.guard.test-any-recurses = {
     expr = v.applyGuard ctxCortex (
-      v.vocab.whenAny [ (v.pred.host "blade") (v.pred.class "nixos") ] { ok = true; }
+      v.vocab.whenAny [
+        (v.pred.eq [ "thimble" "name" ] "blade")
+        (v.pred.class "nixos")
+      ] { ok = true; }
     );
     expected = {
       ok = true;
@@ -75,9 +81,9 @@ in
   };
   flake.tests.guard.test-escape-hatch = {
     expr = v.applyGuard ctxCortex (
-      { host, ... }:
+      { thimble, ... }:
       {
-        hn = host.name;
+        hn = thimble.name;
       }
     );
     expected = {
@@ -85,15 +91,15 @@ in
     };
   };
 
-  # I1: per-form coverage (fires + not-fires) for whenUser / whenTagEq / whenClass / always / all / any.
-  flake.tests.guard.test-whenuser-fires = {
-    expr = v.applyGuard ctxCortex (v.vocab.whenUser "sini" { ok = true; });
+  # I1: per-form coverage (fires + not-fires) for whenEq on a second kind / whenTagEq / whenClass / always / all / any.
+  flake.tests.guard.test-wheneq-second-kind-fires = {
+    expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "spool" "name" ] "sini" { ok = true; });
     expected = {
       ok = true;
     };
   };
-  flake.tests.guard.test-whenuser-not-fires = {
-    expr = v.applyGuard ctxCortex (v.vocab.whenUser "vic" { ok = true; });
+  flake.tests.guard.test-wheneq-second-kind-not-fires = {
+    expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "spool" "name" ] "vic" { ok = true; });
     expected = null;
   };
   flake.tests.guard.test-whentageq-fires = {
@@ -124,13 +130,19 @@ in
   };
   flake.tests.guard.test-all-not-fires = {
     expr = v.applyGuard ctxCortex (
-      v.vocab.whenAll [ (v.pred.host "cortex") (v.pred.class "darwin") ] { ok = true; }
+      v.vocab.whenAll [
+        (v.pred.eq [ "thimble" "name" ] "cortex")
+        (v.pred.class "darwin")
+      ] { ok = true; }
     );
     expected = null;
   };
   flake.tests.guard.test-any-not-fires = {
     expr = v.applyGuard ctxCortex (
-      v.vocab.whenAny [ (v.pred.host "blade") (v.pred.class "darwin") ] { ok = true; }
+      v.vocab.whenAny [
+        (v.pred.eq [ "thimble" "name" ] "blade")
+        (v.pred.class "darwin")
+      ] { ok = true; }
     );
     expected = null;
   };
@@ -196,17 +208,77 @@ in
     let
       gv = aspects.mkGuardVocab {
         guardForms = {
-          host = {
+          eq = {
             eval = _: _: true;
             reads = [ ];
           };
         };
       };
-      g = gv.guard (aspects.pred.custom "host" { host = "x"; }) { ok = true; };
+      g = gv.guard (aspects.pred.custom "eq" { eq = "x"; }) { ok = true; };
     in
     {
-      expr = (builtins.tryEval (gv.applyGuard { host.name = "y"; } g)).success;
+      expr = (builtins.tryEval (gv.applyGuard { thimble.name = "y"; } g)).success;
       expected = false;
+    };
+
+  # ADR-0035: the published predicate surface names no domain entity. A context path is the
+  # caller's (`eq`), and a framework's named entity predicate is the framework's own declaration.
+  # These two cells pin the surface EXACTLY, so re-adding an entity-named constructor or its
+  # `when…` sugar reds them.
+  flake.tests.guard.test-pred-surface-names-no-entity = {
+    expr = builtins.attrNames aspects.pred;
+    expected = [
+      "all"
+      "always"
+      "any"
+      "class"
+      "custom"
+      "eq"
+      "tagEq"
+    ];
+  };
+  flake.tests.guard.test-vocab-surface-names-no-entity = {
+    expr = builtins.attrNames v.vocab;
+    expected = [
+      "always"
+      "whenAll"
+      "whenAny"
+      "whenClass"
+      "whenEq"
+      "whenTagEq"
+    ];
+  };
+
+  # ADR-0027 as amended: the framework owns its vocabulary, so gen reserves no entity name. A
+  # framework form named `host` (an example a framework might declare) is accepted and dispatches
+  # to the framework's own `eval`. Re-reserving the name in `coreFormNames` reds this cell; its
+  # control is `test-custom-form-collision` above, where a name that IS still core (`eq`) refuses.
+  flake.tests.guard.test-custom-form-named-for-a-kind-dispatches =
+    let
+      gv = aspects.mkGuardVocab {
+        guardForms.host = {
+          eval = ctx: a: (ctx.host.name or null) == a.name.v;
+          reads = [
+            [
+              "host"
+              "name"
+            ]
+          ];
+        };
+      };
+      g = gv.guard (aspects.pred.custom "host" { name = "pewter"; }) { ok = true; };
+    in
+    {
+      expr = {
+        fires = gv.applyGuard { host.name = "pewter"; } g;
+        notFires = gv.applyGuard { host.name = "damask"; } g;
+      };
+      expected = {
+        fires = {
+          ok = true;
+        };
+        notFires = null;
+      };
     };
 
   # den-hoag-cr72: custom-form validation is EAGER at `applyGuard`, not lazy at dispatch-by-name.
@@ -220,7 +292,7 @@ in
   # one that always answered `false` fails the three total rows.
   #
   # The two `construct…StaysTotal` rows are the PERMANENT FENCE against this fix's own rejected first
-  # draft. Forcing `checkedUserForms` from `mkGuardVocab`'s RETURNED RECORD instead of from
+  # draft. Forcing `checkedCustomForms` from `mkGuardVocab`'s RETURNED RECORD instead of from
   # `applyGuard`'s body makes that return's WHNF depend on `guardForms`' full key set, and a caller
   # whose key is derived from a sibling option inside its own config fixpoint then cycles with an
   # `infinite recursion` that escapes `tryEval` entirely. Any future change that moves the check back
@@ -239,18 +311,18 @@ in
         inherit okForm;
       };
       colliding = mk {
-        host = okForm; # shadows a core predicate form
+        eq = okForm; # shadows a core predicate form
         inherit okForm;
       };
       control = mk { inherit okForm; };
       # deepSeq, not WHNF: a refusal living in a lazy attribute value is invisible to a bare tryEval.
       ok = e: (builtins.tryEval (builtins.deepSeq e true)).success;
       # A dispatch through an unrelated CORE predicate — it names no declared custom form at all.
-      unrelatedCore = gv: gv.applyGuard { host.name = "cortex"; } (gv.vocab.always { fired = true; });
+      unrelatedCore = gv: gv.applyGuard { thimble.name = "cortex"; } (gv.vocab.always { fired = true; });
       # A dispatch through the RAW-CLOSURE escape hatch, which evaluates no predicate whatsoever.
       rawClosure =
         gv:
-        gv.applyGuard { host.name = "cortex"; } (_ctx: {
+        gv.applyGuard { thimble.name = "cortex"; } (_ctx: {
           fired = true;
         });
     in
@@ -263,9 +335,9 @@ in
         # rather than `applyGuard` refusing unconditionally on every call.
         unrelatedCoreControl = ok (unrelatedCore control);
         # THE TWO HALVES OF THE FIX ARE SEPARABLE AND BOTH ARE PINNED. `evalPred` builds its case
-        # table as `{ core… } // mapAttrs … checkedUserForms`, and `//` forces its operand to WHNF —
+        # table as `{ core… } // mapAttrs … checkedCustomForms`, and `//` forces its operand to WHNF —
         # so the `deepSeq` alone already answers every PREDICATE dispatch, and the row above stays
-        # green if the `builtins.seq checkedUserForms` wrap on `applyGuard` is deleted (measured, all
+        # green if the `builtins.seq checkedCustomForms` wrap on `applyGuard` is deleted (measured, all
         # three arms, one run). The raw-closure arm forces no predicate at all, so it is reached by
         # that wrap and by nothing else — delete the wrap and this row is the one that goes red.
         rawClosureRefusesMalformed = ok (rawClosure malformed);
@@ -287,8 +359,8 @@ in
   # site-independence: same predicate + first-order body at two "sites" -> equal key
   flake.tests.guard.test-guardkey-site-independent =
     let
-      g1 = aspects.guard (aspects.pred.host "cortex") { a = 1; };
-      g2 = aspects.guard (aspects.pred.host "cortex") { a = 1; };
+      g1 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 1; };
+      g2 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 1; };
     in
     {
       expr = aspects.guardKey g1 == aspects.guardKey g2;
@@ -298,8 +370,8 @@ in
   # bodyKey discriminates differing first-order bodies
   flake.tests.guard.test-guardkey-body-discriminates =
     let
-      g1 = aspects.guard (aspects.pred.host "cortex") { a = 1; };
-      g2 = aspects.guard (aspects.pred.host "cortex") { a = 2; };
+      g1 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 1; };
+      g2 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 2; };
     in
     {
       expr = aspects.guardKey g1 == aspects.guardKey g2;
@@ -311,7 +383,7 @@ in
     let
       mk =
         a:
-        aspects.guard (aspects.pred.host "cortex") (
+        aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") (
           aspects.guard (aspects.pred.class "nixos") { inherit a; }
         );
     in
@@ -333,7 +405,7 @@ in
   flake.tests.guard.test-guardkey-nested-no-throw =
     let
       g = aspects.guard (aspects.pred.all [
-        (aspects.pred.host "cortex")
+        (aspects.pred.eq [ "thimble" "name" ] "cortex")
         (aspects.pred.class "nixos")
       ]) ({ config, ... }: { });
     in
@@ -346,7 +418,7 @@ in
   # (no toJSON crash, source-position branch) — hasFn recurses into nested guards.
   flake.tests.guard.test-guardkey-nested-guard-fn-body =
     let
-      g = aspects.guard (aspects.pred.host "cortex") {
+      g = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") {
         sub = aspects.guard (aspects.pred.class "nixos") ({ config, ... }: { });
       };
     in
@@ -360,7 +432,9 @@ in
     let
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
-        modules = [ { config.aspects.db = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+        modules = [
+          { config.aspects.db = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+        ];
       };
     in
     {
@@ -375,7 +449,11 @@ in
       mk =
         name:
         (mkSchemaEval {
-          modules = [ { config.aspects.${name} = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+          modules = [
+            {
+              config.aspects.${name} = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; };
+            }
+          ];
         }).config.aspects.${name};
     in
     {
@@ -391,7 +469,9 @@ in
       mk =
         name:
         (mkSchemaEval {
-          modules = [ { config.aspects.${name} = gv.vocab.whenHost "cortex" ({ config, ... }: { }); } ];
+          modules = [
+            { config.aspects.${name} = gv.vocab.whenEq [ "thimble" "name" ] "cortex" ({ config, ... }: { }); }
+          ];
         }).config.aspects.${name};
     in
     {
@@ -418,8 +498,8 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
-          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "blade" { classOne.setting = "y"; }; }
         ];
       };
       flat = aspects.flatten eval.config.aspects;
@@ -435,8 +515,8 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
-          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "blade" { classOne.setting = "y"; }; }
         ];
       };
       carrier = eval.config.aspects.dup;
@@ -449,7 +529,7 @@ in
       expr = {
         isGuard = carrier.__guard or false;
         fragmentCount = builtins.length carrier.fragments;
-        preds = map (f: f.pred.a.host.v) carrier.fragments;
+        preds = map (f: f.pred.a.value.v) carrier.fragments;
         bodies = map (f: f.body.classOne.setting) carrier.fragments;
       };
       expected = {
@@ -471,8 +551,8 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
-          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "blade" { classOne.setting = "y"; }; }
         ];
       };
       carrier = eval.config.aspects.dup;
@@ -480,7 +560,7 @@ in
     {
       # (iii) discharge at a context where exactly one guard fires yields that fragment's body
       # alone.
-      expr = gv.applyGuard { host.name = "cortex"; } carrier;
+      expr = gv.applyGuard { thimble.name = "cortex"; } carrier;
       expected = {
         classOne.setting = "x";
       };
@@ -491,19 +571,19 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
-          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "blade" { classOne.setting = "y"; }; }
         ];
       };
       carrier = eval.config.aspects.dup;
     in
     {
       # (iii, continued) where neither fires, null.
-      expr = gv.applyGuard { host.name = "vault"; } carrier;
+      expr = gv.applyGuard { thimble.name = "vault"; } carrier;
       expected = null;
     };
 
-  # O12: two guards at one key, BOTH firing at the same host, with directly conflicting INT
+  # O12: two guards at one key, BOTH firing at the same context, with directly conflicting INT
   # bodies — proves discharge routes survivors through Arm A's own refusal law (a catchable named
   # `throw`), not a pick-one shortcut. The bodies must be the bare ints themselves, not ints
   # NESTED inside an attrset key (`classOne.count = 1` vs `= 2`): measured live this session, an
@@ -517,15 +597,15 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.dup = gv.vocab.whenHost "cortex" 1; }
-          { config.aspects.dup = gv.vocab.whenHost "cortex" 2; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" 1; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" 2; }
         ];
       };
       carrier = eval.config.aspects.dup;
     in
     {
       expr =
-        !(builtins.tryEval (builtins.deepSeq (gv.applyGuard { host.name = "cortex"; } carrier) true))
+        !(builtins.tryEval (builtins.deepSeq (gv.applyGuard { thimble.name = "cortex"; } carrier) true))
         .success;
       expected = true;
     };
@@ -535,13 +615,15 @@ in
     let
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
-        modules = [ { config.aspects.solo = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+        modules = [
+          { config.aspects.solo = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+        ];
       };
     in
     {
       expr = {
         isGuard = eval.config.aspects.solo.__guard or false;
-        pred = eval.config.aspects.solo.pred.a.host.v;
+        pred = eval.config.aspects.solo.pred.a.value.v;
         body = eval.config.aspects.solo.body;
         flatKeys = builtins.attrNames (aspects.flatten eval.config.aspects);
       };
@@ -565,13 +647,15 @@ in
       gv = aspects.mkGuardVocab { };
       carrierEval = mkSchemaEval {
         modules = [
-          { config.aspects.dup = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
-          { config.aspects.dup = gv.vocab.whenHost "blade" { classOne.setting = "y"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+          { config.aspects.dup = gv.vocab.whenEq [ "thimble" "name" ] "blade" { classOne.setting = "y"; }; }
         ];
       };
       carrier = carrierEval.config.aspects.dup;
       singleDefEval = mkSchemaEval {
-        modules = [ { config.aspects.solo = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+        modules = [
+          { config.aspects.solo = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+        ];
       };
       singleDefNames = builtins.attrNames singleDefEval.config.aspects.solo;
       thirdEval = mkSchemaEval {
@@ -603,7 +687,9 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.mixed = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          {
+            config.aspects.mixed = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; };
+          }
           { config.aspects.mixed.classTwo.other = "y"; }
         ];
       };
@@ -618,12 +704,16 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.mixed = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          {
+            config.aspects.mixed = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; };
+          }
           { config.aspects.mixed.classTwo.other = "y"; }
         ];
       };
       singleDefEval = mkSchemaEval {
-        modules = [ { config.aspects.solo = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+        modules = [
+          { config.aspects.solo = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+        ];
       };
     in
     {
@@ -655,7 +745,9 @@ in
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
         modules = [
-          { config.aspects.mixed = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; }
+          {
+            config.aspects.mixed = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; };
+          }
           { config.aspects.mixed.classTwo.other = "y"; }
         ];
       };
@@ -663,7 +755,7 @@ in
     in
     {
       # guard does not fire ("vault" != "cortex") -> the unconditional fragment's body alone.
-      expr = gv.applyGuard { host.name = "vault"; } carrier;
+      expr = gv.applyGuard { thimble.name = "vault"; } carrier;
       expected = {
         classTwo.other = "y";
       };
@@ -798,7 +890,9 @@ in
     let
       gv = aspects.mkGuardVocab { };
       eval = mkSchemaEval {
-        modules = [ { config.aspects.db = gv.vocab.whenHost "cortex" { classOne.setting = "x"; }; } ];
+        modules = [
+          { config.aspects.db = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; }; }
+        ];
       };
       flat = aspects.flatten eval.config.aspects;
     in
@@ -825,7 +919,7 @@ in
       eval = mkSchemaEval {
         modules = [
           {
-            config.aspects.top.db = gv.vocab.whenHost "cortex" { classOne.setting = "x"; };
+            config.aspects.top.db = gv.vocab.whenEq [ "thimble" "name" ] "cortex" { classOne.setting = "x"; };
             config.aspects.top.plain.classOne.setting = "y";
           }
         ];
