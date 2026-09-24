@@ -16,6 +16,7 @@
 }:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
+  schemaBad = aspects.mkAspectSchema { keySemantics.bad.category = "bogus"; };
   refusal =
     got:
     exactly (
@@ -52,6 +53,25 @@ in
     test-empty-string = cell "" "the string \"\", which has no non-empty segment";
     test-all-slash = cell "/" "the string \"/\", which has no non-empty segment";
     test-all-slashes = cell "///" "the string \"///\", which has no non-empty segment";
+  };
+
+  # den-hoag-2ejx: a malformed keySemantics category refuses BY NAME at the key that carries it, and
+  # only there (an unrelated aspect's `name` read returns; ci/tests/key-semantics.nix (7)).
+  flake.testsError.key-semantics-lazy-refusal.test-carrier-bad-category = {
+    expr =
+      builtins.deepSeq
+        (genMerge.evalModuleTree {
+          modules = [
+            { options.schema = schemaBad.schemaOption; }
+            (schemaBad.mkAspectModule { })
+            { config.aspects.carrier.bad.x = 1; }
+          ];
+        }).config.aspects.carrier.bad
+        null;
+    expectedError = {
+      type = "ThrownError";
+      msg = exactly "gen-aspects: keySemantics key 'bad' has unknown category 'bogus' (expected class|channel|facet)";
+    };
   };
 
   # den-hoag-plm1h: `aspectsRoot(port) ∥ aspectsRoot(int)` is refused BY NAME at the declaration.

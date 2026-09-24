@@ -338,8 +338,8 @@ let
           throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
     };
 
-  # The closed keySemantics category vocabulary (ADR-0027 ruling 2). ONE binding so the eager
-  # aspectSubmodule check and the standalone `keyCategory` read below can never drift apart.
+  # The closed keySemantics category vocabulary (ADR-0027 ruling 2). ONE binding so aspectSubmodule's
+  # per-key refusal and the standalone `keyCategory` read below can never drift apart.
   validCategories = [
     "class"
     "channel"
@@ -352,7 +352,7 @@ let
   # present) its bogus category value, rather than surfacing as a generic Nix type error several
   # layers downstream (den-hoag-7cya: a bare-string entry, or an unrecognised category string, was
   # reaching `aspects.keyCategory` — the documented "single classification surface" — silently,
-  # because that read path never went through aspectSubmodule's eager check at all).
+  # because that read path never went through aspectSubmodule's check at all).
   checkCategory =
     k: e:
     if !(builtins.isAttrs e) then
@@ -432,7 +432,7 @@ let
   # neither native-structural nor a declared keySemantics key (a typo, or a freeform nested-aspect child; the
   # closed gate distinguishes them). A key that IS declared but malformed (not an attrset, or an
   # attrset with an unrecognised category) refuses BY NAME via checkCategory — this is the read site
-  # den-hoag-7cya measured as a silent pass-through (it never went through aspectSubmodule's own eager
+  # den-hoag-7cya measured as a silent pass-through (it never went through aspectSubmodule's own
   # check, so a bad entry rode all the way to a consumer as an unvalidated string, or an attribute
   # lookup on a non-attrset that threw a generic, unnamed Nix error).
   # The membership test on `cnf.keySemantics` (not `or null` on the dynamic lookup) is what makes
@@ -495,13 +495,32 @@ let
   aspectSubmodule =
     cnf:
     let
-      rawKs = cnf.keySemantics;
-      # Force category validation eagerly (a bad entry must throw at construction, not silently
-      # never-match a keyOf filter). deepSeq forces checkCategory over every entry; ks is the
-      # validated passthrough (checkCategory's own return value is discarded — downstream needs the
-      # full entry, `.option`/`.module` included, not just the extracted category string).
-      ks = builtins.deepSeq (prelude.mapAttrs checkCategory rawKs) rawKs;
-      keyOf = category: builtins.attrNames (prelude.filterAttrs (_: e: e.category == category) ks);
+      ks = cnf.keySemantics;
+      # categoryOf e : "class" | "channel" | "facet" | null — the TOTAL classifier the option
+      # construction partitions on; null = malformed. Validation is LAZY and PER KEY (den-hoag-2ejx):
+      # a malformed entry must refuse where its key is read, never while reading an unrelated
+      # aspect's `name` — a deepSeq of checkCategory over every entry made one bad declaration poison
+      # every read of every aspect. It also must not silently never-match a keyOf filter, so a
+      # malformed key is not dropped: it gets `refusedOptions` below.
+      categoryOf =
+        e:
+        if builtins.isAttrs e && e ? category && builtins.elem e.category validCategories then
+          e.category
+        else
+          null;
+      keyOf = category: builtins.attrNames (prelude.filterAttrs (_: e: categoryOf e == category) ks);
+      # A malformed key stays DECLARED (so it neither falls through to the freeform fallback nor
+      # trips the closed-key gate) and its value is checkCategory's named refusal: reading or
+      # forcing that key on any aspect throws it, catchably, and nothing else does.
+      refusedOptions = prelude.genAttrs (keyOf null) (
+        k:
+        merge.mkOption {
+          description = "Malformed keySemantics key `${k}` (refuses by name when read)";
+          default = null;
+          type = t.raw;
+          apply = _: checkCategory k ks.${k};
+        }
+      );
       # A declared class with no content reads `null`, never an empty deferredModule. Absence must be
       # REPRESENTABLE in the value: a `{ }` default merges to `{ imports = [ { } ]; }`, which is
       # shape-indistinguishable from real content, so a delivery class would realize on the mere
@@ -527,10 +546,10 @@ let
         })
       );
       facetOptions = prelude.mapAttrs (_: e: e.option) (
-        prelude.filterAttrs (_: e: e.category == "facet" && e ? option) ks
+        prelude.filterAttrs (_: e: categoryOf e == "facet" && e ? option) ks
       );
       facetModules = prelude.mapAttrsToList (_: e: e.module) (
-        prelude.filterAttrs (_: e: e.category == "facet" && e ? module) ks
+        prelude.filterAttrs (_: e: categoryOf e == "facet" && e ? module) ks
       );
     in
     merge.submodule (
@@ -610,7 +629,8 @@ let
         }
         // classOptions
         // channelOptions
-        // facetOptions;
+        // facetOptions
+        // refusedOptions;
       }
     );
 

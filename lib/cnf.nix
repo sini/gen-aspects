@@ -19,9 +19,9 @@
 # over reads.
 #
 # THE CHECK IS SHALLOW AND MUST STAY SHALLOW: `attrNames` plus a membership filter, no value forced,
-# nothing deep-seq'd. It inspects names, never contents, so it cannot become a second instance of the
-# eager keySemantics category validation, where a bad value throws while reading an unrelated
-# aspect's `name`. It runs once per public entry call, not once per aspect node: the internals
+# nothing deep-seq'd. It inspects names, never contents, so it cannot make one bad value throw while
+# reading an unrelated aspect's `name` — the defect keySemantics category validation had while it was
+# eager (den-hoag-2ejx; it now refuses per key, lib/types.nix `refusedOptions`). It runs once per public entry call, not once per aspect node: the internals
 # receive an already-constructed record and are never re-checked.
 let
   # Module functions take known module args — evaluated by the submodule. Guard functions take

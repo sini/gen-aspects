@@ -186,8 +186,24 @@ in
     expected = false;
   };
 
-  # (7) An unknown category throws at construction (named, not a silent no-match).
-  flake.tests.key-semantics.test-bad-category-throws = {
+  # (7) A malformed keySemantics entry refuses PER KEY and LAZILY (den-hoag-2ejx). This cell used to
+  # assert the defect: reading `svc.name` threw when some OTHER key's category was bogus, because
+  # the submodule deepSeq'd checkCategory over every entry. An unrelated read now returns.
+  flake.tests.key-semantics.test-bad-category-unrelated-name-read-returns = {
+    expr =
+      (mkSchemaEval {
+        keySemantics = {
+          bad = {
+            category = "bogus";
+          };
+        };
+        modules = [ { config.aspects.svc = { }; } ];
+      }).config.aspects.svc.name;
+    expected = "svc";
+  };
+  # (7b) ...and the aspect that CARRIES the bad key still refuses, catchably — the key stays declared
+  # (never a silent freeform nested aspect). The message is pinned in ci/tests-error.nix.
+  flake.tests.key-semantics.test-bad-category-carrier-refuses = {
     expr =
       (builtins.tryEval (
         builtins.deepSeq
@@ -197,8 +213,8 @@ in
                 category = "bogus";
               };
             };
-            modules = [ { config.aspects.svc = { }; } ];
-          }).config.aspects.svc.name
+            modules = [ { config.aspects.carrier.bad.x = 1; } ];
+          }).config.aspects.carrier.bad
           true
       )).success;
     expected = false;
