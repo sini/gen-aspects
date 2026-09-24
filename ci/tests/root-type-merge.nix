@@ -30,6 +30,7 @@
 # refusal cells below: a partner sharing the name but not the element now REFUSES, where before the
 # container never looked past its own name.
 {
+  lib,
   aspects,
   genMerge,
   ...
@@ -55,6 +56,27 @@ let
   root2 = aspects.aspectsRoot cnf2;
 
   verdict = v: if v == null then "REFUSED" else "MERGED:${v.name or "?"}";
+
+  # `aspectsRoot` over any element, through the public surface: the functor's `type` IS
+  # `aspectsRootWith`. `nt` are FOREIGN (nixpkgs) types, whose own `typeMerge` joins `port ∥ int` to
+  # bare `int` — the shape the element join must not take on the element's word.
+  rootWith = root1.functor.type;
+  nt = lib.types;
+  nsub = nt.submodule { options.x = lib.mkOption { type = nt.int; }; };
+  # Declares `p` once per type, defines `val`, and reads the merged type and whether `val` passed.
+  ev =
+    tys: val:
+    let
+      res = genMerge.evalModuleTree {
+        modules = map (ty: { options.p = genMerge.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
+      };
+      ty = builtins.tryEval (builtins.deepSeq res.options.p.type.name res.options.p.type.name);
+      v = builtins.tryEval (builtins.deepSeq res.config.p res.config.p);
+    in
+    if ty.success then
+      "MERGED ${ty.value} / ${if v.success then "ACCEPTED" else "REJECTED"}"
+    else
+      "REFUSED";
 in
 {
   # The functor `aspectsRoot` exported before this fix carried `payload = null` unconditionally
@@ -134,5 +156,37 @@ in
   flake.tests.root-type-merge.test-differing-cnf-same-element-name-still-merges = {
     expr = verdict (root1.typeMerge root2.functor);
     expected = "MERGED:aspectsRoot";
+  };
+
+  # den-hoag-plm1h: the element join is gen-merge's `mergeTypes`, so the check-family witness judges
+  # it. Asking the element's own foreign `typeMerge` joined `port ∥ int` to `int` and accepted 70000
+  # for a `port`, in either order.
+  flake.tests.root-type-merge.test-an-element-join-that-drops-a-check-refuses = {
+    expr = {
+      portInt = ev [ (rootWith nt.port) (rootWith nt.int) ] { a = 70000; };
+      intPort = ev [ (rootWith nt.int) (rootWith nt.port) ] { a = 70000; };
+    };
+    expected = {
+      portInt = "REFUSED";
+      intPort = "REFUSED";
+    };
+  };
+
+  # CONTROL, same run: a redeclaration over the SAME element still merges (0lq9s: refusing every
+  # self-redeclaration was the regression), and its element's check still runs. `portRejects` is
+  # also a red arm: the foreign `port ∥ port` join is bare `int`, so the old path accepted 70000.
+  flake.tests.root-type-merge.test-control-a-self-redeclared-element-still-merges = {
+    expr = {
+      port = ev [ (rootWith nt.port) (rootWith nt.port) ] { a = 80; };
+      portRejects = ev [ (rootWith nt.port) (rootWith nt.port) ] { a = 70000; };
+      submodule = ev [ (rootWith nsub) (rootWith nsub) ] { a.x = 1; };
+      aspect = ev [ root1 root1b ] { foo = { }; };
+    };
+    expected = {
+      port = "MERGED aspectsRoot / ACCEPTED";
+      portRejects = "MERGED aspectsRoot / REJECTED";
+      submodule = "MERGED aspectsRoot / ACCEPTED";
+      aspect = "MERGED aspectsRoot / ACCEPTED";
+    };
   };
 }

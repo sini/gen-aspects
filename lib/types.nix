@@ -656,15 +656,18 @@ let
   # substitute" rather than abort on a missing attribute. `or null` covers the read; the `?` test
   # covers the rebuild, which falls back to the element unchanged.
   # Merges two ELEMENT types for `aspectsRootWith`'s own functor below. `mergeElemTypes` IS that
-  # functor's `binOp`, generalised to any two mkOptionType-built element types: ask the FIRST
-  # element's own `typeMerge` whether it accepts the SECOND element's `functor` — the exact call
-  # gen-merge's own protocol makes were these elements nested inside a real module tree.
+  # functor's `binOp`, and it is gen-merge's own `mergeTypes` (ADR-0008: one engine), never the
+  # element's own foreign `typeMerge`. The difference is the check-family witness: asked directly, a
+  # foreign `port`'s `typeMerge` joins `port ∥ int` to bare `int` and nothing sees the dropped check,
+  # so `aspectsRoot(port) ∥ aspectsRoot(int)` accepted 70000 (den-hoag-plm1h). Through `mergeTypes`
+  # the join is judged and that drop is refused by name (ADR-0025 item 1). gen-schema's `refined`
+  # joins its base the same way.
   #
   # ★ IT IS TOTAL ON WHAT IT IS CALLED WITH, and that is a property of the caller, not a guard here:
   # `protoTypeMerge` (gen-merge `lib/interface.nix`) reaches `binOp` only once it has established
   # both operands carry a non-null payload, so a null second operand is a state this function is
-  # never handed. A `b == null` arm here would check for a state the protocol cannot produce.
-  mergeElemTypes = a: b: if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+  # never handed.
+  mergeElemTypes = merge.mergeTypes;
 
   aspectsRootWith =
     elemType:

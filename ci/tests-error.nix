@@ -8,7 +8,12 @@
 # both ends and built by escaping the literal text.
 #
 #   nix-unit --flake ./ci#testsError
-{ lib, aspects, ... }:
+{
+  lib,
+  aspects,
+  genMerge,
+  ...
+}:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
   refusal =
@@ -48,4 +53,28 @@ in
     test-all-slash = cell "/" "the string \"/\", which has no non-empty segment";
     test-all-slashes = cell "///" "the string \"///\", which has no non-empty segment";
   };
+
+  # den-hoag-plm1h: `aspectsRoot(port) ∥ aspectsRoot(int)` is refused BY NAME at the declaration.
+  flake.testsError.root-element-join-refusal.test-port-int =
+    let
+      rootWith = (aspects.aspectsRoot { keySemantics.a.category = "class"; }).functor.type;
+      res = genMerge.evalModuleTree {
+        modules = [
+          { options.p = genMerge.mkOption { type = rootWith lib.types.port; }; }
+          { options.p = genMerge.mkOption { type = rootWith lib.types.int; }; }
+          { p.a = 70000; }
+        ];
+      };
+    in
+    {
+      expr = res.options.p.type.name;
+      expectedError = {
+        type = "ThrownError";
+        msg = exactly (
+          "gen-merge: option `p' is declared with types that do not merge (`aspectsRoot' and "
+          + "`aspectsRoot', which the first type's own `functor' does not reconcile); "
+          + "declared in <gen-merge>, <gen-merge>"
+        );
+      };
+    };
 }
