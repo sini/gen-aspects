@@ -343,10 +343,13 @@ The `examples/demo/` directory exercises nine gen libraries together: gen-algebr
 ## Testing
 
 ```bash
-nix shell nixpkgs#nix-unit -c nix-unit \
-  --override-input target . \
-  --flake './ci#.tests'
+nix develop ./ci --command ci
 ```
+
+`ci` refuses when anything under a declared read root is unknown to git — any extension or name,
+`_`-prefixed included — and the remedy is `git add` or a move. The bare `nix-unit --flake ./ci#tests`
+and `nix flake check ./ci` are unguarded: they read a git-filtered copy of the tree, so an untracked
+cell is silently absent and the run stays green.
 
 272 tests across 35 suites (`nix-unit --flake ./ci#tests` ⇒ `272/272 successful`, `277e65b`) — one file per suite under `ci/tests/`, which is the count's own source rather than a list restated here, since the last three restatements (`115/17`, `236/33`, then `247/34`) each went stale by the next landing. Coverage spans class content cleanliness, nested aspect identity, includes fixpoint, module vs guard function dispatch, the guard predicate vocabulary + defunctionalized identity (`mkGuardVocab`/`applyGuard`/`guardKey`) including the guard/body depth budgets behind a cyclic guard record, lazy classification, parametric aspects, multi-def merging, reserved keys, primitive passthrough, deep nesting, extensions, `meta` modules, `canTake` introspection, schema integration, and the flat registry.
 
