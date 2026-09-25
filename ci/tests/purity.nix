@@ -167,6 +167,7 @@ in
       "lib/flatten.nix"
       "lib/guard.nix"
       "lib/identity.nix"
+      "lib/require-wrapped-closure.nix"
       "lib/schema.nix"
       "lib/types.nix"
       "lib/walk.nix"

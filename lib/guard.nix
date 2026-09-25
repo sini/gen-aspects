@@ -6,6 +6,7 @@
 { prelude, merge }:
 let
   inherit (import ./cnf.nix) checkedEntry;
+  doors = import ./require-wrapped-closure.nix;
   # Vendored attrByPath (gen-prelude has no attrByPath): walk `path` into `set`, `default` if absent.
   attrByPath =
     path: default: set:
@@ -173,11 +174,15 @@ in
       # (opaque before this call, per the declared limit at the carrier's construction site,
       # `lib/types.nix`); an unconditional fragment always survives.
       dischargeFragment =
-        ctx: f:
+        loc: ctx: f:
         if f.kind == "record" then
           (if evalPred ctx f.pred then f.body else null)
         else if f.kind == "fn" then
-          f.fn ctx
+          f.fn (
+            doors.requireRequiredCoords "guard" "aspect `${prelude.concatStringsSep "." loc}`"
+              (builtins.functionArgs f.fn)
+              ctx
+          )
         else
           f.body;
     in
@@ -213,7 +218,9 @@ in
         builtins.seq checkedCustomForms (
           if g ? fragments then
             let
-              survivors = builtins.filter (v: v != null) (map (dischargeFragment ctx) g.fragments);
+              survivors = builtins.filter (v: v != null) (
+                map (dischargeFragment (g.meta.loc or [ "<guard-carrier>" ]) ctx) g.fragments
+              );
             in
             if survivors == [ ] then
               null
@@ -226,7 +233,14 @@ in
               )
           else if g.__guard or false then
             (if fires ctx g then g.body else null)
-          else if prelude.isFunction g || (g.__isWrappedFn or false) then
+          # The escape hatch applies a CALLER-SUPPLIED closure (a raw guard closure reaches here by
+          # construction under `cnf.deferIncludeResolution`), so it takes the context door. A wrap
+          # record carries its own doors (`wrapFn`) or self-gates (`wrapGatedFn`), so it is applied
+          # as built. The closure's RETURN is handed back raw: an enumerated exception, retired with
+          # the hatch under den-hoag-lwbb1 (ci/tests/wrap-fn.nix `test-falsifier-hatch-return-untyped`).
+          else if prelude.isFunction g then
+            g (doors.requireRequiredCoords "guard" "`applyGuard`" (builtins.functionArgs g) ctx)
+          else if g.__isWrappedFn or false then
             g ctx
           else
             throw "gen-aspects.guard: applyGuard: not a guard record or callable"

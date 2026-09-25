@@ -36,6 +36,7 @@ let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
   inherit (import ./cnf.nix) extendCnf checkedEntry;
+  doors = import ./require-wrapped-closure.nix;
   t = merge.types;
 
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
@@ -70,13 +71,18 @@ let
   # aspectSubmodule (deferred resolution).
   wrapGuardFn =
     cnf: loc: defs:
+    let
+      at = "aspect `${prelude.concatStringsSep "." loc}`";
+    in
     mkWrapped {
       apply =
         fnArgs:
         (aspectSubmodule cnf).merge (loc ++ [ "<function body>" ]) (
           map (d: {
             inherit (d) file;
-            value = d.value fnArgs;
+            value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (
+              d.value (doors.requireRequiredCoords "aspectType" at (builtins.functionArgs d.value) fnArgs)
+            );
           }) defs
         );
       functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
@@ -98,7 +104,10 @@ let
   # type-merge-wrapped bare fn (ci/tests/wrap-fn.nix). `name` sites the wrap for tracing (Palmer §5.1).
   wrapFn =
     cnf: name: fn:
-    mkWrapped {
+    let
+      at = "`${name}`";
+    in
+    builtins.seq (doors.requireClosure "wrapFn" at fn) (mkWrapped {
       apply =
         fnArgs:
         (aspectSubmodule cnf).merge
@@ -106,7 +115,9 @@ let
           [
             {
               file = "<wrapFn>";
-              value = fn fnArgs;
+              value = doors.requireAspectContent "wrapFn" at (mkIsModuleFn cnf) (
+                fn (doors.requireRequiredCoords "wrapFn" at (builtins.functionArgs fn) fnArgs)
+              );
             }
           ];
       functionArgs = builtins.functionArgs fn;
@@ -115,7 +126,7 @@ let
         loc = [ name ];
         file = "<wrapFn>";
       };
-    };
+    });
 
   # PUBLIC (N-GATE): the OPT-IN self-gating wrapped fn. Distinct from `mkWrapped`/`wrapGuardFn` — the
   # native guard path applies UNCONDITIONALLY and THROWS on a missing required coord (its contract, pinned
@@ -142,17 +153,19 @@ let
     let
       required = builtins.filter (n: !functionArgs.${n}) (builtins.attrNames functionArgs);
     in
-    {
-      __functor =
-        _: fnArgs:
-        if builtins.all (a: fnArgs ? ${a}) required then
-          onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
-        else
-          { };
-      __functionArgs = functionArgs;
-      __isWrappedFn = true;
-      inherit name meta;
-    };
+    builtins.seq (doors.requireCallable "wrapGatedFn" "the value wrapped at `${name}`" fn) (
+      builtins.seq (doors.requireCallable "wrapGatedFn" "`onResult` at `${name}`" onResult) {
+        __functor =
+          _: fnArgs:
+          if builtins.all (a: fnArgs ? ${a}) required then
+            onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
+          else
+            { };
+        __functionArgs = functionArgs;
+        __isWrappedFn = true;
+        inherit name meta;
+      }
+    );
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   aspectType =
