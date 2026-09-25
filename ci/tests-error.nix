@@ -278,7 +278,8 @@ in
         (
           exactly "gen-aspects.wrapGatedFn: `onResult` at `<gated>` must be callable (a function, or a record carrying `__functor`); received: int."
         );
-    # ── FALSIFIERS: the bound, pinned where a reader meets it. GREEN = RED = these aborts. ──
+    # ── FALSIFIERS: the bound, pinned where a reader meets it. GREEN = RED = these aborts — except
+    # the RETURN bound below, which gen-merge now refuses catchably (a ThrownError, not an abort). ──
     # M4b: a closed pattern given an extra coord. `functionArgs` erases the ellipsis, so no door can
     # see it (the erasure itself is a flake.tests cell, wrap-fn.nix). A refusal here = over-reach.
     test-falsifier-closed-pattern-extra-coord = {
@@ -292,13 +293,10 @@ in
       };
     };
     # The RETURN bound: a module-function return is admitted one level, and what IT returns is
-    # gen-merge's module reader's contract, so the headline's own message survives here.
-    test-falsifier-module-fn-self-returning = {
-      expr = builtins.deepSeq ((aspects.wrapFn wcnf "n" (_: modSelf)) wctx) null;
-      expectedError = {
-        type = "TypeError";
-        msg = "^" + lib.escapeRegex "expected a set but found a function: «lambda modSelf";
-      };
-    };
+    # gen-merge's module reader's contract — now a catchable refusal (gen-merge 1420cb7's third
+    # `moduleSyntaxChecked` arm), not an abort, so the headline's own message still surfaces here.
+    test-refused-module-fn-self-returning = thrown ((aspects.wrapFn wcnf "n" (_: modSelf)) wctx) (
+      exactly "gen-merge: module `<wrapFn>' is a function whose result is lambda, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module."
+    );
   };
 }
