@@ -35,7 +35,7 @@ in
     };
 
   # ── (b) FIRES + onResult transform + intersectAttrs drops extra args. All required coords present, an
-  #    EXTRA arg `__entry` is passed; `intersectAttrs functionArgs` drops it (the strict `fn` never sees
+  #    EXTRA arg `registration` is passed; `intersectAttrs functionArgs` drops it (the strict `fn` never sees
   #    it), and `onResult` post-transforms the merged result. ──
   flake.tests.gated-wrap.test-fires-onresult-and-intersect =
     let
@@ -48,10 +48,10 @@ in
       expr = gated {
         host = "h";
         user = "u";
-        __entry = "DROP-ME";
+        registration = "DROP-ME";
       };
       expected = {
-        tag = "fired:h:u"; # the `__entry` extra never reached `fn` (intersectAttrs) ⇒ no `called with unexpected argument`
+        tag = "fired:h:u"; # the `registration` extra never reached `fn` (intersectAttrs) ⇒ no `called with unexpected argument`
         grounded = true; # onResult applied
       };
     };

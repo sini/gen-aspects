@@ -1,8 +1,9 @@
 # G-a — the opt-in deferred-include pass-through (design §3.4). Under `cnf.deferIncludeResolution`,
-# `includesElemType` carries a raw guard closure, a `{ __fn; … }` battery record, and a policy record
-# (`__isPolicy`/`__denCanTake`) THROUGH opaquely for consumer resolution — the SAME arm shape as the
-# shipped `__keyRef` pass-through. Default OFF ⇒ native guard-wrapping unchanged. Theory: First-Order
-# Laziness (Lorenzen et al. 2025) — a deferred-resolution include passes the type unforced.
+# `includesElemType` carries a raw guard closure and a gen-program policy record (`__isPolicy`, that
+# library's stated contract) THROUGH opaquely for consumer resolution — the SAME arm shape as the
+# shipped `__keyRef` pass-through. Any other record is aspect content, whatever fields it carries.
+# Default OFF ⇒ native guard-wrapping unchanged. Theory: First-Order Laziness (Lorenzen et al. 2025) —
+# a deferred-resolution include passes the type unforced.
 {
   mkSchemaEval,
   ...
@@ -13,8 +14,9 @@ let
     {
       classOne = { };
     };
-  fnRecord = {
-    __fn =
+  # A record carrying a closure under a field of its own choosing, and no policy marker.
+  closureRecord = {
+    batteryFn =
       { host, ... }:
       {
         classOne = { };
@@ -34,7 +36,7 @@ let
         {
           config.aspects.main.includes = [
             bareFn
-            fnRecord
+            closureRecord
             policyRecord
           ];
         }
@@ -57,8 +59,10 @@ in
     expr = builtins.isFunction (builtins.elemAt onIncludes 0);
     expected = true;
   };
-  flake.tests.deferred-include.test-fn-record-passes-through = {
-    expr = (builtins.elemAt onIncludes 1).__fn or null != null;
+  # A passed-through record comes back as written (`[ "batteryFn" "name" ]`); aspect content comes
+  # back merged, carrying the aspect's own `id_hash`.
+  flake.tests.deferred-include.test-closure-record-is-aspect-content = {
+    expr = (builtins.elemAt onIncludes 1) ? id_hash;
     expected = true;
   };
   flake.tests.deferred-include.test-policy-record-passes-through = {

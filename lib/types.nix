@@ -413,17 +413,12 @@ let
           let
             v = (builtins.head defs).value;
             # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
-            # closure, a `{ __fn; … }` battery record, or a defunctionalised policy record
-            # (`__isPolicy`/`__denCanTake`). Like `__keyRef`, its resolution must NOT be forced by the type —
-            # the consumer wraps/dispatches it registry-aware (den-hoag compile `normalize`; gen-dispatch
-            # `deriveGroup` for a policy record). First-Order Laziness (Lorenzen et al. 2025): a
-            # deferred-resolution include passes the type unforced. Default off ⇒ native guard-wrapping.
-            isDeferredInclude =
-              builtins.isFunction v
-              || (
-                builtins.isAttrs v
-                && ((v.__fn or null) != null || (v.__isPolicy or false) || (v.__denCanTake or null) != null)
-              );
+            # closure, or a defunctionalised gen-program policy record (`__isPolicy`, that library's stated
+            # contract). Like `__keyRef`, its resolution must NOT be forced by the type — the consumer
+            # wraps/dispatches it registry-aware (gen-dispatch `deriveGroup` for a policy record).
+            # First-Order Laziness (Lorenzen et al. 2025): a deferred-resolution include passes the type
+            # unforced. Default off ⇒ native guard-wrapping. Any other record is aspect content.
+            isDeferredInclude = builtins.isFunction v || (builtins.isAttrs v && (v.__isPolicy or false));
             # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
             # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
             # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.

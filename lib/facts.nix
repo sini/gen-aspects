@@ -138,10 +138,10 @@ in
       # ── the INCLUDE edges ──────────────────────────────────────────────────────────────────────
       #
       # ★ THE DISPATCH IS ON WHETHER THE ELEMENT NAMES A NODE, NOT ON THE ELEMENT'S SHAPE. Reading
-      # the shape is what produced a refusal on four shapes this library ships and tests — a raw
-      # closure, a `{ __fn; … }` battery record and an `__isPolicy` record under
-      # `cnf.deferIncludeResolution`, plus a bare closure wrapped by the DEFAULT path — and a
-      # fabricated id for a fifth, the inline `{ … }` aspect literal, whose `.key` is its MERGE
+      # the shape is what produces a refusal on three shapes this library ships and tests — a raw
+      # closure and an `__isPolicy` record under `cnf.deferIncludeResolution`, plus a bare closure
+      # wrapped by the DEFAULT path — and a fabricated id for the inline `{ … }` aspect literal
+      # (any record that is not a policy record is one), whose `.key` is its MERGE
       # position under `includes` rather than a walk position. An `includes` list holds two
       # different kinds of thing and only one of them is an edge:
       #

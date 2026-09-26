@@ -177,7 +177,8 @@ let
       }
     );
 
-  # The four DEFERRED shapes plus the inline aspect literal, all in one tree.
+  # The deferred shapes (a raw closure, a policy record), two inline aspect literals (one carrying a
+  # closure-valued field) and a guard record, all in one tree.
   inlineEval = mkIncludes {
     deferIncludeResolution = true;
     elems = _: [
@@ -188,7 +189,7 @@ let
         }
       ) # raw closure
       {
-        __fn =
+        batteryFn =
           { host, ... }:
           {
             nixos.networking.hostName = host.name;
@@ -398,7 +399,7 @@ let
       }
     )
     {
-      __fn =
+      batteryFn =
         { host, ... }:
         {
           nixos.networking.hostName = host.name;
@@ -677,7 +678,7 @@ in
   # advice is "undo a feature you were invited to use".
   flake.tests.graph-facts.test-inline-include-content-is-published-not-refused = {
     expr = {
-      # Four deferred shapes + an inline aspect literal, none of them an edge…
+      # Deferred shapes, aspect literals and a guard record, none of them an edge…
       edges = inlineFacts.includesOf."app";
       # …and every one of their positions is stated rather than lost.
       unresolvedPositions = inlineFacts.unresolvedIncludesOf."app";
