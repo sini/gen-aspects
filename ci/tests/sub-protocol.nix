@@ -70,7 +70,9 @@ in
 {
   # `getSubModules` is the element's own answer, propagated. With `aspectType` as the element that
   # answer is NULL — and NULL is CORRECT here, not a stub: `aspectType` is Palmer's flat dispatching
-  # type (one type, dispatch in merge), so it carries no module set to report. The two controls make
+  # type (one type, dispatch in merge), and a dispatcher over several branches has no SINGLE module set
+  # to name — its `aspectSubmodule` branch carries one, its guard and wrapped-fn branches do not. The
+  # two controls make
   # the NULL a measurement rather than a blind spot: the same predicate reads `LIST[1]` off a type
   # that does carry a module set, and `NULL` off a leaf.
   flake.tests.sub-protocol.test-getsubmodules-propagates-the-element = {
@@ -120,12 +122,12 @@ in
   # still under the mount. The container-relative re-rooting `merge` performs governs the merged
   # aspect's IDENTITY (`key`, `meta.aspect-chain`) and is not what an introspection answer reports.
   #
-  # ★ HONEST SCOPE: over `aspectType` this is not value-discriminating. `aspectType` declares no
-  # static options, so `root` and the element agree at ATTRS{0} whether the field is supplied or left
-  # on the stub — the pin here is that the answer IS the element's, at the threaded prefix. The
-  # control proves only that the read path can see a declared surface (ATTRS{1}), not the descent.
-  # What makes the supplied field non-vacuous is the construction rule, which refuses the type
-  # outright when it is absent; that refusal is exercised by this suite evaluating at all.
+  # `aspectType` answers with the options of the branch it dispatches every attrset and module-function
+  # aspect to, `aspectSubmodule` (den-hoag-shdvu, ruled arm A: delegate). `delegateAtThreadedPrefix`
+  # is that branch asked directly — same library, same `cnf`, same prefix — so the cell reads the
+  # agreement rather than pinning one side: an `aspectType` left on the protocol's `{ }` default reads
+  # ATTRS{0} on `root` and the element while the delegate still reads ATTRS{6}. `ctlDeclares` proves
+  # the read path can see a declared surface; `ctlLeaf` is the leaf's answer the subject used to share.
   flake.tests.sub-protocol.test-getsuboptions-is-the-elements-answer = {
     expr = {
       root = shape (
@@ -141,12 +143,20 @@ in
           "<name>"
         ]
       );
+      delegateAtThreadedPrefix = shape (
+        (aspects.aspectSubmodule cnf).getSubOptions [
+          "den"
+          "aspects"
+          "<name>"
+        ]
+      );
       ctlDeclares = shape (declaring.getSubOptions [ ]);
       ctlLeaf = shape (t.str.getSubOptions [ ]);
     };
     expected = {
-      root = "ATTRS{0}";
-      elementAtThreadedPrefix = "ATTRS{0}";
+      root = "ATTRS{6}";
+      elementAtThreadedPrefix = "ATTRS{6}";
+      delegateAtThreadedPrefix = "ATTRS{6}";
       ctlDeclares = "ATTRS{1}";
       ctlLeaf = "ATTRS{0}";
     };

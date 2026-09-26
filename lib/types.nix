@@ -249,6 +249,13 @@ let
         name = "aspect";
         check = _: true;
         functor = cnfFunctor "aspect" cnf self;
+        # The sub-option protocol is answered by the branch that declares options: every attrset and
+        # module-function aspect merges through `aspectSubmodule`, so its option set IS this type's.
+        # The guard and wrapped-fn branches declare none (a function-bodied fragment is opaque before
+        # discharge, above). Left on the protocol's `{ }` default this type would read as a leaf.
+        # A published channel for foreign tools only: gen introspects aspects by graph query
+        # (`graphFacts`), never through this function (ADR-0012 clause 3).
+        getSubOptions = prefix: (aspectSubmodule cnf).getSubOptions prefix;
         merge =
           loc: defs:
           if builtins.length defs != 1 then
@@ -699,8 +706,10 @@ let
   # hand an introspecting consumer an address that resolves nowhere.
   #
   # `getSubModules`/`substSubModules` propagate whatever the element answers. With `aspectType` as the
-  # element that is `null` / a rebuild over `null`: `aspectType` is Palmer's flat dispatching type and
-  # carries no module set, so `null` is its correct answer and propagating it is correct too. nixpkgs
+  # element that is `null` / a rebuild over `null`: `aspectType` is Palmer's flat dispatching type, and
+  # a dispatcher over several branches has no SINGLE module set to name — its `aspectSubmodule` branch
+  # carries one, its guard and wrapped-fn branches do not — so `null` is its correct answer and
+  # propagating it is correct too. (Its `getSubOptions` does answer, with that branch's options.) nixpkgs
   # calls `substSubModules` only where `getSubModules != null` (`fixupOptionType`, lib/modules.nix), so
   # the rebuild is live exactly when the element really does carry modules.
   #
