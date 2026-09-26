@@ -63,11 +63,22 @@ let
     + "refused here rather than passed on: `gen-graph.mkGraph` unions edge targets into its node "
     + "set, which would admit the typo AS a node and widen the graph past the membership predicate. "
     + "Correct the path, or give the keyRef the origin the target actually belongs to.";
+
+  # The same split for a DECLARATION value: an aspect value, carrying a key, that denotes a node —
+  # but not one of this tree. It carries no origin, so no framework downstream could resolve it
+  # later either; published, it would be a fact with no possible resolver.
+  danglingDeclarationRefusal =
+    id: i: key:
+    "gen-aspects: aspect '${id}' declares at include position ${toString i} an aspect value whose "
+    + "key '${key}' names no node of this tree. The value was declared as a node (its key and its "
+    + "`meta.aspect-chain` do not both place it at an include position), so it is a reference whose "
+    + "target is missing — a value taken from another tree, or one whose key was set by hand. "
+    + "Include a declared aspect of this tree, or reference another tree's with `keyRef`.";
 in
 {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
   # reads a refusal, never renders one.
-  inherit danglingIncludeRefusal;
+  inherit danglingIncludeRefusal danglingDeclarationRefusal;
 
   # `graphFacts cnf aspects` →
   #   { nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }
@@ -142,9 +153,13 @@ in
       #
       # An inline element is neither refused nor dropped: its POSITION is published in
       # `unresolvedIncludesOf`, so a consumer needing the element indexes back into
-      # `nodeData.<id>.includes` and nothing about the declaration goes unsaid. Only a keyRef
-      # carrying THIS tree's origin is unambiguously a broken local reference, and only that
-      # refuses.
+      # `nodeData.<id>.includes` and nothing about the declaration goes unsaid.
+      #
+      # TWO REFUSALS, each on a reference whose target is missing: a keyRef carrying THIS tree's
+      # origin, and a KEYED by-value element that names no node and is not include content (below).
+      # A KEY-LESS value is still read as content whatever it is: a guard-leaf or wrapped-fn node
+      # of another tree carries no `.key` to test, and telling it from content needs a resolver that
+      # checks the canonical entry rather than a key field (open under den-hoag-7gp66, den-hoag-lwbb1).
       resolve =
         id: i: elem:
         if builtins.isAttrs elem && (elem.__keyRef or false) then
@@ -166,13 +181,39 @@ in
             }
           else
             throw (danglingIncludeRefusal id i target)
-        else if builtins.isAttrs elem && elem ? key && nodeSet ? ${qualify elem.key} then
-          {
-            kind = "local";
-            target = qualify elem.key;
-          }
+        else if builtins.isAttrs elem && elem ? key then
+          if nodeSet ? ${qualify elem.key} then
+            {
+              kind = "local";
+              target = qualify elem.key;
+            }
+          else if isIncludeContent elem then
+            { kind = "inline"; }
+          else
+            throw (danglingDeclarationRefusal id i elem.key)
         else
           { kind = "inline"; };
+
+      # A KEYED value is include content exactly when it was WRITTEN at an include position, and
+      # the test is that its stamped `meta.aspect-chain` has an `includes` segment past the first.
+      # `includes` is a native structural key, never a child aspect, and the walk never descends
+      # into it: so no NODE's chain carries that segment past index 0 (a root aspect named
+      # `includes` has it at index 0 only), while every element merged into an `includes` option
+      # has a chain `<owner path> ++ [ "includes" … ]`. The chain is stamped from the merge prefix
+      # and does not move with `name`; the `.key` does (`pathKey (chain ++ [ name ])`), so a node
+      # named `includes` keys `…/includes` and the key alone cannot decide. The key is tested too:
+      # its merge position under `includes` is PER DEFINITION (see AGENTS.md, "An `includes` list
+      # holds REFERENCES and INLINE CONTENT"), so the test reads which key SPACE it is in and never
+      # compares an index; a key set by hand outside that space is a claim to name a node, and it
+      # refuses when none exists. Content copied from another aspect or another tree keeps the
+      # chain and key of where it was written, so it stays content: it denotes no node anywhere.
+      isIncludeContent =
+        elem:
+        let
+          pastFirst = xs: builtins.elem "includes" (builtins.tail xs);
+        in
+        pastFirst (builtins.filter builtins.isString (builtins.split "/" elem.key))
+        && pastFirst (elem.meta.aspect-chain or [ null ]);
 
       indexed =
         e:

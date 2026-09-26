@@ -23,6 +23,7 @@
   mkSchemaEval,
   aspects,
   factsInternals,
+  genMerge,
   ...
 }:
 let
@@ -314,6 +315,116 @@ let
 
   # The refusal message, rendered from the same binding the throw path calls.
   danglingMsg = factsInternals.danglingIncludeRefusal "acme/app" 0 "acme/lib/bsae";
+  declarationMsg = factsInternals.danglingDeclarationRefusal "app" 1 "elsewhere/thing";
+
+  # ── DECLARATION vs CONTENT fixtures ──
+  # Raw module lists, so one aspect's `includes` can take SEVERAL definitions: an element's merge
+  # position is numbered per definition, and a construction that compares it to the merged index is
+  # wrong exactly there. Each reading states the declared length beside the published positions,
+  # so no reading can pass by its fixture having gone empty.
+  lit = d: { nixos.networking.domain = d; };
+  at =
+    p: x:
+    lib.setAttrByPath (
+      [
+        "config"
+        "aspects"
+      ]
+      ++ p
+      ++ [ "includes" ]
+    ) x;
+  one = at [ "app" ];
+  baseMod = {
+    config.aspects.lib.base.nixos.networking.domain = "b";
+  };
+  declEval =
+    {
+      providerPrefix ? [ ],
+      deferIncludeResolution ? false,
+    }:
+    modules:
+    mkSchemaEval {
+      inherit providerPrefix deferIncludeResolution modules;
+      fixtureKeySemantics = {
+        nixos = {
+          category = "class";
+        };
+      };
+    };
+  tryValue =
+    v:
+    let
+      r = builtins.tryEval (builtins.deepSeq v v);
+    in
+    if r.success then r.value else "REFUSED";
+  declRead =
+    {
+      id ? "app",
+      providerPrefix ? [ ],
+      deferIncludeResolution ? false,
+    }:
+    modules:
+    let
+      ev = declEval { inherit providerPrefix deferIncludeResolution; } modules;
+      f = aspects.graphFacts { inherit providerPrefix; } ev.config.aspects;
+    in
+    {
+      u = tryValue f.unresolvedIncludesOf.${lib.concatStringsSep "/" (providerPrefix ++ [ id ])};
+      n =
+        builtins.length
+          (builtins.foldl' (a: k: a.${k}) ev.config.aspects (lib.splitString "/" id)).includes;
+    };
+
+  # ANOTHER TREE, whose values are carried into this one by value. Its `renamed` node is NAMED
+  # `includes`, so its `.key` is `elsewhere/includes` while its walk id is `elsewhere/renamed`.
+  otherEval = declEval { } [
+    {
+      config.aspects.elsewhere.thing.nixos.networking.domain = "o";
+      config.aspects.elsewhere.box.includes = [ (lit "o-inline") ];
+      config.aspects.elsewhere.renamed = {
+        name = "includes";
+        nixos.networking.domain = "r";
+      };
+    }
+  ];
+  oa = otherEval.config.aspects;
+
+  # The suite's inline shapes, split over two definitions.
+  shapesA = [
+    (
+      { host, ... }:
+      {
+        nixos.networking.hostName = host.name;
+      }
+    )
+    {
+      __fn =
+        { host, ... }:
+        {
+          nixos.networking.hostName = host.name;
+        };
+      name = "batt";
+    }
+    (lit "inline")
+  ];
+  shapesB = [
+    {
+      __isPolicy = true;
+      name = "pol";
+      fn = { host, ... }: [ ];
+    }
+    (lit "inline2")
+    (gv.vocab.whenEq [ "thimble" "name" ] "cortex" (lit "g"))
+  ];
+
+  # x7: inline content in one definition, another tree's node in a second.
+  otherSecondDefFacts =
+    aspects.graphFacts { }
+      (declEval { } [
+        baseMod
+        (one [ (lit "a") ])
+        (one [ oa.elsewhere.thing ])
+      ]).config.aspects;
 in
 {
   # ── THE DECIDING ORACLE · the parent is the WALK, not any read of `meta` ─────────────────────────
@@ -696,6 +807,362 @@ in
     };
   };
 
+  # ── the DECLARATION refusal ─────────────────────────────────────────────────────────────────
+  # A KEYED by-value element that names no node of this tree and was not written at an include
+  # position is a declaration whose target is missing. Published as a position it would read
+  # exactly like inline content, and neither consumer — one looking for broken references, one
+  # looking for content — could tell which it got.
+  flake.tests.graph-facts.test-dangling-declaration-refuses-by-name = {
+    expr = {
+      # G1: another tree's node, alone; then after inline content in a first definition, at a
+      # nested aspect, and through `mkMerge`.
+      otherTreeNode = declRead { } [ (one [ oa.elsewhere.thing ]) ];
+      otherTreeSecondDef = declRead { } [
+        baseMod
+        (one [ (lit "a") ])
+        (one [ oa.elsewhere.thing ])
+      ];
+      otherTreeNested = declRead { id = "top/deeper"; } [
+        (at [ "top" "deeper" ] [ (lit "a") ])
+        (at [ "top" "deeper" ] [ oa.elsewhere.thing ])
+      ];
+      otherTreeMkMerge = declRead { } [
+        (one (
+          genMerge.mkMerge [
+            [ (lit "a") ]
+            [ oa.elsewhere.thing ]
+          ]
+        ))
+      ];
+      # d2: another tree's node NAMED `includes`. Its key alone renders an include position; its
+      # chain does not, and the chain is what decides.
+      otherTreeNodeNamedIncludes = declRead { } [ (one [ oa.elsewhere.renamed ]) ];
+      # G2: a key set by hand outside the include-position space, alone, after content, and with
+      # `includes` only as its FIRST segment (where a root aspect named `includes` would sit).
+      handKey = declRead { } [
+        (one [
+          {
+            key = "no/such";
+            nixos.networking.domain = "k";
+          }
+        ])
+      ];
+      handKeySecondDef = declRead { } [
+        (one [ (lit "a") ])
+        (one [
+          {
+            key = "no/such";
+            nixos.networking.domain = "k";
+          }
+        ])
+      ];
+      handKeyRootIncludesSegment = declRead { } [
+        (one [
+          {
+            key = "includes/zz";
+            nixos.networking.domain = "z";
+          }
+        ])
+      ];
+      # A same-tree member whose `name` moves its key off its walk id is REFUSED: its key names no
+      # node. A resolver that checks membership on the canonical entry (den-hoag-7gp66) makes it an
+      # edge, and this row is the one that flips.
+      renamedMember = declRead { } [
+        {
+          config.aspects.base = {
+            name = "Base";
+            nixos.networking.domain = "b";
+          };
+        }
+        ({ config, ... }: one [ config.aspects.base ])
+      ];
+      # G4: the refusal reaches every include relation of the node, and nothing else.
+      includesOfRefuses = tryValue otherSecondDefFacts.includesOf.app;
+      foreignIncludesOfRefuses = tryValue otherSecondDefFacts.foreignIncludesOf.app;
+      parentOfStillReads = tryValue otherSecondDefFacts.parentOf.app;
+      nodesStillRead = sorted (tryValue otherSecondDefFacts.nodes);
+      # CONTROL: the planted value IS a node of its own tree, so "names no node of THIS tree" is the
+      # fact refused rather than a value that names nothing anywhere.
+      otherTreeNodes = sorted (aspects.graphFacts { } oa).nodes;
+      messageNamesTheNode = lib.hasInfix "'app'" declarationMsg;
+      messageNamesTheKey = lib.hasInfix "'elsewhere/thing'" declarationMsg;
+      messageNamesThePosition = lib.hasInfix "position 1" declarationMsg;
+      # Content never reaches this branch, so the repair must not tell the caller to write it.
+      messageDoesNotAdviseInline = !(lib.hasInfix "inline" declarationMsg);
+    };
+    expected = {
+      otherTreeNode = {
+        u = "REFUSED";
+        n = 1;
+      };
+      otherTreeSecondDef = {
+        u = "REFUSED";
+        n = 2;
+      };
+      otherTreeNested = {
+        u = "REFUSED";
+        n = 2;
+      };
+      otherTreeMkMerge = {
+        u = "REFUSED";
+        n = 2;
+      };
+      otherTreeNodeNamedIncludes = {
+        u = "REFUSED";
+        n = 1;
+      };
+      handKey = {
+        u = "REFUSED";
+        n = 1;
+      };
+      handKeySecondDef = {
+        u = "REFUSED";
+        n = 2;
+      };
+      handKeyRootIncludesSegment = {
+        u = "REFUSED";
+        n = 1;
+      };
+      renamedMember = {
+        u = "REFUSED";
+        n = 1;
+      };
+      includesOfRefuses = "REFUSED";
+      foreignIncludesOfRefuses = "REFUSED";
+      parentOfStillReads = null;
+      nodesStillRead = [
+        "app"
+        "lib"
+        "lib/base"
+      ];
+      otherTreeNodes = [
+        "elsewhere"
+        "elsewhere/box"
+        "elsewhere/renamed"
+        "elsewhere/thing"
+      ];
+      messageNamesTheNode = true;
+      messageNamesTheKey = true;
+      messageNamesThePosition = true;
+      messageDoesNotAdviseInline = true;
+    };
+  };
+
+  # ★ CONTENT IS STILL CONTENT, however it was merged or copied. The same record is the control for
+  # the refusal above: every row here carries a key, reaches the new branch, and must publish its
+  # positions. Multi-definition lists, `mkMerge`, `mkBefore`, an `mkIf`-false drop and `name` all
+  # move an element's merge position off its merged index; copied lists keep the key and chain of
+  # where they were written.
+  flake.tests.graph-facts.test-inline-content-is-content-across-definitions-and-copies = {
+    expr = {
+      single = declRead { } [ (one [ (lit "a") ]) ];
+      twoDefs = declRead { } [
+        (one [ (lit "a") ])
+        (one [ (lit "b") ])
+      ];
+      mkMerge = declRead { } [
+        (one (
+          genMerge.mkMerge [
+            [ (lit "a") ]
+            [ (lit "b") ]
+          ]
+        ))
+      ];
+      mkIfDrop = declRead { } [
+        (one [
+          (genMerge.mkIf false (lit "x"))
+          (lit "y")
+        ])
+      ];
+      mkBefore = declRead { } [
+        (one [ (lit "a") ])
+        (one (genMerge.mkBefore [ (lit "b") ]))
+      ];
+      named = declRead { } [
+        (one [
+          {
+            name = "firewall";
+            nixos.networking.domain = "n";
+          }
+        ])
+      ];
+      described = declRead { } [
+        (one [
+          {
+            description = "firewall";
+            nixos.networking.domain = "n";
+          }
+        ])
+      ];
+      copiedSibling = declRead { } [
+        (
+          { config, ... }:
+          {
+            config.aspects.base.includes = [ (lit "s") ];
+            config.aspects.app.includes = config.aspects.base.includes;
+          }
+        )
+      ];
+      copiedOtherTree = declRead { } [ (one oa.elsewhere.box.includes) ];
+      nestedLiteral = declRead { } [ (one [ { includes = [ (lit "inner") ]; } ]) ];
+      guardDefault = declRead { } [ (one [ (gv.vocab.whenEq [ "thimble" "name" ] "cortex" (lit "g")) ]) ];
+      shapesTwoDefs = declRead { deferIncludeResolution = true; } [
+        (one shapesA)
+        (one shapesB)
+      ];
+      shapesTwoDefsNested =
+        declRead
+          {
+            id = "top/deeper";
+            deferIncludeResolution = true;
+          }
+          [
+            (at [ "top" "deeper" ] shapesA)
+            (at [ "top" "deeper" ] shapesB)
+          ];
+      twoDefsUnderOrigin = declRead { providerPrefix = [ "acme" ]; } [
+        (one [ (lit "a") ])
+        (one [ (lit "b") ])
+      ];
+      # A hand key INSIDE the include-position space claims to be content, and is: nothing can be a
+      # node there, so the forger gains nothing.
+      forgedOwnPosition = declRead { } [
+        (one [
+          {
+            key = "app/includes/zz";
+            nixos.networking.domain = "f";
+          }
+        ])
+      ];
+    };
+    expected = {
+      single = {
+        u = [ 0 ];
+        n = 1;
+      };
+      twoDefs = {
+        u = [
+          0
+          1
+        ];
+        n = 2;
+      };
+      mkMerge = {
+        u = [
+          0
+          1
+        ];
+        n = 2;
+      };
+      mkIfDrop = {
+        u = [ 0 ];
+        n = 1;
+      };
+      mkBefore = {
+        u = [
+          0
+          1
+        ];
+        n = 2;
+      };
+      named = {
+        u = [ 0 ];
+        n = 1;
+      };
+      described = {
+        u = [ 0 ];
+        n = 1;
+      };
+      copiedSibling = {
+        u = [ 0 ];
+        n = 1;
+      };
+      copiedOtherTree = {
+        u = [ 0 ];
+        n = 1;
+      };
+      nestedLiteral = {
+        u = [ 0 ];
+        n = 1;
+      };
+      guardDefault = {
+        u = [ 0 ];
+        n = 1;
+      };
+      shapesTwoDefs = {
+        u = [
+          0
+          1
+          2
+          3
+          4
+          5
+        ];
+        n = 6;
+      };
+      shapesTwoDefsNested = {
+        u = [
+          0
+          1
+          2
+          3
+          4
+          5
+        ];
+        n = 6;
+      };
+      twoDefsUnderOrigin = {
+        u = [
+          0
+          1
+        ];
+        n = 2;
+      };
+      forgedOwnPosition = {
+        u = [ 0 ];
+        n = 1;
+      };
+    };
+  };
+
+  # References by value still resolve beside content: a member after content in another definition,
+  # and a ROOT aspect named `includes`, whose key has that segment at index 0 only.
+  flake.tests.graph-facts.test-member-declarations-resolve-beside-content = {
+    expr =
+      let
+        facts =
+          mods:
+          let
+            f = aspects.graphFacts { } (declEval { } mods).config.aspects;
+          in
+          {
+            edges = f.includesOf.app;
+            unresolved = f.unresolvedIncludesOf.app;
+          };
+      in
+      {
+        memberSecondDef = facts [
+          baseMod
+          (one [ (lit "a") ])
+          ({ config, ... }: one [ config.aspects.lib.base ])
+        ];
+        rootNamedIncludes = facts [
+          { config.aspects.includes.nixos.networking.domain = "i"; }
+          ({ config, ... }: one [ config.aspects.includes ])
+        ];
+      };
+    expected = {
+      memberSecondDef = {
+        edges = [ "lib/base" ];
+        unresolved = [ 0 ];
+      };
+      rootNamedIncludes = {
+        edges = [ "includes" ];
+        unresolved = [ ];
+      };
+    };
+  };
+
   # The references did not VANISH when they left `includesOf` — they are in the relation that names
   # them, one per fixture. Separate from the cell above on purpose: that one must fail with a legible
   # diff against a library without `foreignIncludesOf`, and a row reading a missing attribute aborts
@@ -807,11 +1274,20 @@ in
       );
       # Each name below is exercised in this suite by BOTH a catchability assertion (on the real
       # path) and a message assertion (on the renderer).
-      covered = [ "danglingIncludeRefusal" ];
+      covered = [
+        "danglingDeclarationRefusal"
+        "danglingIncludeRefusal"
+      ];
     };
     expected = {
-      renderers = [ "danglingIncludeRefusal" ];
-      covered = [ "danglingIncludeRefusal" ];
+      renderers = [
+        "danglingDeclarationRefusal"
+        "danglingIncludeRefusal"
+      ];
+      covered = [
+        "danglingDeclarationRefusal"
+        "danglingIncludeRefusal"
+      ];
     };
   };
 
