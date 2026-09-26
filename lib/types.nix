@@ -30,12 +30,25 @@
 {
   prelude,
   merge,
+  schema,
   hashIdentity,
 }:
 let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
   inherit (import ./cnf.nix) extendCnf checkedEntry;
+  cnfConstruction = (import ./cnf.nix).cnfConstruction schema.keySemanticsRecords;
+
+  # The merge relation of a type built per `cnf` (`aspectType`, `gatedFreeformElem`,
+  # `includesElemType`; den-hoag-bfc0k, the half of den-hoag-a0gc its tripwire left open). The
+  # type's distinguishing content is its cnf, so two are one type exactly when their cnfs are one
+  # construction, and every other same-named pair is refused rather than merged on the NAME
+  # (ADR-0034; ADR-0025 item 1). gen-schema's `constructionRelation` decides that, per component,
+  # over the cnf's construction (lib/cnf.nix `cnfConstruction`): the one implementation gen-schema's
+  # own per-construction types use.
+  cnfFunctor =
+    name: cnf: self:
+    schema.constructionRelation name (cnfConstruction cnf) self;
   doors = import ./require-wrapped-closure.nix;
   t = merge.types;
 
@@ -232,65 +245,67 @@ let
           file = (builtins.head defs).file or "<unknown>";
         };
       };
+      self = merge.mkOptionType {
+        name = "aspect";
+        check = _: true;
+        functor = cnfFunctor "aspect" cnf self;
+        merge =
+          loc: defs:
+          if builtins.length defs != 1 then
+            if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
+              merge.mergeDefaultOption loc defs
+            else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
+              mkGuardCarrier loc defs
+            else
+              (aspectSubmodule cnf).merge loc (
+                map (
+                  d:
+                  if builtins.isFunction d.value then
+                    d
+                    // {
+                      value = {
+                        includes = [ d.value ];
+                      };
+                    }
+                  else
+                    d
+                ) defs
+              )
+          else
+            let
+              v = (builtins.head defs).value;
+            in
+            if builtins.isAttrs v && (v.__isWrappedFn or false) then
+              v
+            # Single-def guard record: dispatched here directly (never reaches the multi-def
+            # branch above, whose `mkGuardCarrier` is what now supports a guard record — or guard
+            # function — defined more than once under one key; den-hoag-sezf Arm B).
+            else if builtins.isAttrs v && (v.__guard or false) then
+              # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
+              # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
+              # not hashed by guardKey).
+              v
+              // {
+                name = prelude.last loc;
+                meta = (v.meta or { }) // {
+                  inherit loc;
+                  file = (builtins.head defs).file or "<unknown>";
+                };
+              }
+            else if builtins.isFunction v && isModuleFn v then
+              (aspectSubmodule cnf).merge loc defs
+            else if builtins.isFunction v then
+              # Guard function — wrap as inspectable functor for pipeline resolution
+              # (analogy to Reynolds defunctionalization, not the literal transform).
+              # Palmer §5.1: name + meta from loc for tracing/diagramming.
+              wrapGuardFn cnf loc defs
+            else if builtins.isAttrs v then
+              (aspectSubmodule cnf).merge loc defs
+            else
+              (prelude.last defs).value;
+      };
     in
-    merge.mkOptionType {
-      name = "aspect";
-      check = _: true;
-      merge =
-        loc: defs:
-        if builtins.length defs != 1 then
-          if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
-            merge.mergeDefaultOption loc defs
-          else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
-            mkGuardCarrier loc defs
-          else
-            (aspectSubmodule cnf).merge loc (
-              map (
-                d:
-                if builtins.isFunction d.value then
-                  d
-                  // {
-                    value = {
-                      includes = [ d.value ];
-                    };
-                  }
-                else
-                  d
-              ) defs
-            )
-        else
-          let
-            v = (builtins.head defs).value;
-          in
-          if builtins.isAttrs v && (v.__isWrappedFn or false) then
-            v
-          # Single-def guard record: dispatched here directly (never reaches the multi-def
-          # branch above, whose `mkGuardCarrier` is what now supports a guard record — or guard
-          # function — defined more than once under one key; den-hoag-sezf Arm B).
-          else if builtins.isAttrs v && (v.__guard or false) then
-            # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
-            # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
-            # not hashed by guardKey).
-            v
-            // {
-              name = prelude.last loc;
-              meta = (v.meta or { }) // {
-                inherit loc;
-                file = (builtins.head defs).file or "<unknown>";
-              };
-            }
-          else if builtins.isFunction v && isModuleFn v then
-            (aspectSubmodule cnf).merge loc defs
-          else if builtins.isFunction v then
-            # Guard function — wrap as inspectable functor for pipeline resolution
-            # (analogy to Reynolds defunctionalization, not the literal transform).
-            # Palmer §5.1: name + meta from loc for tracing/diagramming.
-            wrapGuardFn cnf loc defs
-          else if builtins.isAttrs v then
-            (aspectSubmodule cnf).merge loc defs
-          else
-            (prelude.last defs).value;
-    };
+    self;
 
   # THE canonical content-address for an aspect of ANY kind — plain, wrapped-fn (__isWrappedFn), or
   # guard (__guard). Routed through the ecosystem's ONE hashIdentity formula (`gen-identity/lib/default.nix`,
@@ -323,33 +338,37 @@ let
   # `loc ++ [key]`).
   gatedFreeformElem =
     cnf:
-    merge.mkOptionType {
-      name = "gatedFreeformKey";
-      check = _: true;
-      merge =
-        loc: defs:
-        let
-          k = prelude.last loc;
-          # den feeds ONE pre-merged config def per freeform child, so `head defs` is THE value; the all-defs
-          # form generalises for a native multi-def author (recurse iff SOME def is an attrset namespace; an
-          # all-primitive undeclared multi-def key is not a namespace → throw). Decides on WHNF
-          # (`isAttrs d.value`) — no deep forcing, strictly less than a spine-walk.
-          anyAttrs = builtins.any (d: builtins.isAttrs d.value) defs;
-        in
-        if cnf.recursiveClosed then
-          if anyAttrs then
-            # a namespace node — recurse as a nested aspect, gate RETAINED (recursive-closed).
-            (aspectType cnf).merge loc defs
+    let
+      self = merge.mkOptionType {
+        name = "gatedFreeformKey";
+        check = _: true;
+        functor = cnfFunctor "gatedFreeformKey" cnf self;
+        merge =
+          loc: defs:
+          let
+            k = prelude.last loc;
+            # den feeds ONE pre-merged config def per freeform child, so `head defs` is THE value; the all-defs
+            # form generalises for a native multi-def author (recurse iff SOME def is an attrset namespace; an
+            # all-primitive undeclared multi-def key is not a namespace → throw). Decides on WHNF
+            # (`isAttrs d.value`) — no deep forcing, strictly less than a spine-walk.
+            anyAttrs = builtins.any (d: builtins.isAttrs d.value) defs;
+          in
+          if cnf.recursiveClosed then
+            if anyAttrs then
+              # a namespace node — recurse as a nested aspect, gate RETAINED (recursive-closed).
+              (aspectType cnf).merge loc defs
+            else
+              throw "gen-aspects: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
+              + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
+              + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
+              + "content). Declare it in keySemantics, or nest it under a declared key."
+          else if builtins.elem k cnf.freeformKeys then
+            (aspectType (extendCnf cnf { closedKeys = false; })).merge loc defs
           else
-            throw "gen-aspects: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
-            + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
-            + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
-            + "content). Declare it in keySemantics, or nest it under a declared key."
-        else if builtins.elem k cnf.freeformKeys then
-          (aspectType (extendCnf cnf { closedKeys = false; })).merge loc defs
-        else
-          throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
-    };
+            throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+      };
+    in
+    self;
 
   # The closed keySemantics category vocabulary (ADR-0027 ruling 2). ONE binding so aspectSubmodule's
   # per-key refusal and the standalone `keyCategory` read below can never drift apart.
@@ -384,49 +403,53 @@ let
   # includes are byte-unchanged.
   includesElemType =
     cnf:
-    merge.mkOptionType {
-      name = "includesElem";
-      check = _: true;
-      merge =
-        loc: defs:
-        let
-          v = (builtins.head defs).value;
-          # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
-          # closure, a `{ __fn; … }` battery record, or a defunctionalised policy record
-          # (`__isPolicy`/`__denCanTake`). Like `__keyRef`, its resolution must NOT be forced by the type —
-          # the consumer wraps/dispatches it registry-aware (den-hoag compile `normalize`; gen-dispatch
-          # `deriveGroup` for a policy record). First-Order Laziness (Lorenzen et al. 2025): a
-          # deferred-resolution include passes the type unforced. Default off ⇒ native guard-wrapping.
-          isDeferredInclude =
-            builtins.isFunction v
-            || (
-              builtins.isAttrs v
-              && ((v.__fn or null) != null || (v.__isPolicy or false) || (v.__denCanTake or null) != null)
-            );
-          # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
-          # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
-          # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.
-          isBareModuleInclude =
-            builtins.isAttrs v && (v ? imports) && builtins.isList v.imports && v.imports != [ ];
-        in
-        if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
-          v
-        else if cnf.deferIncludeResolution && builtins.length defs == 1 && isDeferredInclude then
-          v
-        else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
-          throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
-          + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
-          + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
-          + "content key."
-        else if builtins.length defs == 1 && isBareModuleInclude then
-          # Default OFF: the bare module is absorbed AS A MODULE. The aspect submodule reads an
-          # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
-          # `imports` a freeform key and drop the imported content, so the def is handed over as a
-          # function module, which the submodule reads as a module.
-          (aspectSubmodule cnf).merge loc (map (d: d // { value = _: d.value; }) defs)
-        else
-          (aspectOrFn cnf).merge loc defs;
-    };
+    let
+      self = merge.mkOptionType {
+        name = "includesElem";
+        check = _: true;
+        functor = cnfFunctor "includesElem" cnf self;
+        merge =
+          loc: defs:
+          let
+            v = (builtins.head defs).value;
+            # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
+            # closure, a `{ __fn; … }` battery record, or a defunctionalised policy record
+            # (`__isPolicy`/`__denCanTake`). Like `__keyRef`, its resolution must NOT be forced by the type —
+            # the consumer wraps/dispatches it registry-aware (den-hoag compile `normalize`; gen-dispatch
+            # `deriveGroup` for a policy record). First-Order Laziness (Lorenzen et al. 2025): a
+            # deferred-resolution include passes the type unforced. Default off ⇒ native guard-wrapping.
+            isDeferredInclude =
+              builtins.isFunction v
+              || (
+                builtins.isAttrs v
+                && ((v.__fn or null) != null || (v.__isPolicy or false) || (v.__denCanTake or null) != null)
+              );
+            # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
+            # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
+            # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.
+            isBareModuleInclude =
+              builtins.isAttrs v && (v ? imports) && builtins.isList v.imports && v.imports != [ ];
+          in
+          if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
+            v
+          else if cnf.deferIncludeResolution && builtins.length defs == 1 && isDeferredInclude then
+            v
+          else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
+            throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
+            + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
+            + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
+            + "content key."
+          else if builtins.length defs == 1 && isBareModuleInclude then
+            # Default OFF: the bare module is absorbed AS A MODULE. The aspect submodule reads an
+            # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
+            # `imports` a freeform key and drop the imported content, so the def is handed over as a
+            # function module, which the submodule reads as a module.
+            (aspectSubmodule cnf).merge loc (map (d: d // { value = _: d.value; }) defs)
+          else
+            (aspectOrFn cnf).merge loc defs;
+      };
+    in
+    self;
 
   # The native structural option SET — the six options every aspect submodule hardwires
   # (name/description/key/id_hash/meta/includes, below). ONE binding, so keyCategory and the submodule option
@@ -578,7 +601,10 @@ let
         # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
         # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
         # schema-declared instance-option propagation.
-        imports = facetModules ++ cnf.aspectModules;
+        imports =
+          facetModules
+          ++ cnf.aspectModules
+          ++ prelude.optional (cnf.schemaDefs != null) cnf.schemaDefs.module;
 
         # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
         # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The

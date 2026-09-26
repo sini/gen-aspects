@@ -18,6 +18,42 @@
 let
   t = merge.types;
   inherit (import ./cnf.nix) extendCnf checkedEntry;
+
+  # Bound ONCE, outside the per-cnf function: it reads no cnf, and gen-schema's entry type compares
+  # it as a sealed component by value, so a per-call lambda would make two schemas over one cnf two
+  # constructions (den-hoag-bfc0k).
+  mkType =
+    {
+      kindModule,
+      collections,
+      defs ? [ ],
+      kind,
+    }:
+    let
+      # Build a module from caller-declared defs on the schema kind entry
+      # (e.g. options.priority = mkOption {...}). These defs extend each
+      # aspect instance with the declared options.
+      defsModules = map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
+      allModules = defsModules ++ prelude.optional (kindModule != null) kindModule;
+    in
+    # Return a merged VALUE (not a type). This is what config.schema.aspect
+    # evaluates to. __functor makes it importable as a module.
+    # __defsModule carries schema-declared options for mkAspectModule to inject.
+    {
+      __functor =
+        _:
+        { ... }:
+        {
+          imports = allModules;
+        };
+      inherit kind;
+    }
+    // collections
+    // prelude.optionalAttrs (defsModules != [ ]) {
+      __defsModule = {
+        imports = defsModules;
+      };
+    };
 in
 {
   mkAspectSchema = checkedEntry (
@@ -27,38 +63,7 @@ in
         collections = cnf.collections;
         # Record per-key semantics opaquely on each schema entry (load-bearing introspection).
         keySemantics = cnf.keySemantics;
-        mkType =
-          {
-            kindModule,
-            collections,
-            defs ? [ ],
-            kind,
-          }:
-          let
-            # Build a module from caller-declared defs on the schema kind entry
-            # (e.g. options.priority = mkOption {...}). These defs extend each
-            # aspect instance with the declared options.
-            defsModules = map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
-            allModules = defsModules ++ prelude.optional (kindModule != null) kindModule;
-          in
-          # Return a merged VALUE (not a type). This is what config.schema.aspect
-          # evaluates to. __functor makes it importable as a module.
-          # __defsModule carries schema-declared options for mkAspectModule to inject.
-          {
-            __functor =
-              _:
-              { ... }:
-              {
-                imports = allModules;
-              };
-            inherit kind;
-          }
-          // collections
-          // prelude.optionalAttrs (defsModules != [ ]) {
-            __defsModule = {
-              imports = defsModules;
-            };
-          };
+        inherit mkType;
       };
     in
     {
@@ -100,11 +105,16 @@ in
                 # Lazily inject schema-declared option modules into every instance.
                 # config.schema.aspect.__defsModule carries the merged module built
                 # from caller defs on the schema kind entry (e.g. options.priority).
-                aspectModules =
-                  cnf.aspectModules
-                  ++ prelude.optional (
-                    config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
-                  ) config.schema.aspect.__defsModule;
+                # Stated as a term, not appended to `aspectModules`: the type relation must
+                # not read `config` (lib/cnf.nix `schemaDefs`).
+                schemaDefs = {
+                  term = "config.schema.aspect.__defsModule";
+                  module = {
+                    imports = prelude.optional (
+                      config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
+                    ) config.schema.aspect.__defsModule;
+                  };
+                };
               }
             );
           };

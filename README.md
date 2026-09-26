@@ -187,6 +187,8 @@ schema = aspects.mkAspectSchema cnf;
 | `canTake`                            | Re-exported function arg introspection                                                                                                  |
 | `mkIsModuleFn`                       | Re-exported module function predicate                                                                                                   |
 
+**Redeclaration.** The per-cnf types are built per construction, so a container declared twice (two `mkAspectModule` calls, or `mkAspectModule` beside `mkAspectOption`) meets two records of one name. They state their merge relation through gen-schema's `constructionRelation`, read off `lib/cnf.nix` `cnfConstruction`: one construction (one cnf, reached through one slot) merges, and two are refused by name. Stated limits: module content is outside the relation's `records` — a module in `aspectModules`, `metaModules`, `guardForms` or `collections`, or a facet entry's `module`, declaring an option typed by a per-call `mkOptionType` aborts when two constructions are compared in the order that interns `functor` first, and in every order when that type has a `description` back-edge; and a function reached by a selection written at each site (`aspectModules = [ fns.m ]` twice) is two slots, refused on Nix and Determinate and merged on Lix.
+
 ### Schema extensions
 
 Schema-declared options propagate to aspect instances via `mkAspectModule`. When a schema kind entry declares options (e.g., `priority`, `tier`), those options become available on every aspect:

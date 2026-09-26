@@ -13,7 +13,7 @@
 }:
 let
   types = import ./types.nix {
-    inherit prelude merge;
+    inherit prelude merge schema;
     inherit (identity) hashIdentity;
   };
   # ★ RENAMED FROM `identity` TO AVOID SHADOWING THE INJECTED MINT. gen-identity arrives as

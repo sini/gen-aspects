@@ -24,6 +24,14 @@
 # eager (den-hoag-2ejx; it now refuses per key, lib/types.nix `refusedOptions`). It runs once per public entry call, not once per aspect node: the internals
 # receive an already-constructed record and are never re-checked.
 let
+  genAttrs =
+    names: f:
+    builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value = f n;
+      }) names
+    );
   # Module functions take known module args — evaluated by the submodule. Guard functions take
   # context args (whatever the caller's context carries) — wrapped for later. The default set is the standard NixOS args
   # plus `aspect`, which gen-aspects provides.
@@ -36,19 +44,108 @@ let
     aspect = true;
   };
 
-  cnfDefaults = {
-    aspectModules = [ ];
-    closedKeys = false;
-    collections = { };
-    deferIncludeResolution = false;
-    freeformKeys = [ ];
-    guardForms = { };
-    keySemantics = { };
-    metaModules = [ ];
-    moduleArgs = defaultModuleArgs;
-    providerPrefix = [ ];
-    recursiveClosed = false;
-    rejectBareModuleInclude = false;
+  # Each key's DEFAULT and its identity REGIME, in one binding (ADR-0034: the regime is decided at
+  # the declaration, never by inspecting a value). `minted` content is inert by construction and
+  # enters the one mint; `compared` content is caller-supplied modules, guard evaluators or option
+  # declarations, sealed until its vocabulary migrates, and is decided by the reified value under
+  # Nix `==`. `keySemantics` is split per entry: its `category` is inert, the rest of an entry (a
+  # facet's `option`/`module`) is not.
+  cnfVocabulary = {
+    aspectModules = {
+      default = [ ];
+      regime = "compared";
+    };
+    closedKeys = {
+      default = false;
+      regime = "minted";
+    };
+    collections = {
+      default = { };
+      regime = "compared";
+    };
+    deferIncludeResolution = {
+      default = false;
+      regime = "minted";
+    };
+    freeformKeys = {
+      default = [ ];
+      regime = "minted";
+    };
+    guardForms = {
+      default = { };
+      regime = "compared";
+    };
+    keySemantics = {
+      default = { };
+      regime = "split";
+    };
+    metaModules = {
+      default = [ ];
+      regime = "compared";
+    };
+    moduleArgs = {
+      default = defaultModuleArgs;
+      regime = "minted";
+    };
+    providerPrefix = {
+      default = [ ];
+      regime = "minted";
+    };
+    recursiveClosed = {
+      default = false;
+      regime = "minted";
+    };
+    rejectBareModuleInclude = {
+      default = false;
+      regime = "minted";
+    };
+    # A module the type reads out of the enclosing evaluation's `config` (mkAspectModule's
+    # schema-declared instance options). Its content is value-stratum output, which a type
+    # relation decided while declarations fold may not read (ADR-0033), so it is stated as a
+    # first-order `term` naming where it is read from, and that term is what is minted. Within one
+    # evaluation the term determines the module, because there is one `config`.
+    schemaDefs = {
+      default = null;
+      regime = "term";
+    };
+  };
+
+  cnfDefaults = builtins.mapAttrs (_: e: e.default) cnfVocabulary;
+
+  keysIn =
+    regime: builtins.filter (k: cnfVocabulary.${k}.regime == regime) (builtins.attrNames cnfVocabulary);
+  categoryOf = e: if builtins.isAttrs e then e.category or null else e;
+  entryRest = e: if builtins.isAttrs e then removeAttrs e [ "category" ] else null;
+
+  # A checked cnf's construction, by regime, in gen-schema `constructionRelation`'s grammar
+  # (den-hoag-bfc0k): the inert keys, the `term` keys' terms and each keySemantics entry's
+  # category are minted; the sealed keys and the rest of each entry are compared as values, each
+  # stating the type records its grammar places in it. Only an entry's `option.type` is such a
+  # position; the modules, guard forms and collections are open caller content. That content is
+  # outside `records`, and it is ordinary: a module in `aspectModules`/`metaModules`/`guardForms`/
+  # `collections`, or a facet entry's `module`, declaring an option typed by a per-call
+  # `mkOptionType` aborts when two constructions are compared in the order that interns `functor`
+  # first, and in every order when that type has a `description` back-edge (gen-merge
+  # `closuresFirst`'s enumerated exception). `records = [ ]` is an unchecked assertion that no
+  # grammar-fixed record position exists in the component, not a check that none is present.
+  cnfConstruction = keySemanticsRecords: cnf: {
+    minted =
+      genAttrs (keysIn "minted") (k: cnf.${k})
+      // genAttrs (keysIn "term") (k: if cnf.${k} == null then null else cnf.${k}.term)
+      // {
+        keySemanticsCategories = builtins.mapAttrs (_: categoryOf) cnf.keySemantics;
+      };
+    compared =
+      genAttrs (keysIn "compared") (k: {
+        records = [ ];
+        value = cnf.${k};
+      })
+      // {
+        keySemantics = {
+          records = keySemanticsRecords cnf.keySemantics;
+          value = builtins.mapAttrs (_: entryRest) cnf.keySemantics;
+        };
+      };
   };
 
   cnfKeys = builtins.attrNames cnfDefaults;
@@ -112,6 +209,7 @@ let
 in
 {
   inherit
+    cnfConstruction
     cnfDefaults
     cnfKeys
     cnfRefusal

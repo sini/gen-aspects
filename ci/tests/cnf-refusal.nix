@@ -264,6 +264,7 @@ in
       "providerPrefix"
       "recursiveClosed"
       "rejectBareModuleInclude"
+      "schemaDefs"
     ];
   };
 

@@ -148,14 +148,124 @@ in
     expected = "REFUSED";
   };
 
-  # ★ HONEST SCOPE (see file header): `aspectType`'s own functor does not discriminate on `cnf`, so
-  # two `aspectsRoot`s over differing `keySemantics` still merge. Recorded as a PASSING assertion of
-  # CURRENT, MEASURED behaviour — not a TODO and not silently dropped — so a future change to
-  # `aspectType`'s functor that starts refusing this pair reds this cell instead of silently
-  # changing behaviour unnoticed.
-  flake.tests.root-type-merge.test-differing-cnf-same-element-name-still-merges = {
+  # den-hoag-bfc0k: `aspectType` states its relation over its cnf, so two `aspectsRoot`s over
+  # differing `keySemantics` refuse where they used to merge on the element's NAME.
+  flake.tests.root-type-merge.test-differing-cnf-refuses = {
     expr = verdict (root1.typeMerge root2.functor);
-    expected = "MERGED:aspectsRoot";
+    expected = "REFUSED";
+  };
+
+  # Per component (lib/cnf.nix `cnfVocabulary`): an inert key that differs refuses, a sealed key
+  # holding one shared value merges, two distinct lambdas refuse.
+  flake.tests.root-type-merge.test-cnf-components-decide = {
+    expr =
+      let
+        at = c: aspects.aspectType c;
+        shared = {
+          options.marker = genMerge.mkOption {
+            type = t.int;
+            default = 1;
+          };
+        };
+        l1 = { lib, ... }: { };
+        l2 = { lib, ... }: { };
+      in
+      {
+        inertFlag = verdict ((at cnf1).typeMerge (at (cnf1 // { closedKeys = true; })).functor);
+        sharedModule = verdict (
+          (at (cnf1 // { aspectModules = [ shared ]; })).typeMerge
+            (at (cnf1 // { aspectModules = [ shared ]; })).functor
+        );
+        distinctLambdas = verdict (
+          (at (cnf1 // { aspectModules = [ l1 ]; })).typeMerge
+            (at (cnf1 // { aspectModules = [ l2 ]; })).functor
+        );
+      };
+    expected = {
+      inertFlag = "REFUSED";
+      sharedModule = "MERGED:aspect";
+      distinctLambdas = "REFUSED";
+    };
+  };
+
+  # `mkAspectModule` threads schema-declared instance options out of `config`, stated as the
+  # `schemaDefs` term; `mkAspectOption` does not. Declaring `aspects` through both refuses in either
+  # order, and through two `mkAspectModule`s merges WITHOUT reading `config` while declarations fold
+  # (ADR-0033: a relation comparing the module itself is refused there).
+  flake.tests.root-type-merge.test-declaration-constructions = {
+    expr =
+      let
+        s1 = aspects.mkAspectSchema cnf1;
+        s2 = aspects.mkAspectSchema cnf1;
+        decl =
+          mods:
+          let
+            r = genMerge.evalModuleTree { modules = mods ++ [ { aspects.foo = { }; } ]; };
+            v = builtins.tryEval (builtins.deepSeq (builtins.attrNames r.config.aspects) true);
+          in
+          if v.success then "MERGED" else "REFUSED";
+      in
+      {
+        moduleTwice = decl [
+          (s1.mkAspectModule { })
+          (s2.mkAspectModule { })
+        ];
+        optionTwice = decl [
+          { options.aspects = s1.mkAspectOption { }; }
+          { options.aspects = s2.mkAspectOption { }; }
+        ];
+        moduleThenOption = decl [
+          (s1.mkAspectModule { })
+          { options.aspects = s2.mkAspectOption { }; }
+        ];
+        optionThenModule = decl [
+          { options.aspects = s2.mkAspectOption { }; }
+          (s1.mkAspectModule { })
+        ];
+      };
+    expected = {
+      moduleTwice = "MERGED";
+      optionTwice = "MERGED";
+      moduleThenOption = "REFUSED";
+      optionThenModule = "REFUSED";
+    };
+  };
+
+  # The same relation on the two other per-cnf types (`includesElem`, `gatedFreeformKey`): an
+  # `aspectSubmodule` redeclared from two builds over one cnf merges, closed or not, and one over
+  # a differing cnf refuses.
+  flake.tests.root-type-merge.test-per-cnf-siblings = {
+    expr =
+      let
+        closed = cnf1 // {
+          closedKeys = true;
+          freeformKeys = [ "ns" ];
+        };
+        decl =
+          a: b: val:
+          let
+            r = genMerge.evalModuleTree {
+              modules = [
+                { options.p = genMerge.mkOption { type = a; }; }
+                { options.p = genMerge.mkOption { type = b; }; }
+                { p = val; }
+              ];
+            };
+            v = builtins.tryEval (builtins.deepSeq r.config.p true);
+          in
+          if v.success then "MERGED" else "REFUSED";
+        sub = aspects.aspectSubmodule;
+      in
+      {
+        includes = decl (sub cnf1) (sub cnf1) { includes = [ { } ]; };
+        closed = decl (sub closed) (sub closed) { ns = { }; };
+        differing = decl (sub cnf1) (sub cnf2) { };
+      };
+    expected = {
+      includes = "MERGED";
+      closed = "MERGED";
+      differing = "REFUSED";
+    };
   };
 
   # den-hoag-plm1h: the element join is gen-merge's `mergeTypes`, so the check-family witness judges
@@ -187,6 +297,48 @@ in
       portRejects = "MERGED aspectsRoot / REJECTED";
       submodule = "MERGED aspectsRoot / ACCEPTED";
       aspect = "MERGED aspectsRoot / ACCEPTED";
+    };
+  };
+  # den-hoag-bfc0k: a facet's `option.type` inside the cnf is a type record, and a cyclic one; with
+  # its back-edge under `description` (interned at startup) a bare `==` between two constructions
+  # aborts before any closure. The relation compares it closures first and refuses; one type written
+  # in two cnfs is one construction and merges.
+  flake.tests.root-type-merge.test-a-facet-type-record-is-compared-closures-first = {
+    expr =
+      let
+        knot =
+          _:
+          let
+            r = {
+              loop = r;
+            };
+          in
+          t.mkOptionType {
+            name = "shed";
+            description = r;
+            check = builtins.isString;
+          };
+        withFacet =
+          ty:
+          cnf1
+          // {
+            keySemantics = cnf1.keySemantics // {
+              shed = {
+                category = "facet";
+                option = genMerge.mkOption { type = ty; };
+              };
+            };
+          };
+        one = knot 0;
+        at = c: aspects.aspectType c;
+      in
+      {
+        twoConstructions = verdict ((at (withFacet (knot 1))).typeMerge (at (withFacet (knot 2))).functor);
+        oneTypeTwoCnfs = verdict ((at (withFacet one)).typeMerge (at (withFacet one)).functor);
+      };
+    expected = {
+      twoConstructions = "REFUSED";
+      oneTypeTwoCnfs = "MERGED:aspect";
     };
   };
 }
