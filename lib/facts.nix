@@ -64,37 +64,14 @@ let
     + "set, which would admit the typo AS a node and widen the graph past the membership predicate. "
     + "Correct the path, or give the keyRef the origin the target actually belongs to.";
 
-  # The same split for a DECLARATION value: an aspect value, carrying a key, that denotes a node —
-  # but not one of this tree. It carries no origin, so no framework downstream could resolve it
-  # later either; published, it would be a fact with no possible resolver.
-  danglingDeclarationRefusal =
-    id: i: key:
-    "gen-aspects: aspect '${id}' declares at include position ${toString i} an aspect value whose "
-    + "key '${key}' names no node of this tree. The value was declared as a node (its key and its "
-    + "`meta.aspect-chain` do not both place it at an include position), so it is a reference whose "
-    + "target is missing — a value taken from another tree, or one whose key was set by hand. "
-    + "Include a declared aspect of this tree, or reference another tree's with `keyRef`.";
-
-  # A bare string is unconditionally a REFERENCE (den-hoag-2zjg1 rulings B / TERM "i") — never
-  # inline content, since content is never string-shaped (README's own taxonomy: a wrapped fn, a
-  # guard record, a deferred closure or policy record, an aspect literal — none of them a string).
-  # It resolves LOCALLY ONLY, exactly like a by-value element's `.key`: no origin-qualified
-  # string-sugar `keyRef` call, because that sugar's origin is always the string's FIRST segment
-  # (README.md:254), so it can name a local node only by accident, when `cnf.providerPrefix`
-  # itself happens to be one segment long — under any other origin, every string-sugar keyRef is
-  # foreign, silently, and a bare identifier would misresolve to a foreign reference nothing ever
-  # checks or refuses, instead of the local sibling the writer named.
-  danglingReferenceRefusal =
-    id: i: ref:
-    "gen-aspects: aspect '${id}' declares at include position ${toString i} the bare identifier "
-    + "'${ref}', which names no node of this tree. A bare string in `includes` is always a "
-    + "reference (never inline content), resolved against this tree's own origin. Include a "
-    + "declared aspect of this tree by its local key, or reference another tree's with `keyRef`.";
+  # The door a declaration or a bare identifier is resolved at, named first (R6) with the aspect and
+  # the include position at fault, since nothing downstream can name them once the edge leaves.
+  includesDoor = id: i: "gen-aspects.includes (aspect '${id}', include position ${toString i})";
 in
 {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
   # reads a refusal, never renders one.
-  inherit danglingIncludeRefusal danglingDeclarationRefusal danglingReferenceRefusal;
+  inherit danglingIncludeRefusal;
 
   # `graphFacts cnf aspects` →
   #   { nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }
@@ -126,12 +103,47 @@ in
       entries = walk aspects;
 
       nodes = map (e: idOf e.path) entries;
-      nodeSet = builtins.listToAttrs (
-        map (id: {
-          name = id;
-          value = true;
-        }) nodes
+      # The registry the include references resolve against: the tree's own nodes by their
+      # container-relative walk key, which is what a by-value element's `.key` and a bare identifier
+      # spell. Local-only by construction: the origin qualifies the id afterwards (`qualify`).
+      localNodes = builtins.listToAttrs (
+        map (e: {
+          name = render e.path;
+          inherit (e) value;
+        }) entries
       );
+
+      # (d): a declaration IS the canonical entry `k` when it carries that entry's stamp and its
+      # identity-key values. The stamp is `id_hash`, which `aspectId` mints over origin and key, so
+      # the origin half rides in the stamp and `key` is the one identity key to compare. Nothing is
+      # minted (ADR-0034). Both stamp reads are guarded: a stampless value (or a stampless guard-leaf
+      # entry) is "not this member", an ordinary verdict `prelude.resolve` refuses by name, where an
+      # unguarded read aborts past `tryEval`. A conjunction of `?` and primitive `==`, so a bool.
+      isCanonical =
+        v: k:
+        let
+          c = localNodes.${k};
+        in
+        c ? id_hash && (v.id_hash or null) == c.id_hash && (v.key or null) == c.key;
+
+      resolveRef = prelude.resolve {
+        entries = localNodes;
+        inherit isCanonical;
+        hint = "key";
+        form = "an aspect value carrying its string 'key'";
+      };
+      # A reference that resolved: the registry answers the local key, the edge names the node id.
+      # Forced before the record is built, so a refusal reaches every relation that reads the kind,
+      # not only the one that reads the target.
+      local =
+        door: ref:
+        let
+          k = resolveRef door ref;
+        in
+        builtins.seq k {
+          kind = "local";
+          target = qualify k;
+        };
       nodeData = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
@@ -171,11 +183,16 @@ in
       # `unresolvedIncludesOf`, so a consumer needing the element indexes back into
       # `nodeData.<id>.includes` and nothing about the declaration goes unsaid.
       #
-      # TWO REFUSALS, each on a reference whose target is missing: a keyRef carrying THIS tree's
-      # origin, and a KEYED by-value element that names no node and is not include content (below).
+      # A keyRef carrying THIS tree's origin is checked here. A KEYED by-value element that is not
+      # include content (below), and a bare identifier, are REFERENCES resolved by `prelude.resolve`
+      # over `localNodes` with this library's `isCanonical`: a member by identifier or by value
+      # resolves, and anything else is refused by name at `includesDoor` — a key naming no node, a
+      # member re-keyed or otherwise edited off its canonical entry, a value carrying no stamp.
+      # ★ ONE ADMISSION IS NOT A REFUSAL, and it is the identity law's: another tree's value with the
+      # same origin and the same key carries the same stamp and resolves to the LOCAL node, whose
+      # content is served and the foreign content dropped (README, "References resolve by identity").
       # A KEY-LESS value is still read as content whatever it is: a guard-leaf or wrapped-fn node
-      # of another tree carries no `.key` to test, and telling it from content needs a resolver that
-      # checks the canonical entry rather than a key field (open under den-hoag-7gp66, den-hoag-lwbb1).
+      # of another tree carries no `.key` to locate it by (open under den-hoag-lwbb1).
       resolve =
         id: i: elem:
         if builtins.isAttrs elem && (elem.__keyRef or false) then
@@ -190,7 +207,7 @@ in
               kind = "foreign";
               ref = { inherit (elem) origin path key; };
             }
-          else if nodeSet ? ${target} then
+          else if localNodes ? ${render elem.path} then
             {
               kind = "local";
               inherit target;
@@ -198,26 +215,14 @@ in
           else
             throw (danglingIncludeRefusal id i target)
         else if builtins.isAttrs elem && elem ? key then
-          if nodeSet ? ${qualify elem.key} then
-            {
-              kind = "local";
-              target = qualify elem.key;
-            }
-          else if isIncludeContent elem then
-            { kind = "inline"; }
-          else
-            throw (danglingDeclarationRefusal id i elem.key)
+          if isIncludeContent elem then { kind = "inline"; } else local (includesDoor id i) elem
         else if builtins.isString elem then
-          # A bare string is unconditionally a REFERENCE (never content — see the refusal's own
-          # comment above), so it has no `isIncludeContent` escape hatch: a local-key mismatch is
-          # always a refusal, never a fall-through to "inline".
-          if nodeSet ? ${qualify elem} then
-            {
-              kind = "local";
-              target = qualify elem;
-            }
-          else
-            throw (danglingReferenceRefusal id i elem)
+          # A bare string is unconditionally a REFERENCE (den-hoag-2zjg1 rulings B / TERM "i") —
+          # content is never string-shaped — so it has no `isIncludeContent` escape hatch. It
+          # resolves LOCALLY ONLY, like a by-value element's `.key`: the string-sugar `keyRef`'s
+          # origin is always its FIRST segment, so under most origins it would name a foreign node
+          # nothing checks, instead of the local sibling the writer named.
+          local (includesDoor id i) elem
         else
           { kind = "inline"; };
 

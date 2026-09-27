@@ -155,29 +155,42 @@ let
   # whose required `name`/`meta` formals a param-less call would trip), mirroring `mkWrapped`'s tag field
   # set EXACTLY — `__functor`, `__functionArgs`, `__isWrappedFn`, `name`, `meta` — so a `__isWrappedFn`
   # reader cannot tell a gated record from a plain one.
+  # The spec record is MIXED (`functionArgs` required, the rest defaulted) and closed over the whole
+  # set, so it composes the two shared door checks: native formals refused a missing or an unknown
+  # field past `tryEval`.
   wrapGatedFn =
-    {
-      functionArgs,
-      name ? "<gated>",
-      meta ? { },
-      onResult ? (x: x),
-    }:
-    fn:
+    spec:
     let
-      required = builtins.filter (n: !functionArgs.${n}) (builtins.attrNames functionArgs);
+      s = prelude.checkOptions "gen-aspects.wrapGatedFn" [
+        "functionArgs"
+        "name"
+        "meta"
+        "onResult"
+      ] (prelude.checkRequired "gen-aspects.wrapGatedFn" [ "functionArgs" ] spec);
+      inherit (s) functionArgs;
+      name = s.name or "<gated>";
+      meta = s.meta or { };
+      onResult = s.onResult or (x: x);
     in
-    builtins.seq (doors.requireCallable "wrapGatedFn" "the value wrapped at `${name}`" fn) (
-      builtins.seq (doors.requireCallable "wrapGatedFn" "`onResult` at `${name}`" onResult) {
-        __functor =
-          _: fnArgs:
-          if builtins.all (a: fnArgs ? ${a}) required then
-            onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
-          else
-            { };
-        __functionArgs = functionArgs;
-        __isWrappedFn = true;
-        inherit name meta;
-      }
+    # Forced at the spec's application, so the refusal meets the caller at the door it called.
+    builtins.seq s (
+      fn:
+      let
+        required = builtins.filter (n: !functionArgs.${n}) (builtins.attrNames functionArgs);
+      in
+      builtins.seq (doors.requireCallable "wrapGatedFn" "the value wrapped at `${name}`" fn) (
+        builtins.seq (doors.requireCallable "wrapGatedFn" "`onResult` at `${name}`" onResult) {
+          __functor =
+            _: fnArgs:
+            if builtins.all (a: fnArgs ? ${a}) required then
+              onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
+            else
+              { };
+          __functionArgs = functionArgs;
+          __isWrappedFn = true;
+          inherit name meta;
+        }
+      )
     );
 
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.

@@ -342,8 +342,27 @@ let
 
   # The refusal message, rendered from the same binding the throw path calls.
   danglingMsg = factsInternals.danglingIncludeRefusal "acme/app" 0 "acme/lib/bsae";
-  declarationMsg = factsInternals.danglingDeclarationRefusal "app" 1 "elsewhere/thing";
-  danglingReferenceMsg = factsInternals.danglingReferenceRefusal "acme/app" 0 "acme/lib/bsae";
+
+  # ── REFERENCES RESOLVE BY IDENTITY (den-hoag-7gp66 P1, §v1.3 arm (d)) ──
+  # ykt9t's key-field pair. `collisionOther` is ANOTHER tree at the same (default) origin holding a
+  # node with the same key and different content; `rekeyed` is a member of THIS tree whose key was
+  # edited to spell another member.
+  collisionOtherEval = mkSchemaEval {
+    fixtureKeySemantics.nixos.category = "class";
+    modules = [ { config.aspects.lib.base.nixos.networking.domain = "FOREIGN"; } ];
+  };
+  refRead =
+    {
+      providerPrefix ? [ ],
+    }:
+    elems:
+    let
+      f = aspects.graphFacts {
+        inherit providerPrefix;
+      } (mkIncludes { inherit providerPrefix elems; }).config.aspects;
+      id = lib.concatStringsSep "/" (providerPrefix ++ [ "app" ]);
+    in
+    tryValue f.includesOf.${id};
 
   # ── DECLARATION vs CONTENT fixtures ──
   # Raw module lists, so one aspect's `includes` can take SEVERAL definitions: an element's merge
@@ -892,9 +911,10 @@ in
           }
         ])
       ];
-      # A same-tree member whose `name` moves its key off its walk id is REFUSED: its key names no
-      # node. A resolver that checks membership on the canonical entry (den-hoag-7gp66) makes it an
-      # edge, and this row is the one that flips.
+      # A same-tree member whose `name` moves its key off its walk id is NOT refused: its key names
+      # no node by walk key, but `prelude.resolve` locates it by the key field and its stamp and key
+      # are the canonical entry's (den-hoag-7gp66), so it is an edge (`includesOf.app` = `[ "base" ]`,
+      # pinned in `test-references-resolve-by-identity`).
       renamedMember = declRead { } [
         {
           config.aspects.base = {
@@ -912,11 +932,6 @@ in
       # CONTROL: the planted value IS a node of its own tree, so "names no node of THIS tree" is the
       # fact refused rather than a value that names nothing anywhere.
       otherTreeNodes = sorted (aspects.graphFacts { } oa).nodes;
-      messageNamesTheNode = lib.hasInfix "'app'" declarationMsg;
-      messageNamesTheKey = lib.hasInfix "'elsewhere/thing'" declarationMsg;
-      messageNamesThePosition = lib.hasInfix "position 1" declarationMsg;
-      # Content never reaches this branch, so the repair must not tell the caller to write it.
-      messageDoesNotAdviseInline = !(lib.hasInfix "inline" declarationMsg);
     };
     expected = {
       otherTreeNode = {
@@ -952,7 +967,7 @@ in
         n = 1;
       };
       renamedMember = {
-        u = "REFUSED";
+        u = [ ];
         n = 1;
       };
       includesOfRefuses = "REFUSED";
@@ -969,10 +984,6 @@ in
         "elsewhere/renamed"
         "elsewhere/thing"
       ];
-      messageNamesTheNode = true;
-      messageNamesTheKey = true;
-      messageNamesThePosition = true;
-      messageDoesNotAdviseInline = true;
     };
   };
 
@@ -988,17 +999,114 @@ in
       # A bare string and the by-value form over the same target publish the SAME edge.
       stringAndByValueAgree =
         localGoodStringFacts.includesOf."acme/app" == localGoodValueFacts.includesOf."acme/app";
-      messageNamesTheNode = lib.hasInfix "'acme/app'" danglingReferenceMsg;
-      messageNamesTheTarget = lib.hasInfix "'acme/lib/bsae'" danglingReferenceMsg;
-      messageNamesThePosition = lib.hasInfix "position 0" danglingReferenceMsg;
     };
     expected = {
       localDanglingRefuses = true;
       localSoundDoesNotRefuse = true;
       stringAndByValueAgree = true;
-      messageNamesTheNode = true;
-      messageNamesTheTarget = true;
-      messageNamesThePosition = true;
+    };
+  };
+
+  # ── REFERENCES RESOLVE BY IDENTITY (den-hoag-7gp66 P1) ─────────────────────────────────────────
+  # A by-value element and a bare identifier both resolve through `prelude.resolve` with this
+  # library's `isCanonical` (stamp `id_hash` and key equal): membership is decided on the canonical
+  # entry, never on the editable `.key` alone. Each refusal is caught here; its message is pinned on
+  # the real path in `ci/tests-error.nix` (`includes-resolve`).
+  flake.tests.graph-facts.test-references-resolve-by-identity = {
+    expr = {
+      # CONTROL: the instrument can read a refusal at all.
+      controlThrowIsRefused = tryValue (throw "control");
+      memberById = refRead { } (_: [ "lib/base" ]);
+      memberByDeclaration = refRead { } (config: [ config.aspects.lib.base ]);
+      memberByIdOrigin = refRead { providerPrefix = [ "acme" ]; } (_: [ "lib/base" ]);
+      memberByDeclarationOrigin = refRead { providerPrefix = [ "acme" ]; } (config: [
+        config.aspects.lib.base
+      ]);
+      # A member whose `name` moved its key off its walk key is still that member: located by the
+      # key field through the index, verdict on the canonical entry.
+      renamedMember =
+        let
+          ev = declEval { } [
+            {
+              config.aspects.base = {
+                name = "Base";
+                nixos.networking.domain = "b";
+              };
+            }
+            ({ config, ... }: one [ config.aspects.base ])
+          ];
+        in
+        tryValue (aspects.graphFacts { } ev.config.aspects).includesOf.app;
+      # 6-c: a member re-keyed to spell another member. The key names a node (`app`) and the stamp
+      # is base's, so it is refused; the key-only verdict made it a self-edge `[ "app" ]`.
+      rekeyedMember = refRead { } (config: [ (config.aspects.lib.base // { key = "app"; }) ]);
+      # gate C1: a stampless value naming a REAL member is "not this member", refused by name —
+      # never an abort on the missing stamp. Handed to `graphFacts` directly: declared through the
+      # module system, the include element's type re-mints `id_hash` from the value's own identity.
+      stamplessRealMember =
+        let
+          a = (mkIncludes { elems = _: [ ]; }).config.aspects;
+        in
+        tryValue
+          (aspects.graphFacts { } (
+            a
+            // {
+              app = a.app // {
+                includes = [ (removeAttrs a.lib.base [ "id_hash" ]) ];
+              };
+            }
+          )).includesOf.app;
+      # CONTROL, same construction: the stamped member handed over the same way resolves.
+      stampedRealMemberDirect =
+        let
+          a = (mkIncludes { elems = _: [ ]; }).config.aspects;
+        in
+        tryValue
+          (aspects.graphFacts { } (
+            a
+            // {
+              app = a.app // {
+                includes = [ a.lib.base ];
+              };
+            }
+          )).includesOf.app;
+      # A bare string naming nothing is refused, as it was before the move.
+      bareNamingNothing = refRead { } (_: [ "lib/bsae" ]);
+      # 6-d, B1 (i): another tree's value with the same origin and key carries the same stamp, so it
+      # resolves to the LOCAL node — see the README's "References resolve by identity".
+      otherTreeSameKey = refRead { } (_: [ collisionOtherEval.config.aspects.lib.base ]);
+      # ...and the value served for that node is the LOCAL one: the foreign content is dropped.
+      otherTreeSameKeyServes =
+        let
+          ev = mkIncludes { elems = _: [ collisionOtherEval.config.aspects.lib.base ]; };
+          served = (aspects.graphFacts { } ev.config.aspects).nodeData."lib/base";
+        in
+        {
+          local = served == ev.config.aspects.lib.base;
+          foreign = served == collisionOtherEval.config.aspects.lib.base;
+        };
+      # CONTROL for 6-d: the foreign value shares the local node's stamp (and so its key).
+      otherTreeSameStamp =
+        collisionOtherEval.config.aspects.lib.base.id_hash == (mkIncludes { elems = _: [ ]; })
+        .config.aspects.lib.base.id_hash;
+    };
+    expected = {
+      controlThrowIsRefused = "REFUSED";
+      memberById = [ "lib/base" ];
+      memberByDeclaration = [ "lib/base" ];
+      memberByIdOrigin = [ "acme/lib/base" ];
+      memberByDeclarationOrigin = [ "acme/lib/base" ];
+      renamedMember = [ "base" ];
+      rekeyedMember = "REFUSED";
+      stamplessRealMember = "REFUSED";
+      stampedRealMemberDirect = [ "lib/base" ];
+      bareNamingNothing = "REFUSED";
+      otherTreeSameKey = [ "lib/base" ];
+      otherTreeSameKeyServes = {
+        local = true;
+        foreign = false;
+      };
+      otherTreeSameStamp = true;
     };
   };
 
@@ -1328,23 +1436,11 @@ in
       );
       # Each name below is exercised in this suite by BOTH a catchability assertion (on the real
       # path) and a message assertion (on the renderer).
-      covered = [
-        "danglingDeclarationRefusal"
-        "danglingIncludeRefusal"
-        "danglingReferenceRefusal"
-      ];
+      covered = [ "danglingIncludeRefusal" ];
     };
     expected = {
-      renderers = [
-        "danglingDeclarationRefusal"
-        "danglingIncludeRefusal"
-        "danglingReferenceRefusal"
-      ];
-      covered = [
-        "danglingDeclarationRefusal"
-        "danglingIncludeRefusal"
-        "danglingReferenceRefusal"
-      ];
+      renderers = [ "danglingIncludeRefusal" ];
+      covered = [ "danglingIncludeRefusal" ];
     };
   };
 

@@ -11,6 +11,7 @@
 {
   lib,
   aspects,
+  mkSchemaEval,
   genMerge,
   ...
 }:
@@ -299,4 +300,81 @@ in
       exactly "gen-merge: module `<wrapFn>' is a function whose result is lambda, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module."
     );
   };
+  # den-hoag-7gp66 P1: the closed doors' shared checks, message pinned on the real path.
+  flake.testsError.doors =
+    let
+      gated = "gen-aspects.wrapGatedFn";
+      schema = aspects.mkAspectSchema { };
+      unknown =
+        door: accepted:
+        exactly "${door}: 'notAnOption' is not an option of this door; the options are closed (accepted: ${accepted}) (in prelude.checkOptions)";
+    in
+    {
+      test-wrap-gated-fn-missing = thrown (aspects.wrapGatedFn { name = "n"; }) (
+        exactly "${gated}: required field 'functionArgs' is missing (required: 'functionArgs') (in prelude.checkRequired)"
+      );
+      test-wrap-gated-fn-unknown = thrown (aspects.wrapGatedFn {
+        functionArgs = { };
+        notAnOption = 1;
+      }) (unknown gated "'functionArgs', 'name', 'meta', 'onResult'");
+      test-mk-aspect-option-unknown = thrown (schema.mkAspectOption { notAnOption = 1; }) (
+        unknown "gen-aspects.mkAspectSchema.mkAspectOption" "'providerPrefix'"
+      );
+      test-mk-aspect-module-unknown = thrown (schema.mkAspectModule { notAnOption = 1; }) (
+        unknown "gen-aspects.mkAspectSchema.mkAspectModule" "'providerPrefix'"
+      );
+      test-mk-namespace-type-unknown = thrown (schema.mkNamespaceType { notAnOption = 1; }) (
+        unknown "gen-aspects.mkAspectSchema.mkNamespaceType" ""
+      );
+    };
+
+  # den-hoag-7gp66 P1: an include reference resolved by `prelude.resolve`, refused naming the door,
+  # the aspect and the include position first.
+  flake.testsError.includes-resolve =
+    let
+      tree =
+        elems:
+        mkSchemaEval {
+          fixtureKeySemantics.nixos.category = "class";
+          modules = [
+            (
+              { config, ... }:
+              {
+                config.aspects.lib.base.nixos.networking.domain = "b";
+                config.aspects.app.includes = elems config;
+              }
+            )
+          ];
+        };
+      read = elems: (aspects.graphFacts { } (tree elems).config.aspects).includesOf.app;
+      door = "gen-aspects.includes (aspect 'app', include position 0): ";
+      notMember =
+        h:
+        exactly "${door}declaration '${h}' is not a member of the registry (available: 'app', 'lib', 'lib/base') (in prelude.resolve)";
+      a = (tree (_: [ ])).config.aspects;
+    in
+    {
+      # 6-c: a member re-keyed to spell another member.
+      test-rekeyed-member = thrown (read (config: [ (config.aspects.lib.base // { key = "app"; }) ])) (
+        notMember "app"
+      );
+      # gate C1: a stampless value naming a real member (handed to graphFacts directly — the include
+      # element type re-mints the stamp from the value's own identity).
+      test-stampless-real-member =
+        thrown
+          (aspects.graphFacts { } (
+            a
+            // {
+              app = a.app // {
+                includes = [ (removeAttrs a.lib.base [ "id_hash" ]) ];
+              };
+            }
+          )).includesOf.app
+          (notMember "lib/base");
+      # A value from another tree whose key names no node here.
+      test-key-naming-no-node = thrown (read (_: [ { key = "no/such"; } ])) (notMember "no/such");
+      test-bare-string-naming-nothing = thrown (read (_: [ "lib/bsae" ])) (
+        exactly "${door}reference 'lib/bsae' names no entry of the registry (in prelude.resolve)"
+      );
+    };
 }
