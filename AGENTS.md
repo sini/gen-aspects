@@ -35,7 +35,7 @@ Entry: `inputs.gen-aspects.lib` (flake). Root `default.nix` is a function of
 `{ prelude, merge, schema, identity }`, each defaulting to a `fetchTree` of the flake-locked rev, so
 `import ./. { }` self-constructs.
 
-Root `default.nix`'s `wire ? { deps, resolve }: import ./lib deps` formal is the seam that hands
+Root `default.nix`'s `wire ? { deps, resolve, lock }: import ./lib deps` formal is the seam that hands
 this exact substrate attrset to `./lib` as `deps`, and it is also the only channel by which the shim
 publishes anything outward — a formal is an INPUT channel and cannot carry a value out, so the
 lock-parameterised `follows` resolver rides out on the same record. Overriding `wire` is how a cell
