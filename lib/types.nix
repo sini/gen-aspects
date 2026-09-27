@@ -77,6 +77,32 @@ let
       inherit name meta;
     };
 
+  # THE INTERIM DOOR's argument (den-hoag-n6dh7 OQ10: "retire the hatch, iii target with i
+  # interim"). The two raw-closure wraps below merge at APPLY time, outside any evaluation's fold: no
+  # evaluation accessor exists there, and `d.value fnArgs` is an application, not an address. So
+  # each application is ONE explicit root evaluation of the one engine, through its published door
+  # `evalModuleTree`, over the aspect submodule's nested tree stated as data (`nests`): its module
+  # set, one entry per applied definition, the fold's `loc` as the prefix, and its arguments with
+  # `name` injected as the submodule's own evaluation injects it. That is the call the submodule's
+  # fold makes, field for field, so the value and the cost (one evaluation per application) are
+  # today's. Never `.merge`: a nesting type's exported fold is the bridge, and calling it would make
+  # the same evaluation silently. Private to this file; it publishes nothing. RETIRED by
+  # `den-hoag-lwbb1` (first-order guard bodies), with ADR-0013's closure hatch, `wrapFn`,
+  # `wrapGatedFn` and `deferIncludeResolution`.
+  doorArgs =
+    cnf: loc: defs:
+    let
+      n = (aspectSubmodule cnf).nests;
+    in
+    {
+      modules = n.modules ++ map n.entry defs;
+      prefix = loc;
+      specialArgs = n.specialArgs // {
+        name = if loc == [ ] then "" else prelude.last loc;
+      };
+      inherit (n) check;
+    };
+
   # Raw-closure guard wrap — a hand-built functor reproducing nixpkgs `functionTo`'s merge result
   # tagged as a wrapped fn. The DEF-LIST caller: invoked by the aspect TYPE's merge, so it wraps the
   # module system's def-list (a guard fn defined possibly across several files). When the pipeline
@@ -88,16 +114,19 @@ let
       at = "aspect `${prelude.concatStringsSep "." loc}`";
     in
     mkWrapped {
+      # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
       apply =
         fnArgs:
-        (aspectSubmodule cnf).merge (loc ++ [ "<function body>" ]) (
-          map (d: {
-            inherit (d) file;
-            value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (
-              d.value (doors.requireRequiredCoords "aspectType" at (builtins.functionArgs d.value) fnArgs)
-            );
-          }) defs
-        );
+        (merge.evalModuleTree (
+          doorArgs cnf (loc ++ [ "<function body>" ]) (
+            map (d: {
+              inherit (d) file;
+              value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (
+                d.value (doors.requireRequiredCoords "aspectType" at (builtins.functionArgs d.value) fnArgs)
+              );
+            }) defs
+          )
+        )).config;
       functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
       name = prelude.last loc;
       meta = {
@@ -121,18 +150,21 @@ let
       at = "`${name}`";
     in
     builtins.seq (doors.requireClosure "wrapFn" at fn) (mkWrapped {
+      # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
       apply =
         fnArgs:
-        (aspectSubmodule cnf).merge
-          [ name "<function body>" ]
-          [
-            {
-              file = "<wrapFn>";
-              value = doors.requireAspectContent "wrapFn" at (mkIsModuleFn cnf) (
-                fn (doors.requireRequiredCoords "wrapFn" at (builtins.functionArgs fn) fnArgs)
-              );
-            }
-          ];
+        (merge.evalModuleTree (
+          doorArgs cnf
+            [ name "<function body>" ]
+            [
+              {
+                file = "<wrapFn>";
+                value = doors.requireAspectContent "wrapFn" at (mkIsModuleFn cnf) (
+                  fn (doors.requireRequiredCoords "wrapFn" at (builtins.functionArgs fn) fnArgs)
+                );
+              }
+            ]
+        )).config;
       functionArgs = builtins.functionArgs fn;
       inherit name;
       meta = {
@@ -193,10 +225,176 @@ let
       )
     );
 
+  # ── THE PORTS: gen-native types, stated in gen's vocabulary (den-hoag-n6dh7 item 5; gate C4) ──
+  # `aspectType`, `gatedFreeformElem`, `includesElemType` and `aspectsRootWith` are built through
+  # gen-merge's `defineType`, the library's one crossing site for a type stated in gen's words, and
+  # not through `mkOptionType`: that is the door for a descriptor written in the FOREIGN protocol,
+  # whose import wraps a fold stating `check` in a bare lambda and so erases the fold's threaded
+  # sibling. Each states the sibling (`mergeDefs.threaded`, the same fold reading a nested tree
+  # through the evaluation's accessor `ev` instead of evaluating it here), what it carries (so
+  # `canNest` sees the nesting members), `recarry`, and `substructure` answering the sub-option
+  # protocol exactly as it answered before the port. The dropped `check = _: true` stated no domain,
+  # which a gen type says by stating no `admits`/`verify`.
+
+  # A relation its author STATES as a functor, in both vocabularies from that one functor. The
+  # functor and the foreign `typeMerge` over it are published as stated (`retainedRelation`, gen's
+  # word for a relation stated rather than derived from `carries`), and gen's own relation asks the
+  # same `typeMerge` about the partner's functor, so the two vocabularies cannot answer differently
+  # and a refusal reads as it did when the relation crossed through the foreign import.
+  statedRelation = name: functor: typeMerge: {
+    retainedRelation = { inherit functor typeMerge; };
+    typeMergeRel =
+      other:
+      let
+        merged = if builtins.isAttrs other then typeMerge (other.functor or null) else null;
+      in
+      if merged == null then
+        {
+          refused = "`${name}' and `${
+            if builtins.isAttrs other then other.name or "<unnamed>" else builtins.typeOf other
+          }', which the first type's own `functor' does not reconcile";
+        }
+      else
+        { inherit merged; };
+  };
+
+  # A per-cnf type's relation (`cnfFunctor`, gen-schema's construction relation): two such types
+  # merge exactly when their cnfs are one construction.
+  cnfRelation =
+    name: cnf: self:
+    let
+      functor = cnfFunctor name cnf self;
+    in
+    statedRelation name functor (
+      f:
+      if
+        !(builtins.isAttrs f)
+        || (f.name or null) != name
+        || (f.payload or null) == null
+        || functor.binOp functor.payload f.payload == null
+      then
+        null
+      else
+        functor.type f.payload
+    );
+
+  # A per-cnf UNION: a type whose fold picks one of its members by the definitions' shape, or answers
+  # without one. `dispatch loc defs` is that shape dispatch, stated ONCE: `{ member = <type>; }` where
+  # a nesting-capable member folds the definitions, `{ value = …; }` where the type answers itself
+  # (a guard record, a wrapped fn, a pass-through, a refusal). `choose` is its member half, `null`
+  # where no member is chosen, and the called and threaded folds both dispatch on it, so a key walk
+  # reading `choose` and the fold reading `dispatch` cannot disagree about the member. A union adds
+  # no position step, so the accessor reaches the member unchanged.
+  #
+  # ★ THE CALLED FOLD FORWARDS TO THE MEMBER'S CALLED FOLD, as gen-merge's own `either` does. Once
+  # the engine dispatches the threaded sibling, a nesting member's called fold refuses, so a path
+  # that did not thread reaches that refusal, never a silent evaluation of its own.
+  mkUnion =
+    name: cnf:
+    {
+      alternatives,
+      recarry,
+      dispatch,
+      declares ? _prefix: { },
+    }:
+    let
+      rel = cnfRelation name cnf self;
+      choose = loc: defs: (dispatch loc defs).member or null;
+      foldWith =
+        foldMember: loc: defs:
+        let
+          r = dispatch loc defs;
+        in
+        if r ? member then foldMember r.member loc defs else r.value;
+      self = merge.types.defineType {
+        inherit name recarry choose;
+        inherit (rel) typeMergeRel retainedRelation;
+        carries.alternatives = alternatives;
+        substructure = {
+          inherit declares;
+          modules = null;
+          rebuild = _m: null;
+        };
+        # One member position, adding no step, under the member `choose` picks (gen-merge `either`).
+        split = loc: defs: [
+          {
+            step = [ ];
+            inherit loc defs;
+            type = choose loc defs;
+          }
+        ];
+        mergeDefs = {
+          __functor = _: foldWith (m: m.mergeDefs);
+          threaded = ev: foldWith (m: m.mergeDefs.threaded ev);
+        };
+      };
+    in
+    self;
+
+  # A nesting member that reads each definition through `coerce` first. The transform lives in its
+  # nested tree's `entry` (`nests.entry`), so the definitions its tree is seeded from are the
+  # addresses the fold was handed, never values built from them: a threaded fold names its tree by
+  # position and the tree reads its own definitions. The called fold is the submodule's own over the
+  # coerced definitions, as the union's fold made it before the port.
+  entryCoerced =
+    sub: coerce:
+    let
+      n = sub.nests;
+      nests = n // {
+        entry = d: n.entry (coerce d);
+      };
+    in
+    merge.types.defineType (
+      sub
+      // {
+        inherit nests;
+        mergeDefs = {
+          __functor =
+            _: loc: defs:
+            sub.mergeDefs loc (map coerce defs);
+          # A definition outside the submodule's domain is refused by the submodule's own fold, by
+          # name, before any tree is read (`coerce` preserves the domain on both callers).
+          threaded =
+            ev: loc: defs:
+            if builtins.all (d: sub.admits d.value) defs then
+              (ev.child {
+                inherit (ev) position;
+                inherit nests loc defs;
+              }).config
+            else
+              sub.mergeDefs.threaded ev loc defs;
+        };
+      }
+    );
+
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
+  # A union (above) over its two nesting members: the plain aspect submodule, and the element that
+  # coerces a function definition among several to `{ includes = [ f ]; }`.
   aspectType =
     cnf:
     let
+      sub = aspectSubmodule cnf;
+    in
+    aspectTypeOver cnf [
+      sub
+      (entryCoerced sub (
+        d:
+        if builtins.isFunction d.value then
+          d
+          // {
+            value = {
+              includes = [ d.value ];
+            };
+          }
+        else
+          d
+      ))
+    ];
+  aspectTypeOver =
+    cnf: alternatives:
+    let
+      sub = builtins.elemAt alternatives 0;
+      coerced = builtins.elemAt alternatives 1;
       isModuleFn = mkIsModuleFn cnf;
       # Arm B (witness 2, den-hoag-sezf §2): a def at a multi-def key is guard-shaped either as
       # a guard RECORD (guard.nix, `__guard`) or as a guard FUNCTION (a raw closure that is not
@@ -258,74 +456,60 @@ let
           file = (builtins.head defs).file or "<unknown>";
         };
       };
-      self = merge.mkOptionType {
-        name = "aspect";
-        check = _: true;
-        functor = cnfFunctor "aspect" cnf self;
-        # The sub-option protocol is answered by the branch that declares options: every attrset and
-        # module-function aspect merges through `aspectSubmodule`, so its option set IS this type's.
-        # The guard and wrapped-fn branches declare none (a function-bodied fragment is opaque before
-        # discharge, above). Left on the protocol's `{ }` default this type would read as a leaf.
-        # A published channel for foreign tools only: gen introspects aspects by graph query
-        # (`graphFacts`), never through this function (ADR-0012 clause 3).
-        getSubOptions = prefix: (aspectSubmodule cnf).getSubOptions prefix;
-        merge =
-          loc: defs:
-          if builtins.length defs != 1 then
-            if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
-              merge.mergeDefaultOption loc defs
-            else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
-              mkGuardCarrier loc defs
-            else
-              (aspectSubmodule cnf).merge loc (
-                map (
-                  d:
-                  if builtins.isFunction d.value then
-                    d
-                    // {
-                      value = {
-                        includes = [ d.value ];
-                      };
-                    }
-                  else
-                    d
-                ) defs
-              )
+      dispatch =
+        loc: defs:
+        if builtins.length defs != 1 then
+          if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
+            { value = merge.mergeDefaultOption loc defs; }
+          else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
+            { value = mkGuardCarrier loc defs; }
           else
-            let
-              v = (builtins.head defs).value;
-            in
-            if builtins.isAttrs v && (v.__isWrappedFn or false) then
-              v
-            # Single-def guard record: dispatched here directly (never reaches the multi-def
-            # branch above, whose `mkGuardCarrier` is what now supports a guard record — or guard
-            # function — defined more than once under one key; den-hoag-sezf Arm B).
-            else if builtins.isAttrs v && (v.__guard or false) then
-              # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
-              # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
-              # not hashed by guardKey).
-              v
-              // {
+            { member = coerced; }
+        else
+          let
+            v = (builtins.head defs).value;
+          in
+          if builtins.isAttrs v && (v.__isWrappedFn or false) then
+            { value = v; }
+          # Single-def guard record: dispatched here directly (never reaches the multi-def
+          # branch above, whose `mkGuardCarrier` is what now supports a guard record — or guard
+          # function — defined more than once under one key; den-hoag-sezf Arm B).
+          else if builtins.isAttrs v && (v.__guard or false) then
+            # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
+            # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
+            # not hashed by guardKey).
+            {
+              value = v // {
                 name = prelude.last loc;
                 meta = (v.meta or { }) // {
                   inherit loc;
                   file = (builtins.head defs).file or "<unknown>";
                 };
-              }
-            else if builtins.isFunction v && isModuleFn v then
-              (aspectSubmodule cnf).merge loc defs
-            else if builtins.isFunction v then
-              # Guard function — wrap as inspectable functor for pipeline resolution
-              # (analogy to Reynolds defunctionalization, not the literal transform).
-              # Palmer §5.1: name + meta from loc for tracing/diagramming.
-              wrapGuardFn cnf loc defs
-            else if builtins.isAttrs v then
-              (aspectSubmodule cnf).merge loc defs
-            else
-              (prelude.last defs).value;
-      };
+              };
+            }
+          else if builtins.isFunction v && isModuleFn v then
+            { member = sub; }
+          else if builtins.isFunction v then
+            # Guard function — wrap as inspectable functor for pipeline resolution
+            # (analogy to Reynolds defunctionalization, not the literal transform).
+            # Palmer §5.1: name + meta from loc for tracing/diagramming.
+            { value = wrapGuardFn cnf loc defs; }
+          else if builtins.isAttrs v then
+            { member = sub; }
+          else
+            { value = (prelude.last defs).value; };
     in
-    self;
+    mkUnion "aspect" cnf {
+      inherit alternatives dispatch;
+      recarry = c: aspectTypeOver cnf c.alternatives;
+      # The sub-option protocol is answered by the branch that declares options: every attrset and
+      # module-function aspect merges through `aspectSubmodule`, so its option set IS this type's.
+      # The guard and wrapped-fn branches declare none (a function-bodied fragment is opaque before
+      # discharge, above). Left on the protocol's `{ }` default this type would read as a leaf.
+      # A published channel for foreign tools only: gen introspects aspects by graph query
+      # (`graphFacts`), never through this function (ADR-0012 clause 3).
+      declares = prefix: sub.getSubOptions prefix;
+    };
 
   # THE canonical content-address for an aspect of ANY kind — plain, wrapped-fn (__isWrappedFn), or
   # guard (__guard). Routed through the ecosystem's ONE hashIdentity formula (`gen-identity/lib/default.nix`,
@@ -356,39 +540,49 @@ let
   # listed key opens an UNGATED subtree (closedKeys=false for descendants) so legitimate nested aspects
   # still nest freely. `prelude.last loc` is the undeclared key name (lazyAttrsOf merges each attr at
   # `loc ++ [key]`).
+  # A union (above) over the two aspect types it can pick: this cnf's on the recursive-closed arm, and
+  # the ungated one on a listed freeform key. The pick reads `loc`, so the same definitions give
+  # different members by key.
   gatedFreeformElem =
     cnf:
-    let
-      self = merge.mkOptionType {
-        name = "gatedFreeformKey";
-        check = _: true;
-        functor = cnfFunctor "gatedFreeformKey" cnf self;
-        merge =
-          loc: defs:
-          let
-            k = prelude.last loc;
-            # den feeds ONE pre-merged config def per freeform child, so `head defs` is THE value; the all-defs
-            # form generalises for a native multi-def author (recurse iff SOME def is an attrset namespace; an
-            # all-primitive undeclared multi-def key is not a namespace → throw). Decides on WHNF
-            # (`isAttrs d.value`) — no deep forcing, strictly less than a spine-walk.
-            anyAttrs = builtins.any (d: builtins.isAttrs d.value) defs;
-          in
-          if cnf.recursiveClosed then
-            if anyAttrs then
-              # a namespace node — recurse as a nested aspect, gate RETAINED (recursive-closed).
-              (aspectType cnf).merge loc defs
-            else
-              throw "gen-aspects: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
-              + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
-              + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
-              + "content). Declare it in keySemantics, or nest it under a declared key."
-          else if builtins.elem k cnf.freeformKeys then
-            (aspectType (extendCnf cnf { closedKeys = false; })).merge loc defs
+    gatedFreeformElemOver cnf [
+      (aspectType cnf)
+      (aspectType (extendCnf cnf { closedKeys = false; }))
+    ];
+  gatedFreeformElemOver =
+    cnf: alternatives:
+    mkUnion "gatedFreeformKey" cnf {
+      inherit alternatives;
+      recarry = c: gatedFreeformElemOver cnf c.alternatives;
+      dispatch =
+        loc: defs:
+        let
+          k = prelude.last loc;
+          # den feeds ONE pre-merged config def per freeform child, so `head defs` is THE value; the all-defs
+          # form generalises for a native multi-def author (recurse iff SOME def is an attrset namespace; an
+          # all-primitive undeclared multi-def key is not a namespace → throw). Decides on WHNF
+          # (`isAttrs d.value`) — no deep forcing, strictly less than a spine-walk.
+          anyAttrs = builtins.any (d: builtins.isAttrs d.value) defs;
+        in
+        if cnf.recursiveClosed then
+          if anyAttrs then
+            # a namespace node — recurse as a nested aspect, gate RETAINED (recursive-closed).
+            { member = builtins.elemAt alternatives 0; }
           else
-            throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
-      };
-    in
-    self;
+            {
+              value =
+                throw "gen-aspects: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
+                + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
+                + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
+                + "content). Declare it in keySemantics, or nest it under a declared key.";
+            }
+        else if builtins.elem k cnf.freeformKeys then
+          { member = builtins.elemAt alternatives 1; }
+        else
+          {
+            value = throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+          };
+    };
 
   # The closed keySemantics category vocabulary (ADR-0027 ruling 2). ONE binding so aspectSubmodule's
   # per-key refusal and the standalone `keyCategory` read below can never drift apart.
@@ -421,50 +615,57 @@ let
   # 6). keyRef is detected by its `__keyRef` marker and passed through opaquely (gen-link resolves it
   # against the merged graph); everything else routes through aspectOrFn EXACTLY as before, so by-value
   # includes are byte-unchanged.
+  # A union (above) over its two nesting-capable members: the element reading a bare module AS a
+  # module, and `aspectOrFn`. A keyRef and a deferred-resolution include pass through as themselves.
   includesElemType =
     cnf:
-    let
-      self = merge.mkOptionType {
-        name = "includesElem";
-        check = _: true;
-        functor = cnfFunctor "includesElem" cnf self;
-        merge =
-          loc: defs:
-          let
-            v = (builtins.head defs).value;
-            # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
-            # closure, or a defunctionalised gen-program policy record (`__isPolicy`, that library's stated
-            # contract). Like `__keyRef`, its resolution must NOT be forced by the type — the consumer
-            # wraps/dispatches it registry-aware (gen-dispatch `deriveGroup` for a policy record).
-            # First-Order Laziness (Lorenzen et al. 2025): a deferred-resolution include passes the type
-            # unforced. Default off ⇒ native guard-wrapping. Any other record is aspect content.
-            isDeferredInclude = builtins.isFunction v || (builtins.isAttrs v && (v.__isPolicy or false));
-            # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
-            # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
-            # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.
-            isBareModuleInclude =
-              builtins.isAttrs v && (v ? imports) && builtins.isList v.imports && v.imports != [ ];
-          in
-          if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
-            v
-          else if cnf.deferIncludeResolution && builtins.length defs == 1 && isDeferredInclude then
-            v
-          else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
-            throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
-            + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
-            + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
-            + "content key."
-          else if builtins.length defs == 1 && isBareModuleInclude then
-            # Default OFF: the bare module is absorbed AS A MODULE. The aspect submodule reads an
-            # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
-            # `imports` a freeform key and drop the imported content, so the def is handed over as a
-            # function module, which the submodule reads as a module.
-            (aspectSubmodule cnf).merge loc (map (d: d // { value = _: d.value; }) defs)
-          else
-            (aspectOrFn cnf).merge loc defs;
-      };
-    in
-    self;
+    includesElemTypeOver cnf [
+      # Default OFF: the bare module is absorbed AS A MODULE. The aspect submodule reads an
+      # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
+      # `imports` a freeform key and drop the imported content, so the def is handed over as a
+      # function module, which the submodule reads as a module.
+      (entryCoerced (aspectSubmodule cnf) (d: d // { value = _: d.value; }))
+      (aspectOrFn cnf)
+    ];
+  includesElemTypeOver =
+    cnf: alternatives:
+    mkUnion "includesElem" cnf {
+      inherit alternatives;
+      recarry = c: includesElemTypeOver cnf c.alternatives;
+      dispatch =
+        loc: defs:
+        let
+          v = (builtins.head defs).value;
+          # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
+          # closure, or a defunctionalised gen-program policy record (`__isPolicy`, that library's stated
+          # contract). Like `__keyRef`, its resolution must NOT be forced by the type — the consumer
+          # wraps/dispatches it registry-aware (gen-dispatch `deriveGroup` for a policy record).
+          # First-Order Laziness (Lorenzen et al. 2025): a deferred-resolution include passes the type
+          # unforced. Default off ⇒ native guard-wrapping. Any other record is aspect content.
+          isDeferredInclude = builtins.isFunction v || (builtins.isAttrs v && (v.__isPolicy or false));
+          # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
+          # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
+          # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.
+          isBareModuleInclude =
+            builtins.isAttrs v && (v ? imports) && builtins.isList v.imports && v.imports != [ ];
+        in
+        if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
+          { value = v; }
+        else if cnf.deferIncludeResolution && builtins.length defs == 1 && isDeferredInclude then
+          { value = v; }
+        else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
+          {
+            value =
+              throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
+              + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
+              + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
+              + "content key.";
+          }
+        else if builtins.length defs == 1 && isBareModuleInclude then
+          { member = builtins.elemAt alternatives 0; }
+        else
+          { member = builtins.elemAt alternatives 1; };
+    };
 
   # The native structural option SET — the six options every aspect submodule hardwires
   # (name/description/key/id_hash/meta/includes, below). ONE binding, so keyCategory and the submodule option
@@ -747,10 +948,56 @@ let
 
   aspectsRootWith =
     elemType:
-    merge.mkOptionType {
+    let
+      # The container's element positions, stated ONCE (gen-merge's `split`): one per key, each
+      # re-rooted at `[ k ]` — drop the container `loc` (the mount) so children are relative — with
+      # the position extended by that key.
+      split =
+        _loc: defs:
+        map (k: {
+          step = [ k ];
+          loc = [ k ];
+          defs = builtins.concatMap (
+            d:
+            prelude.optional (d.value ? ${k}) {
+              inherit (d) file;
+              value = d.value.${k};
+            }
+          ) defs;
+          type = elemType;
+        }) (builtins.attrNames (prelude.foldl' (acc: d: acc // d.value) { } defs));
+      foldWith =
+        foldElement: loc: defs:
+        builtins.listToAttrs (
+          map (e: {
+            name = builtins.head e.step;
+            value = foldElement e;
+          }) (split loc defs)
+        );
+      functor = {
+        name = "aspectsRoot";
+        payload = elemType;
+        binOp = mergeElemTypes;
+        type = aspectsRootWith;
+      };
+      # The protocol's reading of that functor against a partner's (gen-merge `protoTypeMerge`, over
+      # this one functor): two roots merge when their elements do, rebuilt over the merged element.
+      typeMerge =
+        f:
+        let
+          merged =
+            if !(builtins.isAttrs f) || (f.name or null) != "aspectsRoot" || (f.payload or null) == null then
+              null
+            else
+              mergeElemTypes elemType f.payload;
+        in
+        if merged == null then null else aspectsRootWith merged;
+    in
+    merge.types.defineType {
       name = "aspectsRoot";
-      inherit elemType;
-      nestedTypes = { inherit elemType; };
+      inherit elemType split;
+      carries.element = elemType;
+      recarry = c: aspectsRootWith c.element;
       # THE FIX (den-hoag-a0gc): a descriptor that states NO relation of its own gets the protocol's
       # nullary one, which merges ANY two same-named operands unconditionally — two `aspectsRoot`
       # declarations typeMerged on the CONTAINER'S NAME ALONE, blind to their elements, the
@@ -759,46 +1006,37 @@ let
       # elements merge (via `mergeElemTypes`, recursively), and `type` rebuilds this same container
       # over the merged element on success.
       #
-      # ★★ WHY STATING IT IS ENOUGH, AND IT IS THE DEPENDENCY'S RULING THAT MAKES IT SO: gen-merge
-      # HONOURS A CALLER'S STATED `functor.binOp` (owner, 2026-09-08, fork 1). `importType` RETAINS
-      # the author's relation rather than taking it back — keyed on `statesRelation`, i.e. on
-      # `functor.binOp` being present, which asks what the author SAID and not which library built
-      # the record — and `exportType` republishes it, so what is stated here is what a foreign
-      # engine reads back. `protoTypeMerge` is the combinator the retained relation is read through,
-      # and it derives the `typeMerge` accessor from this functor automatically; no separate
-      # override is needed. ⇒ THAT RULING IS WHAT A FUTURE PIN BUMP MUST BE CHECKED AGAINST. The
-      # revision itself belongs to the lock, which is the coordinate; a rev written into this
-      # comment is a figure that decays the moment the relock runs.
-      functor = {
-        name = "aspectsRoot";
-        payload = elemType;
-        binOp = mergeElemTypes;
-        type = aspectsRootWith;
+      # ★★ WHY STATING IT IS ENOUGH: gen-merge's export publishes a relation its author STATED
+      # (`retainedRelation`, the owner's 2026-09-08 fork-1 ruling) rather than deriving one from
+      # `carries`, so what is stated here is what a foreign engine reads back, and gen's own relation
+      # is the same functor read against the partner's (`statedRelation`). ⇒ THAT RULING IS WHAT
+      # A FUTURE PIN BUMP MUST BE CHECKED AGAINST. The revision itself belongs to the lock, which is
+      # the coordinate; a rev written into this comment is a figure that decays the moment the relock
+      # runs.
+      inherit (statedRelation "aspectsRoot" functor typeMerge) typeMergeRel retainedRelation;
+      substructure = {
+        declares = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
+        modules = elemType.getSubModules or null;
+        rebuild =
+          m: aspectsRootWith (if elemType ? substSubModules then elemType.substSubModules m else elemType);
       };
-      getSubOptions = prefix: elemType.getSubOptions (prefix ++ [ "<name>" ]);
-      getSubModules = elemType.getSubModules or null;
-      substSubModules =
-        m: aspectsRootWith (if elemType ? substSubModules then elemType.substSubModules m else elemType);
-      merge =
-        loc: defs:
-        let
-          keys = builtins.attrNames (prelude.foldl' (acc: d: acc // d.value) { } defs);
-        in
-        builtins.listToAttrs (
-          map (k: {
-            name = k;
-            # re-root at [ k ]: drop the container `loc` (the mount) so children are relative.
-            value = merge.mergeDefs [ k ] elemType (
-              builtins.concatMap (
-                d:
-                prelude.optional (d.value ? ${k}) {
-                  inherit (d) file;
-                  value = d.value.${k};
-                }
-              ) defs
-            );
-          }) keys
-        );
+      # Each element folds through the engine's fold, called or threaded. The threaded one is the
+      # engine's threaded twin composed from its published halves: the called spine (`mergeDefs`)
+      # over the element whose fold is its threaded form, with the position extended by the key.
+      mergeDefs = {
+        __functor = _: foldWith (e: merge.mergeDefs e.loc e.type e.defs);
+        threaded =
+          ev:
+          foldWith (
+            e:
+            merge.mergeDefs e.loc (
+              if builtins.isAttrs e.type && e.type ? mergeDefs.threaded then
+                e.type // { mergeDefs = e.type.mergeDefs.threaded (ev // { position = ev.position ++ e.step; }); }
+              else
+                e.type
+            ) e.defs
+          );
+      };
     };
   aspectsRoot = cnf: aspectsRootWith (aspectType cnf);
 
