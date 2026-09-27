@@ -268,6 +268,32 @@ let
   };
   localGoodFacts = aspects.graphFacts { providerPrefix = [ "acme" ]; } localGoodEval.config.aspects;
 
+  # A BARE STRING, the same edge shape as by-value (den-hoag-zxgan): dangling, sound, and the
+  # by-value control it must agree with.
+  localBadStringEval = mkIncludes {
+    providerPrefix = [ "acme" ];
+    elems = _: [ "lib/bsae" ];
+  };
+  localBadStringFacts = aspects.graphFacts {
+    providerPrefix = [ "acme" ];
+  } localBadStringEval.config.aspects;
+
+  localGoodStringEval = mkIncludes {
+    providerPrefix = [ "acme" ];
+    elems = _: [ "lib/base" ];
+  };
+  localGoodStringFacts = aspects.graphFacts {
+    providerPrefix = [ "acme" ];
+  } localGoodStringEval.config.aspects;
+
+  localGoodValueEval = mkIncludes {
+    providerPrefix = [ "acme" ];
+    elems = config: [ config.aspects.lib.base ];
+  };
+  localGoodValueFacts = aspects.graphFacts {
+    providerPrefix = [ "acme" ];
+  } localGoodValueEval.config.aspects;
+
   # THE TWO keyRef FORMS OVER THE SAME TARGET, under the default empty provider prefix. `lib/base`
   # IS a node here, so the two forms differ in nothing a consumer can see unless the relation says so.
   sugarSelfFacts =
@@ -317,6 +343,7 @@ let
   # The refusal message, rendered from the same binding the throw path calls.
   danglingMsg = factsInternals.danglingIncludeRefusal "acme/app" 0 "acme/lib/bsae";
   declarationMsg = factsInternals.danglingDeclarationRefusal "app" 1 "elsewhere/thing";
+  danglingReferenceMsg = factsInternals.danglingReferenceRefusal "acme/app" 0 "acme/lib/bsae";
 
   # ── DECLARATION vs CONTENT fixtures ──
   # Raw module lists, so one aspect's `includes` can take SEVERAL definitions: an element's merge
@@ -949,6 +976,32 @@ in
     };
   };
 
+  # ── the REFERENCE refusal (den-hoag-zxgan) ──────────────────────────────────────────────────
+  # A bare string is unconditionally a reference (den-hoag-2zjg1 TERM ruling), so a local-key
+  # mismatch is always a refusal — the same shape as the by-value branch, never a fall-through to
+  # inline content (a bare string has no `isIncludeContent` escape hatch to begin with).
+  flake.tests.graph-facts.test-dangling-reference-refuses-by-name = {
+    expr = {
+      localDanglingRefuses = !(caught (builtins.head localBadStringFacts.includesOf."acme/app"));
+      # NEGATIVE CONTROL, same predicate, same run: the sound local bare string does NOT refuse.
+      localSoundDoesNotRefuse = caught (builtins.head localGoodStringFacts.includesOf."acme/app");
+      # A bare string and the by-value form over the same target publish the SAME edge.
+      stringAndByValueAgree =
+        localGoodStringFacts.includesOf."acme/app" == localGoodValueFacts.includesOf."acme/app";
+      messageNamesTheNode = lib.hasInfix "'acme/app'" danglingReferenceMsg;
+      messageNamesTheTarget = lib.hasInfix "'acme/lib/bsae'" danglingReferenceMsg;
+      messageNamesThePosition = lib.hasInfix "position 0" danglingReferenceMsg;
+    };
+    expected = {
+      localDanglingRefuses = true;
+      localSoundDoesNotRefuse = true;
+      stringAndByValueAgree = true;
+      messageNamesTheNode = true;
+      messageNamesTheTarget = true;
+      messageNamesThePosition = true;
+    };
+  };
+
   # ★ CONTENT IS STILL CONTENT, however it was merged or copied. The same record is the control for
   # the refusal above: every row here carries a key, reaches the new branch, and must publish its
   # positions. Multi-definition lists, `mkMerge`, `mkBefore`, an `mkIf`-false drop and `name` all
@@ -1278,16 +1331,19 @@ in
       covered = [
         "danglingDeclarationRefusal"
         "danglingIncludeRefusal"
+        "danglingReferenceRefusal"
       ];
     };
     expected = {
       renderers = [
         "danglingDeclarationRefusal"
         "danglingIncludeRefusal"
+        "danglingReferenceRefusal"
       ];
       covered = [
         "danglingDeclarationRefusal"
         "danglingIncludeRefusal"
+        "danglingReferenceRefusal"
       ];
     };
   };

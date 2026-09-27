@@ -74,11 +74,27 @@ let
     + "`meta.aspect-chain` do not both place it at an include position), so it is a reference whose "
     + "target is missing — a value taken from another tree, or one whose key was set by hand. "
     + "Include a declared aspect of this tree, or reference another tree's with `keyRef`.";
+
+  # A bare string is unconditionally a REFERENCE (den-hoag-2zjg1 rulings B / TERM "i") — never
+  # inline content, since content is never string-shaped (README's own taxonomy: a wrapped fn, a
+  # guard record, a deferred closure or policy record, an aspect literal — none of them a string).
+  # It resolves LOCALLY ONLY, exactly like a by-value element's `.key`: no origin-qualified
+  # string-sugar `keyRef` call, because that sugar's origin is always the string's FIRST segment
+  # (README.md:254), so it can name a local node only by accident, when `cnf.providerPrefix`
+  # itself happens to be one segment long — under any other origin, every string-sugar keyRef is
+  # foreign, silently, and a bare identifier would misresolve to a foreign reference nothing ever
+  # checks or refuses, instead of the local sibling the writer named.
+  danglingReferenceRefusal =
+    id: i: ref:
+    "gen-aspects: aspect '${id}' declares at include position ${toString i} the bare identifier "
+    + "'${ref}', which names no node of this tree. A bare string in `includes` is always a "
+    + "reference (never inline content), resolved against this tree's own origin. Include a "
+    + "declared aspect of this tree by its local key, or reference another tree's with `keyRef`.";
 in
 {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
   # reads a refusal, never renders one.
-  inherit danglingIncludeRefusal danglingDeclarationRefusal;
+  inherit danglingIncludeRefusal danglingDeclarationRefusal danglingReferenceRefusal;
 
   # `graphFacts cnf aspects` →
   #   { nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }
@@ -191,6 +207,17 @@ in
             { kind = "inline"; }
           else
             throw (danglingDeclarationRefusal id i elem.key)
+        else if builtins.isString elem then
+          # A bare string is unconditionally a REFERENCE (never content — see the refusal's own
+          # comment above), so it has no `isIncludeContent` escape hatch: a local-key mismatch is
+          # always a refusal, never a fall-through to "inline".
+          if nodeSet ? ${qualify elem} then
+            {
+              kind = "local";
+              target = qualify elem;
+            }
+          else
+            throw (danglingReferenceRefusal id i elem)
         else
           { kind = "inline"; };
 
