@@ -114,9 +114,13 @@
         identityInternals = import ../lib/identity.nix { prelude = gen-prelude.lib; };
       };
       # Cells whose subject is an error MESSAGE: outside `testModules`, read by
-      # `nix-unit --flake ./ci#testsError` (see the file's header).
+      # `nix-unit --flake ./ci#testsError` (see the file's header). `tests-process.nix` is a PROCESS
+      # cell (den-hoag-n6dh7 SCC build, relocated from gen-merge's own `ci/`): its verdict is a
+      # process exit, not a nix-unit output, so it lives here beside `tests-error.nix` for the same
+      # reason and is read by `apps.tests-process`, not `testModules`.
       extraModules = [
         ./tests-error.nix
+        ./tests-process.nix
       ];
     };
 }
