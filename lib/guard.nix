@@ -233,15 +233,22 @@ in
               )
           else if g.__guard or false then
             (if fires ctx g then g.body else null)
-          # The escape hatch applies a CALLER-SUPPLIED closure (a raw guard closure reaches here by
-          # construction under `cnf.deferIncludeResolution`), so it takes the context door. A wrap
-          # record carries its own doors (`wrapFn`) or self-gates (`wrapGatedFn`), so it is applied
-          # as built. The closure's RETURN is handed back raw: an enumerated exception, retired with
-          # the hatch under den-hoag-lwbb1 (ci/tests/wrap-fn.nix `test-falsifier-hatch-return-untyped`).
-          else if prelude.isFunction g then
-            g (doors.requireRequiredCoords "guard" "`applyGuard`" (builtins.functionArgs g) ctx)
+          # A wrap record carries its own doors (`wrapFn`) or self-gates (`wrapGatedFn`), so it is
+          # applied as built. The escape hatch applies a CALLER-SUPPLIED closure (a raw guard closure
+          # reaches here by construction under `cnf.deferIncludeResolution`), so it takes the context
+          # door. The closure's RETURN is handed back raw: an enumerated exception, retired with the
+          # hatch under den-hoag-lwbb1 (ci/tests/wrap-fn.nix `test-falsifier-hatch-return-untyped`).
+          #
+          # ★ The wrap record is tested FIRST, and the hatch reads the closure through the prelude's
+          # PAIR of readers (P2-OQ15 arm (i)). A wrap record is a functor, and the prelude's readers
+          # are functor-aware: tested second, it would take the hatch; paired with
+          # `builtins.functionArgs`, it aborts past `tryEval` (`'functionArgs' requires a function`).
+          # A non-wrap functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, a gen `door`)
+          # is callable and states its formals, so it takes the context door like a lambda.
           else if g.__isWrappedFn or false then
             g ctx
+          else if prelude.isFunction g then
+            g (doors.requireRequiredCoords "guard" "`applyGuard`" (prelude.functionArgs g) ctx)
           else
             throw "gen-aspects.guard: applyGuard: not a guard record or callable"
         );

@@ -41,6 +41,30 @@ in
     expr = (builtins.tryEval (builtins.deepSeq (aspects.toArgData { f = x: x; }) true)).success;
     expected = false;
   };
+  # P2-OQ15 arm (i): the escape hatch reads a caller's closure through the prelude's functor-aware
+  # PAIR. A wrap record (a functor) is applied as built, before the hatch, and a non-wrap functor
+  # stating its formals takes the context door exactly as a lambda does. Before the readers moved,
+  # the wrap record reached `builtins.functionArgs` only by luck of branch order, and the
+  # non-wrap functor was refused as not callable.
+  flake.tests.guard.test-hatch-reads-a-functor-by-its-published-formals = {
+    expr = [
+      (v.applyGuard ctxCortex (lib.setFunctionArgs (a: a.thimble.name) { thimble = false; }))
+      (v.applyGuard ctxCortex (aspects.wrapGatedFn { functionArgs.thimble = false; } (a: a.thimble.name)))
+      (v.applyGuard ctxCortex ({ thimble, ... }: thimble.name))
+    ];
+    expected = [
+      "cortex"
+      "cortex"
+      "cortex"
+    ];
+  };
+  flake.tests.guard.test-hatch-refuses-a-functor-missing-a-required-coord = {
+    expr =
+      (builtins.tryEval (
+        builtins.deepSeq (v.applyGuard ctxCortex (lib.setFunctionArgs (a: a) { host = false; })) null
+      )).success;
+    expected = false;
+  };
   flake.tests.guard.test-applyguard-fires = {
     expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "thimble" "name" ] "cortex" { ok = true; });
     expected = {

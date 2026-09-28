@@ -126,12 +126,16 @@ in
         in
         c ? id_hash && (v.id_hash or null) == c.id_hash && (v.key or null) == c.key;
 
-      resolveRef = prelude.resolve {
-        entries = localNodes;
-        inherit isCanonical;
-        hint = "key";
-        form = "an aspect value carrying its string 'key'";
-      };
+      resolveRef =
+        prelude.resolve
+          {
+            hint = "key";
+            form = "an aspect value carrying its string 'key'";
+          }
+          {
+            entries = localNodes;
+            inherit isCanonical;
+          };
       # A reference that resolved: the registry answers the local key, the edge names the node id.
       # Forced before the record is built, so a refusal reaches every relation that reads the kind,
       # not only the one that reads the target.

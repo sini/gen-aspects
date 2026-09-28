@@ -71,4 +71,20 @@ in
         ({ foo, ... }: { });
     expected = true;
   };
+
+  # P2-OQ15 arm (i): `canTake` reads through the prelude's functor-aware PAIR, so a functor carrying
+  # `__functionArgs` (nixpkgs `setFunctionArgs`, a gen `door`) is introspected by its published
+  # formals, as a lambda is. Before the readers moved it answered `false` for every functor.
+  flake.tests.can-take.test-functor-with-published-formals-is-read = {
+    expr = [
+      (isModuleFn (lib.setFunctionArgs (_: { }) { config = false; }))
+      (isModuleFn (lib.setFunctionArgs (_: { }) { host = false; }))
+      (canTake.atLeast { host = 1; } (lib.setFunctionArgs (_: { }) { host = false; }))
+    ];
+    expected = [
+      true
+      false
+      true
+    ];
+  };
 }
