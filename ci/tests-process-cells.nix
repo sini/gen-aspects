@@ -45,12 +45,12 @@ let
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
     scope = scope // {
       eval =
-        a:
+        o: attributes: s:
         builtins.trace label (
-          if a.attributes ? definitions || a.attributes ? positions then
-            scope.eval a
+          if attributes ? definitions || attributes ? positions then
+            scope.eval o attributes s
           else
-            builtins.trace "${label}-plain" (scope.eval a)
+            builtins.trace "${label}-plain" (scope.eval o attributes s)
         );
     };
   };
