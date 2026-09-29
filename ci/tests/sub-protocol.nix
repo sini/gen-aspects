@@ -69,11 +69,12 @@ let
 in
 {
   # `getSubModules` is the element's own answer, propagated. With `aspectType` as the element that
-  # answer is NULL — and NULL is CORRECT here, not a stub: `aspectType` is Palmer's flat dispatching
-  # type (one type, dispatch in merge), and a dispatcher over several branches has no SINGLE module set
-  # to name — its `aspectSubmodule` branch carries one, its guard and wrapped-fn branches do not. The
-  # two controls make
-  # the NULL a measurement rather than a blind spot: the same predicate reads `LIST[1]` off a type
+  # answer is NULL — and NULL is CORRECT here, not a stub. Not because a dispatcher cannot name a
+  # module set (nixpkgs' `attrTag` does): `aspectType`'s `aspectSubmodule` branch carries one and its
+  # guard and wrapped-fn branches do not, and a non-null answer would cross gen-merge's carries
+  # boundary, open gen-merge's identity walk into aspects, and let `fixupOptionType` substitute a bare
+  # submodule for the dispatcher (the reasons in full: `aspectsRootWith`, lib/types.nix). The two
+  # controls make the NULL a measurement rather than a blind spot: the same predicate reads `LIST[1]` off a type
   # that does carry a module set, and `NULL` off a leaf.
   flake.tests.sub-protocol.test-getsubmodules-propagates-the-element = {
     expr = {

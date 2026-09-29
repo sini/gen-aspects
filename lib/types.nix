@@ -945,10 +945,16 @@ let
   # hand an introspecting consumer an address that resolves nowhere.
   #
   # `getSubModules`/`substSubModules` propagate whatever the element answers. With `aspectType` as the
-  # element that is `null` / a rebuild over `null`: `aspectType` is Palmer's flat dispatching type, and
-  # a dispatcher over several branches has no SINGLE module set to name — its `aspectSubmodule` branch
-  # carries one, its guard and wrapped-fn branches do not — so `null` is its correct answer and
-  # propagating it is correct too. (Its `getSubOptions` does answer, with that branch's options.) nixpkgs
+  # element that is `null` / a rebuild over `null`. That is not because a dispatcher cannot name a
+  # module set: nixpkgs' `attrTag` dispatches and names one, rebuilding itself. `aspectType` is Palmer's
+  # flat dispatching type, whose `aspectSubmodule` branch carries a module set while its guard and
+  # wrapped-fn branches do not, and `null` is ITS answer for what a non-null one would set off: gen-merge
+  # derives `carries.moduleSet` from `getSubModules` alone, so the element would cross the carries
+  # boundary; gen-merge's identity walk stops at an element carrying no element and no module set, and
+  # would otherwise descend into aspects and read them as `id_hash` instances; and nixpkgs'
+  # `fixupOptionType` would `substSubModules` the type, which delegated to the branch swaps the
+  # dispatcher for a bare submodule and drops the guard and wrapped-fn branches. (Its `getSubOptions`
+  # does answer, with that branch's options: that field sets off none of the three.) nixpkgs
   # calls `substSubModules` only where `getSubModules != null` (`fixupOptionType`, lib/modules.nix), so
   # the rebuild is live exactly when the element really does carry modules.
   #
