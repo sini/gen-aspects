@@ -36,7 +36,7 @@
 let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
-  inherit (import ./cnf.nix) extendCnf checkedEntry;
+  inherit (import ./cnf.nix) extendCnf checkedEntry mergedKeys;
   cnfConstruction = (import ./cnf.nix).cnfConstruction schema.keySemanticsRecords;
 
   # The merge relation of a type built per `cnf` (`aspectType`, `gatedFreeformElem`,
@@ -259,23 +259,43 @@ let
   };
 
   # A per-cnf type's relation (`cnfFunctor`, gen-schema's construction relation): two such types
-  # merge exactly when their cnfs are one construction.
+  # merge exactly when their cnfs are one construction. The cnf's module lists (`mergedKeys`) are
+  # not part of it: they ride the payload and concatenate, as a nixpkgs submodule's `modules` do
+  # (`submoduleWith`'s `binOp`), so the merge is `rebuild` over the joined cnf. A partner adding no
+  # module is the monoid's identity and answers with this type itself.
   cnfRelation =
-    name: cnf: self:
+    name: cnf: rebuild: self:
     let
-      functor = cnfFunctor name cnf self;
+      construction = cnfFunctor name cnf self;
+      functor = construction // {
+        payload = construction.payload // {
+          modules = prelude.genAttrs mergedKeys (k: cnf.${k});
+        };
+        binOp =
+          a: b:
+          if construction.binOp a b == null then
+            null
+          else if builtins.all (k: b.modules.${k} == [ ]) mergedKeys then
+            a
+          else
+            a
+            // {
+              modules = builtins.mapAttrs (k: l: l ++ b.modules.${k}) a.modules;
+              joined = true;
+            };
+        type = p: if p.joined or false then rebuild (extendCnf cnf p.modules) else self;
+      };
     in
     statedRelation name functor (
       f:
-      if
-        !(builtins.isAttrs f)
-        || (f.name or null) != name
-        || (f.payload or null) == null
-        || functor.binOp functor.payload f.payload == null
-      then
-        null
-      else
-        functor.type f.payload
+      let
+        joined =
+          if !(builtins.isAttrs f) || (f.name or null) != name || (f.payload or null) == null then
+            null
+          else
+            functor.binOp functor.payload f.payload;
+      in
+      if joined == null then null else functor.type joined
     );
 
   # A per-cnf UNION: a type whose fold picks one of its members by the definitions' shape, or answers
@@ -294,11 +314,12 @@ let
     {
       alternatives,
       recarry,
+      rebuild,
       dispatch,
       declares ? _prefix: { },
     }:
     let
-      rel = cnfRelation name cnf self;
+      rel = cnfRelation name cnf rebuild self;
       choose = loc: defs: (dispatch loc defs).member or null;
       foldWith =
         foldMember: loc: defs:
@@ -502,6 +523,7 @@ let
     mkUnion "aspect" cnf {
       inherit alternatives dispatch;
       recarry = c: aspectTypeOver cnf c.alternatives;
+      rebuild = aspectType;
       # The sub-option protocol is answered by the branch that declares options: every attrset and
       # module-function aspect merges through `aspectSubmodule`, so its option set IS this type's.
       # The guard and wrapped-fn branches declare none (a function-bodied fragment is opaque before
@@ -554,6 +576,7 @@ let
     mkUnion "gatedFreeformKey" cnf {
       inherit alternatives;
       recarry = c: gatedFreeformElemOver cnf c.alternatives;
+      rebuild = gatedFreeformElem;
       dispatch =
         loc: defs:
         let
@@ -632,6 +655,7 @@ let
     mkUnion "includesElem" cnf {
       inherit alternatives;
       recarry = c: includesElemTypeOver cnf c.alternatives;
+      rebuild = includesElemType;
       dispatch =
         loc: defs:
         let

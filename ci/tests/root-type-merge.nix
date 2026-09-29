@@ -17,18 +17,9 @@
 # calls `.typeMerge` directly (the real protocol hook `evalModuleTree` itself would call), never a
 # hand-rolled stand-in.
 #
-# ★ HONEST SCOPE, MEASURED NOT ASSUMED: `aspectType` itself (gen-aspects' element type) answers
-# every partner named `"aspect"` with a merge — its own functor carries no payload either (it does
-# not customise `functor`), so its `typeMerge` is the SAME name-only nixpkgs default. Two
-# `aspectsRoot`s built over DIFFERING `keySemantics` therefore still merge after this fix
-# (`test-differing-cnf-same-element-name-still-merges` below) — the bead's literal witness is NOT
-# discharged by this change, and giving `aspectType` a cnf-sensitive functor would be a NEW merge
-# semantics (what does "these two cnfs merge" mean — deep equality? a minted digest over the
-# vocabulary, k1uv-style?), which is its own design fork and out of this fix's scope. What IS
-# discharged, and is the actual defect this bead named — the container's functor carrying no
-# payload at all, so it could not discriminate on ANYTHING — is measured directly by the two
-# refusal cells below: a partner sharing the name but not the element now REFUSES, where before the
-# container never looked past its own name.
+# The element's own relation is over its cnf (den-hoag-bfc0k, `test-differing-cnf-refuses` below),
+# by regime (lib/cnf.nix `cnfVocabulary`): minted and compared keys decide identity, the module
+# lists concatenate as a nixpkgs submodule's `modules` do, and `guardForms` is excluded.
 {
   lib,
   aspects,
@@ -155,8 +146,8 @@ in
     expected = "REFUSED";
   };
 
-  # Per component (lib/cnf.nix `cnfVocabulary`): an inert key that differs refuses, a sealed key
-  # holding one shared value merges, two distinct lambdas refuse.
+  # Per component (lib/cnf.nix `cnfVocabulary`): an inert key that differs refuses, and a module
+  # list is not identity, so one shared module and two distinct lambdas both merge.
   flake.tests.root-type-merge.test-cnf-components-decide = {
     expr =
       let
@@ -184,7 +175,115 @@ in
     expected = {
       inertFlag = "REFUSED";
       sharedModule = "MERGED:aspect";
-      distinctLambdas = "REFUSED";
+      distinctLambdas = "MERGED:aspect";
+    };
+  };
+
+  # den-hoag-a0gc arm (e), per regime: `guardForms` is excluded (no type reads it), `collections`
+  # is still compared, and a minted key still refuses. The control is the identical pair.
+  flake.tests.root-type-merge.test-cnf-regimes-decide = {
+    expr =
+      let
+        at = c: aspects.aspectType c;
+        v = c: verdict ((at c).typeMerge (at cnf1).functor);
+      in
+      {
+        guardFormsDiffer = v (
+          cnf1
+          // {
+            guardForms.g = {
+              eval = _: _: true;
+              reads = [ ];
+            };
+          }
+        );
+        collectionsDiffer = v (cnf1 // { collections.c = { }; });
+        scalarDiffer = v (cnf1 // { closedKeys = true; });
+        identical = v cnf1;
+      };
+    expected = {
+      guardFormsDiffer = "MERGED:aspect";
+      collectionsDiffer = "REFUSED";
+      scalarDiffer = "REFUSED";
+      identical = "MERGED:aspect";
+    };
+  };
+
+  # THE UNION (arm e): two `aspectsRoot` declarations whose `aspectModules`/`metaModules` differ
+  # merge, in either order, and the merged aspect carries BOTH sides' options, where a relation
+  # answering with one operand would drop the other's. The siblings built over the same cnf (an
+  # `includes` element, a nested aspect) carry both as well, when the aspect submodule itself is
+  # declared twice.
+  flake.tests.root-type-merge.test-module-lists-concatenate = {
+    expr =
+      let
+        opt =
+          v:
+          genMerge.mkOption {
+            type = t.str;
+            default = v;
+          };
+        cA = cnf1 // {
+          aspectModules = [ { options.extraA = opt "from-A"; } ];
+          metaModules = [ { options.metaA = opt "meta-A"; } ];
+        };
+        cB = cnf1 // {
+          aspectModules = [ { options.extraB = opt "from-B"; } ];
+        };
+        read = a: {
+          extraA = a.extraA or "ABSENT";
+          extraB = a.extraB or "ABSENT";
+        };
+        roots =
+          x: y:
+          let
+            foo =
+              (genMerge.evalModuleTree {
+                modules = [
+                  { options.aspects = genMerge.mkOption { type = aspects.aspectsRoot x; }; }
+                  { options.aspects = genMerge.mkOption { type = aspects.aspectsRoot y; }; }
+                  { aspects.foo = { }; }
+                ];
+              }).config.aspects.foo;
+          in
+          read foo // { metaA = foo.meta.metaA or "ABSENT"; };
+        p =
+          (genMerge.evalModuleTree {
+            modules = [
+              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule cA; }; }
+              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule cB; }; }
+              {
+                p.includes = [ { } ];
+                p.nested = { };
+              }
+            ];
+          }).config.p;
+        both = {
+          extraA = "from-A";
+          extraB = "from-B";
+        };
+      in
+      {
+        verdict = verdict ((aspects.aspectType cA).typeMerge (aspects.aspectType cB).functor);
+        ab = roots cA cB;
+        ba = roots cB cA;
+        include = read (builtins.head p.includes) == both;
+        nested = read p.nested == both;
+      };
+    expected = {
+      verdict = "MERGED:aspect";
+      ab = {
+        extraA = "from-A";
+        extraB = "from-B";
+        metaA = "meta-A";
+      };
+      ba = {
+        extraA = "from-A";
+        extraB = "from-B";
+        metaA = "meta-A";
+      };
+      include = true;
+      nested = true;
     };
   };
 

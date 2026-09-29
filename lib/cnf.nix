@@ -46,14 +46,17 @@ let
 
   # Each key's DEFAULT and its identity REGIME, in one binding (ADR-0034: the regime is decided at
   # the declaration, never by inspecting a value). `minted` content is inert by construction and
-  # enters the one mint; `compared` content is caller-supplied modules, guard evaluators or option
-  # declarations, sealed until its vocabulary migrates, and is decided by the reified value under
-  # Nix `==`. `keySemantics` is split per entry: its `category` is inert, the rest of an entry (a
-  # facet's `option`/`module`) is not.
+  # enters the one mint; `compared` content is caller-supplied collections or option declarations,
+  # sealed until its vocabulary migrates, and is decided by the reified value under Nix `==`.
+  # `keySemantics` is split per entry: its `category` is inert, the rest of an entry (a facet's
+  # `option`/`module`) is not. A `merged` key is a module list, and like the `modules` of a nixpkgs
+  # submodule (`types.submoduleWith`'s `binOp`) it is payload, never identity: two declarations
+  # concatenate theirs, a monoid with identity `[ ]`, so nothing is compared or forced. An `excluded`
+  # key is read by no type (`guardForms` reaches only `mkGuardVocab`), so it distinguishes nothing.
   cnfVocabulary = {
     aspectModules = {
       default = [ ];
-      regime = "compared";
+      regime = "merged";
     };
     closedKeys = {
       default = false;
@@ -73,7 +76,7 @@ let
     };
     guardForms = {
       default = { };
-      regime = "compared";
+      regime = "excluded";
     };
     keySemantics = {
       default = { };
@@ -81,7 +84,7 @@ let
     };
     metaModules = {
       default = [ ];
-      regime = "compared";
+      regime = "merged";
     };
     moduleArgs = {
       default = defaultModuleArgs;
@@ -121,9 +124,8 @@ let
   # (den-hoag-bfc0k): the inert keys, the `term` keys' terms and each keySemantics entry's
   # category are minted; the sealed keys and the rest of each entry are compared as values, each
   # stating the type records its grammar places in it. Only an entry's `option.type` is such a
-  # position; the modules, guard forms and collections are open caller content. That content is
-  # outside `records`, and it is ordinary: a module in `aspectModules`/`metaModules`/`guardForms`/
-  # `collections`, or a facet entry's `module`, declaring an option typed by a per-call
+  # position; the collections are open caller content. That content is outside `records`, and it is
+  # ordinary: a module in `collections`, or a facet entry's `module`, declaring an option typed by a per-call
   # `mkOptionType` aborts when two constructions are compared in the order that interns `functor`
   # first, and in every order when that type has a `description` back-edge (gen-merge
   # `closuresFirst`'s enumerated exception). `records = [ ]` is an unchecked assertion that no
@@ -149,6 +151,10 @@ let
   };
 
   cnfKeys = builtins.attrNames cnfDefaults;
+
+  # The keys a construction's relation concatenates rather than compares; outside `cnfConstruction`,
+  # whose grammar is gen-schema's and has no union.
+  mergedKeys = keysIn "merged";
 
   # A key the library RETIRED names its replacement in the refusal, and does so from a binding rather
   # than from an `if`: a future retirement adds an entry, and the message construction does not
@@ -212,6 +218,7 @@ in
     cnfConstruction
     cnfDefaults
     cnfKeys
+    mergedKeys
     cnfRefusal
     checkedCnf
     extendCnf
