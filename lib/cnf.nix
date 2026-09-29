@@ -51,7 +51,8 @@ let
   # `keySemantics` is split per entry: its `category` is inert, the rest of an entry (a facet's
   # `option`/`module`) is not. A `merged` key is a module list, and like the `modules` of a nixpkgs
   # submodule (`types.submoduleWith`'s `binOp`) it is payload, never identity: two declarations
-  # concatenate theirs, a monoid with identity `[ ]`, so nothing is compared or forced. An `excluded`
+  # concatenate theirs, a monoid with identity `[ ]`: the lists are joined unread, never compared,
+  # so one read from `config` is not forced while declarations fold (ADR-0033). An `excluded`
   # key is read by no type (`guardForms` reaches only `mkGuardVocab`), so it distinguishes nothing.
   cnfVocabulary = {
     aspectModules = {

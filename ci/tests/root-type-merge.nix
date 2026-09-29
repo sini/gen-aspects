@@ -212,8 +212,8 @@ in
   # THE UNION (arm e): two `aspectsRoot` declarations whose `aspectModules`/`metaModules` differ
   # merge, in either order, and the merged aspect carries BOTH sides' options, where a relation
   # answering with one operand would drop the other's. The siblings built over the same cnf (an
-  # `includes` element, a nested aspect) carry both as well, when the aspect submodule itself is
-  # declared twice.
+  # `includes` element, a nested aspect, and a listed freeform key under the closed-key gate) carry
+  # both as well, when the aspect submodule itself is declared twice.
   flake.tests.root-type-merge.test-module-lists-concatenate = {
     expr =
       let
@@ -258,6 +258,21 @@ in
               }
             ];
           }).config.p;
+        closed =
+          c:
+          c
+          // {
+            closedKeys = true;
+            freeformKeys = [ "open" ];
+          };
+        gated =
+          (genMerge.evalModuleTree {
+            modules = [
+              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule (closed cA); }; }
+              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule (closed cB); }; }
+              { p.open = { }; }
+            ];
+          }).config.p;
         both = {
           extraA = "from-A";
           extraB = "from-B";
@@ -269,6 +284,7 @@ in
         ba = roots cB cA;
         include = read (builtins.head p.includes) == both;
         nested = read p.nested == both;
+        gatedOpen = read gated.open == both;
       };
     expected = {
       verdict = "MERGED:aspect";
@@ -284,7 +300,98 @@ in
       };
       include = true;
       nested = true;
+      gatedOpen = true;
     };
+  };
+
+  # The join reads neither list: a declaration whose `aspectModules` comes from `config` is
+  # redeclared, in either order, beside a static list or an empty one, and the fold does not
+  # force it while declarations fold (ADR-0033). The static pair is the control.
+  flake.tests.root-type-merge.test-module-lists-join-unforced = {
+    expr =
+      let
+        opt = n: v: {
+          options.${n} = genMerge.mkOption {
+            type = t.str;
+            default = v;
+          };
+        };
+        mA = opt "extraA" "A";
+        mB = opt "extraB" "B";
+        fromConfig =
+          { config, ... }:
+          {
+            options.aspects = genMerge.mkOption {
+              type = aspects.aspectsRoot (cnf1 // { aspectModules = config.extraMods; });
+            };
+          };
+        static = mods: {
+          options.aspects = genMerge.mkOption {
+            type = aspects.aspectsRoot (cnf1 // { aspectModules = mods; });
+          };
+        };
+        extra = {
+          options.extraMods = genMerge.mkOption { type = t.raw; };
+          config.extraMods = [ mA ];
+        };
+        run =
+          decls:
+          let
+            foo =
+              (genMerge.evalModuleTree {
+                modules = decls ++ [
+                  extra
+                  { aspects.foo = { }; }
+                ];
+              }).config.aspects.foo;
+            x = {
+              A = foo.extraA or "ABSENT";
+              B = foo.extraB or "ABSENT";
+            };
+            v = builtins.tryEval (builtins.deepSeq x x);
+          in
+          if v.success then v.value else "THROWS";
+      in
+      {
+        cfgThenStatic = run [
+          fromConfig
+          (static [ mB ])
+        ];
+        staticThenCfg = run [
+          (static [ mB ])
+          fromConfig
+        ];
+        cfgThenEmpty = run [
+          fromConfig
+          (static [ ])
+        ];
+        emptyThenCfg = run [
+          (static [ ])
+          fromConfig
+        ];
+        staticStatic = run [
+          (static [ mA ])
+          (static [ mB ])
+        ];
+      };
+    expected =
+      let
+        ab = {
+          A = "A";
+          B = "B";
+        };
+        a = {
+          A = "A";
+          B = "ABSENT";
+        };
+      in
+      {
+        cfgThenStatic = ab;
+        staticThenCfg = ab;
+        cfgThenEmpty = a;
+        emptyThenCfg = a;
+        staticStatic = ab;
+      };
   };
 
   # `mkAspectModule` threads schema-declared instance options out of `config`, stated as the

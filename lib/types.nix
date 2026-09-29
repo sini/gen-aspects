@@ -261,8 +261,9 @@ let
   # A per-cnf type's relation (`cnfFunctor`, gen-schema's construction relation): two such types
   # merge exactly when their cnfs are one construction. The cnf's module lists (`mergedKeys`) are
   # not part of it: they ride the payload and concatenate, as a nixpkgs submodule's `modules` do
-  # (`submoduleWith`'s `binOp`), so the merge is `rebuild` over the joined cnf. A partner adding no
-  # module is the monoid's identity and answers with this type itself.
+  # (`submoduleWith`'s `binOp`), so the merge is `rebuild` over the joined cnf. It always joins:
+  # telling an empty partner list apart would force it, and a list read from `config` may not be
+  # forced while declarations fold (ADR-0033).
   cnfRelation =
     name: cnf: rebuild: self:
     let
@@ -275,15 +276,12 @@ let
           a: b:
           if construction.binOp a b == null then
             null
-          else if builtins.all (k: b.modules.${k} == [ ]) mergedKeys then
-            a
           else
             a
             // {
               modules = builtins.mapAttrs (k: l: l ++ b.modules.${k}) a.modules;
-              joined = true;
             };
-        type = p: if p.joined or false then rebuild (extendCnf cnf p.modules) else self;
+        type = p: rebuild (extendCnf cnf p.modules);
       };
     in
     statedRelation name functor (
