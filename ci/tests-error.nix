@@ -377,4 +377,54 @@ in
         exactly "${door}reference 'lib/bsae' names no entry of the registry (in prelude.resolve)"
       );
     };
+
+  # den-hoag-661s2: the closed-key gate names the aspect beside the key, on both of its refusals.
+  flake.testsError.closed-key-names-aspect =
+    let
+      gated =
+        extra: body:
+        (mkSchemaEval (
+          {
+            closedKeys = true;
+            keySemantics.nixos.category = "class";
+            modules = [ { config.aspects.hem = body; } ];
+          }
+          // extra
+        )).config.aspects.hem;
+    in
+    {
+      test-open-gate = thrown (gated { } { nixso.boot = { }; }).nixso (
+        exactly "gen-aspects: aspect `hem`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
+      );
+      # An inline `includes` element is gated by the same submodule, and is named by its position.
+      test-open-gate-include =
+        thrown (builtins.head (gated { } { includes = [ { nixso.x = 1; } ]; }).includes).nixso
+          (
+            exactly "gen-aspects: aspect `hem.includes.0`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
+          );
+      test-recursive-gate = thrown (gated { recursiveClosed = true; } { ns.nixso = "x"; }).ns.nixso (
+        exactly (
+          "gen-aspects: aspect `hem.ns`: undeclared aspect key 'nixso' (value is not a nested aspect — a closed "
+          + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
+          + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
+          + "content). Declare it in keySemantics, or nest it under a declared key."
+        )
+      );
+      test-bare-module-include =
+        thrown
+          (builtins.head
+            (mkSchemaEval {
+              rejectBareModuleInclude = true;
+              modules = [ { config.aspects.hem.includes = [ { imports = [ { } ]; } ]; } ];
+            }).config.aspects.hem.includes
+          )
+          (
+            exactly (
+              "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
+              + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
+              + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
+              + "content key."
+            )
+          );
+    };
 }

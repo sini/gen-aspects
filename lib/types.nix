@@ -579,6 +579,7 @@ let
         loc: defs:
         let
           k = prelude.last loc;
+          at = "aspect `${prelude.concatStringsSep "." (prelude.init loc)}`";
           # den feeds ONE pre-merged config def per freeform child, so `head defs` is THE value; the all-defs
           # form generalises for a native multi-def author (recurse iff SOME def is an attrset namespace; an
           # all-primitive undeclared multi-def key is not a namespace → throw). Decides on WHNF
@@ -591,17 +592,18 @@ let
             { member = builtins.elemAt alternatives 0; }
           else
             {
-              value =
-                throw "gen-aspects: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
+              value = throw (
+                "gen-aspects: ${at}: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
                 + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
                 + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
-                + "content). Declare it in keySemantics, or nest it under a declared key.";
+                + "content). Declare it in keySemantics, or nest it under a declared key."
+              );
             }
         else if builtins.elem k cnf.freeformKeys then
           { member = builtins.elemAt alternatives 1; }
         else
           {
-            value = throw "gen-aspects: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+            value = throw "gen-aspects: ${at}: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
           };
     };
 
@@ -677,11 +679,12 @@ let
           { value = v; }
         else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
           {
-            value =
-              throw "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
+            value = throw (
+              "gen-aspects: includes element is a bare module ({ imports = [ … ]; }) with no aspect identity — "
               + "a class-content node included AS an aspect? An include must be an aspect (by value or fixpoint "
               + "ref), a keyRef, or a deferred fn/policy; `imports` is the module merge slot, never an aspect "
-              + "content key.";
+              + "content key."
+            );
           }
         else if builtins.length defs == 1 && isBareModuleInclude then
           { member = builtins.elemAt alternatives 0; }
