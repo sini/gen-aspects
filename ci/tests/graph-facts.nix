@@ -1459,4 +1459,62 @@ in
       recognisedKeyPasses = true;
     };
   };
+
+  # ── A MEMBER WITH NO `includes` READS AS THE TYPE'S DECLARED DEFAULT (den-hoag-fxrmd) ──
+  # A directly-supplied registry bypasses the aspect type, so a hand-built member can lack the key
+  # the type always supplies. `graphFacts` applies the type's own declared default (`includesDefault`)
+  # rather than aborting uncatchably on `attribute 'includes' missing`.
+  flake.tests.graph-facts.test-missing-includes-reads-declared-default =
+    let
+      bare = aspects.graphFacts { } {
+        x = {
+          name = "x";
+        };
+      };
+      explicit = aspects.graphFacts { } {
+        x = {
+          name = "x";
+          includes = [ ];
+        };
+      };
+    in
+    {
+      expr = {
+        # catchable and total: no include edges for x, and x is a node.
+        missing = caught (builtins.deepSeq bare.includesOf null);
+        nodes = bare.nodes;
+        includesOf = bare.includesOf;
+        foreignIncludesOf = bare.foreignIncludesOf;
+        unresolvedIncludesOf = bare.unresolvedIncludesOf;
+        # CONTROL: the explicit `[ ]` gives the same facts over the same member.
+        sameAsExplicit =
+          {
+            inherit (bare)
+              nodes
+              parentOf
+              includesOf
+              foreignIncludesOf
+              unresolvedIncludesOf
+              ;
+          } == {
+            inherit (explicit)
+              nodes
+              parentOf
+              includesOf
+              foreignIncludesOf
+              unresolvedIncludesOf
+              ;
+          };
+        explicitNodes = explicit.nodes;
+      };
+      expected = {
+        missing = true;
+        nodes = [ "x" ];
+        includesOf.x = [ ];
+        foreignIncludesOf.x = [ ];
+        unresolvedIncludesOf.x = [ ];
+        sameAsExplicit = true;
+        explicitNodes = [ "x" ];
+      };
+    };
 }

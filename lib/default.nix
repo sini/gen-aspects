@@ -26,7 +26,10 @@ let
   cnfModule = import ./cnf.nix;
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value
-  factsModule = import ./facts.nix { inherit prelude; };
+  factsModule = import ./facts.nix {
+    inherit prelude;
+    inherit (types) includesDefault;
+  };
   guardModule = import ./guard.nix { inherit prelude merge; };
   schemaModule = import ./schema.nix {
     inherit prelude merge;

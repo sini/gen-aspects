@@ -758,6 +758,10 @@ let
   hasClassContent =
     v: v != null && !(builtins.isAttrs v && builtins.attrNames v == [ "imports" ] && v.imports == [ ]);
 
+  # The `includes` option's declared default, ONE binding: `graphFacts` reads it for a member of a
+  # directly-supplied registry, which bypasses this type and so lacks the key the type always supplies.
+  includesDefault = [ ];
+
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
   # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
@@ -904,7 +908,7 @@ let
           includes = merge.mkOption {
             description = "Aspects to include";
             type = t.listOf (includesElemType cnf);
-            default = [ ];
+            default = includesDefault;
           };
         }
         // classOptions
@@ -1106,6 +1110,7 @@ in
     wrapGatedFn
     aspectId
     hasClassContent
+    includesDefault
     ;
   structuralKeys = nativeStructuralKeys;
 }

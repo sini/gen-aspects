@@ -44,7 +44,7 @@
 # by construction, and the query libraries are needed to QUERY the graph, never to STATE it. Routing
 # one through gen-aspects would additionally hand the substrate a second route to the evaluator,
 # which is the engine drift one gen-scope exists to prevent (ADR-0006, ADR-0008).
-{ prelude }:
+{ prelude, includesDefault }:
 let
   inherit (import ./cnf.nix) checkedEntry;
   inherit (import ./walk.nix) walk isGuardLeaf;
@@ -251,10 +251,12 @@ in
         pastFirst (builtins.filter builtins.isString (builtins.split "/" elem.key))
         && pastFirst (elem.meta.aspect-chain or [ null ]);
 
+      # A member with no `includes` (a hand-built or direct registry never passed the aspect type) reads
+      # as the type's declared default, so the typed and untyped paths answer alike.
       indexed =
         e:
         prelude.imap0 (i: elem: { inherit i elem; }) (
-          if isGuardLeaf e.value then [ ] else e.value.includes
+          if isGuardLeaf e.value then [ ] else e.value.includes or includesDefault
         );
       resolved = e: map (x: x // { r = resolve (idOf e.path) x.i x.elem; }) (indexed e);
       ofKind = k: e: builtins.filter (x: x.r.kind == k) (resolved e);

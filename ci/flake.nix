@@ -105,7 +105,12 @@
         cnfInternals = import ../lib/cnf.nix;
         # The published-facts module, for the same split over its one refusal. Its renderer is
         # deliberately absent from `lib/default.nix` — a consumer reads a refusal, never renders one.
-        factsInternals = import ../lib/facts.nix { prelude = gen-prelude.lib; };
+        factsInternals = import ../lib/facts.nix {
+          prelude = gen-prelude.lib;
+          # Unread here: the suite takes only the refusal renderer, and the published surface (pinned in
+          # AGENTS.md) does not carry the default. `graphFacts` itself reads `types.includesDefault`.
+          includesDefault = [ ];
+        };
         # The identity module, for the guarded function-scan behind `guardKey`. That scan is reachable
         # from the public surface only through a key, and a key is a string: out there, a body whose
         # walk was REFUSED is indistinguishable from a body that merely carried a function, since both
