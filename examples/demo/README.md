@@ -121,13 +121,12 @@ childrenOfCore = selectWhere (genSelect.within (hasTag "core"));
 Rules emit typed actions (`edge`, `enrich`, `configure`) over ordered groups. Group order comes from `gen-graph.phaseOrder` (`structural` before `configuration`); the pure dispatch STEP (`gen-dispatch.dispatch`) fires the matching rules for a pass, and `gen-scope.circular` (Kleene ascent) is the LOOP that drives it to a fixpoint — the step threads the plain domain state (context), each pass being one one-shot dispatch whose output context is the next iterate. `configure` carries an aspect target (`{ aspect; settings; }`) and folds into the cascade as the final layer; `enrich` actions feed back into context (via `extract`) so later passes see them. The loop's `circular` attribute declares its carrier (Söderberg & Hedin 2013 §4.1): bottom = the initial context, order = extension (every key kept with its value), height = the number of keys the rules can `enrich`; gen-scope's evaluator runs the ascent over a one-node scope. Convergence is reached when the context stops extending, and the policy actions are read off the converged context by one post-convergence dispatch (`result.actions.<group>`) — a function of the fixpoint, not the iteration path:
 
 ```nix
+# mkRule options condition produce
 prodHardening = mkRule {
-  condition.env = false;
-  produce = _id: ctx:
-    lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; });
   identity = "prod-hardening";
   group = "structural";
-};
+} { env = false; } (_id: ctx:
+  lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; }));
 ```
 
 ### Settings injection via realize's `refinements` layer (full loop)

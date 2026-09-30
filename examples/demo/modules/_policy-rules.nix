@@ -27,99 +27,118 @@ let
     configuration = genGraph.entryAfter [ "structural" ];
   };
 
-  prodHardening = mkRule {
-    condition.env = false;
-    produce =
-      _id: ctx: lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; });
-    identity = "prod-hardening";
-    group = "structural";
-  };
+  # `mkRule { identity?; group?; priority?; … } condition produce`: the options first, then the
+  # condition the dispatcher's `match` interprets, then the `produce` fired when it holds.
+  prodHardening =
+    mkRule
+      {
+        identity = "prod-hardening";
+        group = "structural";
+      }
+      { env = false; }
+      (_id: ctx: lib.optional (ctx.env.tier == "production") (act.edge { target = "hardening"; }));
 
   # databaseBackup is two rules: a single rule may not emit actions across two
   # groups (gen-dispatch dispatch throws), so the structural enrich and the
   # configuration patch are separate bindings.
-  databaseBackupEnrich = mkRule {
-    condition.thimble = false;
-    produce =
-      _id: ctx:
-      lib.optional (ctx.thimble.role == "database") (
-        act.enrich {
-          key = "backup-enabled";
-          value = true;
-        }
+  databaseBackupEnrich =
+    mkRule
+      {
+        identity = "database-backup-enrich";
+        group = "structural";
+      }
+      { thimble = false; }
+      (
+        _id: ctx:
+        lib.optional (ctx.thimble.role == "database") (
+          act.enrich {
+            key = "backup-enabled";
+            value = true;
+          }
+        )
       );
-    identity = "database-backup-enrich";
-    group = "structural";
-  };
 
-  databaseBackupConfig = mkRule {
-    condition.thimble = false;
-    produce =
-      _id: ctx:
-      lib.optional (ctx.thimble.role == "database") (
-        act.configure {
-          aspect = "postgres";
-          settings.backup = {
-            schedule = "0 2 * * *";
-            retention = 7;
-          };
-        }
+  databaseBackupConfig =
+    mkRule
+      {
+        identity = "database-backup-config";
+        group = "configuration";
+      }
+      { thimble = false; }
+      (
+        _id: ctx:
+        lib.optional (ctx.thimble.role == "database") (
+          act.configure {
+            aspect = "postgres";
+            settings.backup = {
+              schedule = "0 2 * * *";
+              retention = 7;
+            };
+          }
+        )
       );
-    identity = "database-backup-config";
-    group = "configuration";
-  };
 
-  nodeExporter = mkRule {
-    condition.thimble = false;
-    produce = _id: ctx: [
-      (act.configure {
-        aspect = "monitoring-base";
-        settings.scrape.targets = [ "${ctx.thimble.name}:9100" ];
-      })
-    ];
-    identity = "node-exporter";
-    group = "configuration";
-  };
-
-  devRelaxedFirewall = mkRule {
-    condition.env = false;
-    produce =
-      _id: ctx:
-      lib.optional (ctx.env.tier == "development") (
-        act.configure {
-          aspect = "firewall";
-          settings.allowed-tcp = [
-            8080
-            8443
-            9090
-            3000
-          ];
-        }
+  nodeExporter =
+    mkRule
+      {
+        identity = "node-exporter";
+        group = "configuration";
+      }
+      { thimble = false; }
+      (
+        _id: ctx: [
+          (act.configure {
+            aspect = "monitoring-base";
+            settings.scrape.targets = [ "${ctx.thimble.name}:9100" ];
+          })
+        ]
       );
-    identity = "dev-relaxed-firewall";
-    group = "configuration";
-  };
 
-  prodLogging = mkRule {
-    condition.env = false;
-    produce =
-      _id: ctx:
-      lib.optional (ctx.env.tier == "production") (
-        act.configure {
-          aspect = "app";
-          settings.logging = {
-            level = "error";
-            structured = true;
-            destination = "syslog";
-          };
-        }
+  devRelaxedFirewall =
+    mkRule
+      {
+        identity = "dev-relaxed-firewall";
+        group = "configuration";
+      }
+      { env = false; }
+      (
+        _id: ctx:
+        lib.optional (ctx.env.tier == "development") (
+          act.configure {
+            aspect = "firewall";
+            settings.allowed-tcp = [
+              8080
+              8443
+              9090
+              3000
+            ];
+          }
+        )
       );
-    identity = "prod-logging";
-    # rule fire-order only (lower fires earlier); NOT settings-merge precedence
-    # (settings merge by cascade layer position) — do not copy to other rules.
-    priority = 10;
-    group = "configuration";
-  };
+
+  prodLogging =
+    mkRule
+      {
+        identity = "prod-logging";
+        # rule fire-order only (lower fires earlier); NOT settings-merge precedence
+        # (settings merge by cascade layer position) — do not copy to other rules.
+        priority = 10;
+        group = "configuration";
+      }
+      { env = false; }
+      (
+        _id: ctx:
+        lib.optional (ctx.env.tier == "production") (
+          act.configure {
+            aspect = "app";
+            settings.logging = {
+              level = "error";
+              structured = true;
+              destination = "syslog";
+            };
+          }
+        )
+      );
 
   rules = [
     prodHardening
@@ -136,14 +155,17 @@ let
       actions.structural or [ ]
     );
 
-  # The dispatch config sans context — once a context is applied, `dispatch` is a pure
-  # function of it (a given context always yields the same actions).
+  # The dispatch options and the operands sans context — once a context is applied, `dispatch` is a
+  # pure function of it (a given context always yields the same actions).
+  dispatchOpts = {
+    inherit extract;
+    combine = ctx: ext: ctx // ext;
+  };
   cfg = {
-    inherit rules extract groupOrder;
+    inherit rules groupOrder;
     id = null;
     match = fromFunctionMatch;
     classify = act.classify;
-    combine = ctx: ext: ctx // ext;
   };
 
   # The keys an `enrich` action can add to the context — a fact about the RULES above (only
@@ -173,24 +195,26 @@ let
     context:
     let
       converged =
-        (genScope.eval {
-          scope = genScope.buildRoots {
-            parentGraph = genScope.vertex "context";
-            decls.context = { };
-          };
-          attributes = {
+        (genScope.eval { }
+          {
             children = _self: _id: { };
             imports = _self: _id: [ ];
             converged-context = genScope.circular { carrier = mkCarrier context; } (
               _self: _id: ctx:
-              (genDispatch.dispatch (cfg // { context = ctx; })).context
+              (genDispatch.dispatch dispatchOpts (cfg // { context = ctx; })).context
             );
-          };
-        }).get
+          }
+          (
+            genScope.buildRoots {
+              parentGraph = genScope.vertex "context";
+              decls.context = { };
+            }
+          )
+        ).get
           "context"
           "converged-context";
     in
-    genDispatch.dispatch (cfg // { context = converged; });
+    genDispatch.dispatch dispatchOpts (cfg // { context = converged; });
 in
 {
   inherit
@@ -199,6 +223,7 @@ in
     rules
     extract
     fromFunctionMatch
+    dispatchOpts
     cfg
     resolve
     ;

@@ -82,7 +82,7 @@ let
       ...
     }:
     (lib.evalModules {
-      modules = [ stubOptions ] ++ (genBind.wrapAll { inherit modules bindings; }).all ++ extraModules;
+      modules = [ stubOptions ] ++ (genBind.wrapAll { inherit bindings; } modules).all ++ extraModules;
     }).config;
 
   # The per-thimble contribution layer (gen-delivery's `refinements`): the reader-computed settings

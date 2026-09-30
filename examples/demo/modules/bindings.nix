@@ -58,25 +58,24 @@ let
     };
   };
 
-  wrappedResult = genBind.wrap {
-    module = nginxFn;
-    bindings = uniformBindings;
-    contracts.settings = genBind.contract.isType "set";
-    provenance.settings = {
-      source = "scope-settings";
-      scope = "thimble:prod-web-1";
-    };
+  provenance.settings = {
+    source = "scope-settings";
+    scope = "thimble:prod-web-1";
   };
 
-  signature = genBind.buildSignature {
+  # `wrap opts module`: every field but the module is an option, and the module is the subject.
+  wrappedResult = genBind.wrap {
+    inherit provenance;
+    bindings = uniformBindings;
+    contracts.settings = genBind.contract.isType "set";
+  } nginxFn;
+
+  # `buildSignature { provenance?; vocabulary?; } { module; bindings; defaultMergeStrategy; mergeStrategies; }`.
+  signature = genBind.buildSignature { inherit provenance; } {
     module = nginxFn;
     bindings = uniformBindings;
     defaultMergeStrategy = genBind.mergeStrategy.bindWins;
     mergeStrategies = { };
-    provenance.settings = {
-      source = "scope-settings";
-      scope = "thimble:prod-web-1";
-    };
   };
 
   bindResults = {

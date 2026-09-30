@@ -84,7 +84,11 @@ let
 
   # P-edges: thimble:<name> → env:<envName>
   parentEdges = map (
-    h: genScope.edge "thimble:${h}" "env:${genValues.haberdashery.thimbles.${h}.env}"
+    h:
+    genScope.edge {
+      from = "thimble:${h}";
+      to = "env:${genValues.haberdashery.thimbles.${h}.env}";
+    }
   ) thimbleNames;
 
   scope = genScope.buildRoots {
@@ -149,42 +153,41 @@ let
       lib.recursiveUpdate acc (lib.setAttrByPath parts value)
     ) { } (builtins.attrNames flat');
 
-  scopeResult = genScope.eval {
-    inherit scope;
-    parseParent = id: (scope.nodes.${id} or { parent = null; }).parent;
+  # `eval opts attributes scope`: the options, then the attribute grammar, then the scope under it.
+  scopeResult =
+    genScope.eval
+      {
+        parseParent = id: (scope.nodes.${id} or { parent = null; }).parent;
+      }
+      {
+        # Children: thimble nodes whose parent is this env node.
+        children = _self: id: lib.filterAttrs (_: n: n.parent == id) scope.nodes;
 
-    attributes = {
-      # Children: thimble nodes whose parent is this env node.
-      children = _self: id: lib.filterAttrs (_: n: n.parent == id) scope.nodes;
+        # No import edges in this graph.
+        imports = _self: _id: [ ];
 
-      # No import edges in this graph.
-      imports = _self: _id: [ ];
-
-      # Neron traverse: collect settings layers D > I > P (most-specific first).
-      raw-settings = genScope.collectionAttr {
-        traverse = "neron";
-        extract =
+        # Neron traverse: collect settings layers D > I > P (most-specific first).
+        # `collectionAttr opts traverse extract`: the targets are chosen, then read.
+        raw-settings = genScope.collectionAttr { } "neron" (
           _self: id:
           let
             nodeSettings = (scope.nodes.${id} or { decls.settings = { }; }).decls.settings;
           in
-          if nodeSettings == { } then null else nodeSettings;
-      };
+          if nodeSettings == { } then null else nodeSettings
+        );
 
-      # Parallel to raw-settings: the node ID of each contributing layer, so
-      # composeForThimble can label layers (env vs thimble) without guessing. Same
-      # neron traverse + same null-drop, so it stays length-aligned with raw-settings.
-      raw-settings-ids = genScope.collectionAttr {
-        traverse = "neron";
-        extract =
+        # Parallel to raw-settings: the node ID of each contributing layer, so
+        # composeForThimble can label layers (env vs thimble) without guessing. Same
+        # neron traverse + same null-drop, so it stays length-aligned with raw-settings.
+        raw-settings-ids = genScope.collectionAttr { } "neron" (
           _self: id:
           let
             nodeSettings = (scope.nodes.${id} or { decls.settings = { }; }).decls.settings;
           in
-          if nodeSettings == { } then null else id;
-      };
-    };
-  };
+          if nodeSettings == { } then null else id
+        );
+      }
+      scope;
 
   # --- 4. Compose settings per thimble ---
 
