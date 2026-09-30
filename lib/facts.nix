@@ -67,18 +67,38 @@ let
   # The door a declaration or a bare identifier is resolved at, named first (R6) with the aspect and
   # the include position at fault, since nothing downstream can name them once the edge leaves.
   includesDoor = id: i: "gen-aspects.includes (aspect '${id}', include position ${toString i})";
+
+  # includeSitesMaxDepth / includeSitesDepthRefusal: `includeSitesOf` recurses into inline content's
+  # own `includes`, and inline content can be NON-WELL-FOUNDED (`let s = { includes = [ s ]; }`). Its
+  # positions then grow without end, and a reader walking them (a delivery closure) runs until memory
+  # is exhausted, killed with no message. The recursion therefore spends from a depth budget and
+  # refuses by name, catchably, past it: the `hasFnMaxDepth` pattern (`identity.nix`). The limit here
+  # is memory, not the evaluator stack, so no moving ceiling sits under the constant; the budget only
+  # has to be far above any include nesting written as configuration.
+  includeSitesMaxDepth = 256;
+
+  includeSitesDepthRefusal =
+    id: pos:
+    "gen-aspects: aspect '${id}' nests inline include content deeper than the budget of "
+    + "${toString includeSitesMaxDepth} levels (at include position ${pos}). Content nested that deeply is "
+    + "almost always CYCLIC, a literal that includes itself, and a reader following it would never "
+    + "finish, so the include sites refuse by name here instead. Name the repeated content as an "
+    + "aspect and include it by reference: a cycle between named aspects is well defined.";
 in
 {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
-  # reads a refusal, never renders one.
-  inherit danglingIncludeRefusal;
+  # reads a refusal, never renders one. The budget travels with them so a cell straddling it reads
+  # the number from here.
+  inherit danglingIncludeRefusal includeSitesDepthRefusal includeSitesMaxDepth;
 
   # `graphFacts cnf aspects` →
-  #   { nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }
+  #   { nodes; parentOf; includeSitesOf; includesOf; foreignIncludesOf; unresolvedIncludesOf;
+  #     nodeIdOf; nodeData; }
   #
   # `nodes` is the membership predicate's answer as a list of ids; the rest are attrsets keyed by
   # that same id, so `attrNames` over any of them IS the node set — totality, asserted in
-  # `ci/tests/graph-facts.nix`.
+  # `ci/tests/graph-facts.nix`. The one exception is `nodeIdOf`, keyed by the LOCAL key a member is
+  # named by, whose values are those ids.
   graphFacts = checkedEntry (
     cnf: aspects:
     let
@@ -185,7 +205,11 @@ in
       #
       # An inline element is neither refused nor dropped: its POSITION is published in
       # `unresolvedIncludesOf`, so a consumer needing the element indexes back into
-      # `nodeData.<id>.includes` and nothing about the declaration goes unsaid.
+      # `nodeData.<id>.includes` and nothing about the declaration goes unsaid. Inline elements are
+      # of two kinds, and `includeSitesOf` publishes which: CONTENT, a keyed aspect literal that
+      # passes `isIncludeContent` (static, so its own `includes` classify by this same rule), and
+      # SEALED, everything else (a wrapped or guard function, a guard record, a deferred closure, a
+      # policy record), whose content exists only once a context is supplied.
       #
       # A keyRef carrying THIS tree's origin is checked here. A KEYED by-value element that is not
       # include content (below), and a bare identifier, are REFERENCES resolved by `prelude.resolve`
@@ -219,7 +243,7 @@ in
           else
             throw (danglingIncludeRefusal id i target)
         else if builtins.isAttrs elem && elem ? key then
-          if isIncludeContent elem then { kind = "inline"; } else local (includesDoor id i) elem
+          if isIncludeContent elem then { kind = "content"; } else local (includesDoor id i) elem
         else if builtins.isString elem then
           # A bare string is unconditionally a REFERENCE (den-hoag-2zjg1 rulings B / TERM "i") —
           # content is never string-shaped — so it has no `isIncludeContent` escape hatch. It
@@ -228,7 +252,7 @@ in
           # nothing checks, instead of the local sibling the writer named.
           local (includesDoor id i) elem
         else
-          { kind = "inline"; };
+          { kind = "sealed"; };
 
       # A KEYED value is include content exactly when it was WRITTEN at an include position, and
       # the test is that its stamped `meta.aspect-chain` has an `includes` segment past the first.
@@ -253,20 +277,59 @@ in
 
       # A member with no `includes` (a hand-built or direct registry never passed the aspect type) reads
       # as the type's declared default, so the typed and untyped paths answer alike.
-      indexed =
-        e:
-        prelude.imap0 (i: elem: { inherit i elem; }) (
-          if isGuardLeaf e.value then [ ] else e.value.includes or includesDefault
-        );
-      resolved = e: map (x: x // { r = resolve (idOf e.path) x.i x.elem; }) (indexed e);
-      ofKind = k: e: builtins.filter (x: x.r.kind == k) (resolved e);
+      includesOfValue = v: if isGuardLeaf v then [ ] else v.includes or includesDefault;
 
-      includesOf = builtins.listToAttrs (
+      # ★ THE ONE CLASSIFICATION PASS. Every include position of a node, in declared order, classified
+      # by `resolve`:
+      #
+      #   { kind = "local";   target = <id>; }
+      #   { kind = "foreign"; ref = { origin; path; key; }; }
+      #   { kind = "content"; sites = [ site … ]; }   the element's OWN includes, by this same rule
+      #   { kind = "sealed"; }
+      #
+      # The three relations below are PROJECTIONS of this one, not a second pass beside it, so they
+      # cannot disagree with it or with each other. A position is a list index (at depth, a path of
+      # them); nothing is minted, and a nested position renders only inside a refusal. A `content`
+      # site's `sites` is a thunk: a dangling reference inside inline content refuses only for a
+      # reader that descends into it, and the depth budget above bounds that descent.
+      sitesOf =
+        id: pos: elems:
+        prelude.imap0 (
+          i: elem:
+          let
+            p = pos ++ [ i ];
+            at = prelude.concatStringsSep "." (map toString p);
+            r = resolve id at elem;
+          in
+          if r.kind == "content" then
+            {
+              kind = "content";
+              sites =
+                if builtins.length p >= includeSitesMaxDepth then
+                  throw (includeSitesDepthRefusal id at)
+                else
+                  sitesOf id p (elem.includes or includesDefault);
+            }
+          else
+            r
+        ) elems;
+
+      includeSitesOf = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
-          value = map (x: x.r.target) (ofKind "local" e);
+          value = sitesOf (idOf e.path) [ ] (includesOfValue e.value);
         }) entries
       );
+
+      # The top-level sites with their positions, which is what each projection selects over.
+      topSites =
+        kinds: id:
+        builtins.filter (x: builtins.elem x.s.kind kinds) (
+          prelude.imap0 (i: s: { inherit i s; }) includeSitesOf.${id}
+        );
+      project = f: builtins.mapAttrs (id: _: f id) includeSitesOf;
+
+      includesOf = project (id: map (x: x.s.target) (topSites [ "local" ] id));
 
       # THE REFERENCES THIS LIBRARY COULD NOT CHECK, published apart from the ones it could. A
       # foreign keyRef names a node in a fixpoint gen-aspects does not hold, so its target is not a
@@ -276,31 +339,36 @@ in
       # in the declaration's own `{ origin; path; key; }` shape rather than rendered to a string:
       # a rendering has to be re-split downstream to recover the qualifier, and that re-split is a
       # second source for a fact the declaration already stated.
-      foreignIncludesOf = builtins.listToAttrs (
-        map (e: {
-          name = idOf e.path;
-          value = map (x: x.r.ref) (ofKind "foreign" e);
-        }) entries
-      );
+      foreignIncludesOf = project (id: map (x: x.s.ref) (topSites [ "foreign" ] id));
 
       # The declared include positions that name no node, PUBLISHED rather than dropped: an aspect's
       # inline include content is a fact the substrate holds, and a relation that simply omitted it
       # would be the "something vanishes and nothing says so" shape this whole design exists to
       # retire. Positions rather than elements, so reading the relation forces no element body.
-      unresolvedIncludesOf = builtins.listToAttrs (
-        map (e: {
-          name = idOf e.path;
-          value = map (x: x.i) (ofKind "inline" e);
-        }) entries
+      unresolvedIncludesOf = project (
+        id:
+        map (x: x.i) (
+          topSites [
+            "content"
+            "sealed"
+          ] id
+        )
       );
+
+      # THE KEY → ID RELATION: the local key a member is named by (what a bare-string include
+      # spells) to its origin-qualified node id. A consumer resolving a member by name reads it here
+      # instead of re-rendering `origin ++ [ key ]`, which would be a second source for the id.
+      nodeIdOf = builtins.mapAttrs (k: _: qualify k) localNodes;
     in
     {
       inherit
         nodes
         parentOf
+        includeSitesOf
         includesOf
         foreignIncludesOf
         unresolvedIncludesOf
+        nodeIdOf
         nodeData
         ;
     }

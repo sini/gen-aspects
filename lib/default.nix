@@ -79,6 +79,11 @@ in
   # a directly-supplied registry can — and it answers "was this key given a defining module", never
   # "does that module carry non-vacuous fields", which would force the deferred body. See lib/types.nix.
   inherit (types) structuralKeys keyCategory hasClassContent;
+  # `isGuardLeaf v` — whether an aspect value is a guard leaf (a `__isWrappedFn` wrap or a `__guard`
+  # record): a node whose content exists only once a context is supplied. It is the membership
+  # predicate `flatten` and `graphFacts` already stop at (`lib/walk.nix`), named here so a consumer
+  # reading `graphFacts`' `nodeData` asks this library rather than re-deriving the shape test.
+  inherit (import ./walk.nix) isGuardLeaf;
   inherit (aspectIdentity)
     aspectPath
     pathKey
@@ -91,7 +96,8 @@ in
   inherit (schemaModule) mkAspectSchema;
   inherit flatten;
   # `graphFacts cnf aspects` →
-  # `{ nodes; parentOf; includesOf; foreignIncludesOf; unresolvedIncludesOf; nodeData; }` —
+  # `{ nodes; parentOf; includeSitesOf; includesOf; foreignIncludesOf; unresolvedIncludesOf;
+  #   nodeIdOf; nodeData; }` —
   # THE aspect graph's facts as plain data. The node set, the edge relations and the node values,
   # published so a framework assembles the graph from them instead of parsing `flatten`'s key for
   # parenthood (ADR-0012: the flat registry is a projection, never a source). The id and the parent

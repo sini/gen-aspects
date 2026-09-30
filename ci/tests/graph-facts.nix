@@ -464,6 +464,23 @@ let
     (gv.vocab.whenEq [ "thimble" "name" ] "cortex" (lit "g"))
   ];
 
+  # The include-sites fixtures: bare modules over the class-keyed schema.
+  sitesEval =
+    mods:
+    (mkSchemaEval {
+      fixtureKeySemantics = {
+        nixos = {
+          category = "class";
+        };
+      };
+      modules = mods;
+    }).config.aspects;
+  hostFn =
+    { host, ... }:
+    {
+      nixos.marks = [ host.name ];
+    };
+
   # x7: inline content in one definition, another tree's node in a second.
   otherSecondDefFacts =
     aspects.graphFacts { }
@@ -651,6 +668,9 @@ in
       includesDomain = sorted (builtins.attrNames facts.includesOf) == sorted facts.nodes;
       foreignDomain = sorted (builtins.attrNames facts.foreignIncludesOf) == sorted facts.nodes;
       unresolvedDomain = sorted (builtins.attrNames facts.unresolvedIncludesOf) == sorted facts.nodes;
+      sitesDomain = sorted (builtins.attrNames facts.includeSitesOf) == sorted facts.nodes;
+      # `nodeIdOf` is keyed by LOCAL key, so under the empty origin its values are the node set.
+      nodeIdOfRange = sorted (builtins.attrValues facts.nodeIdOf) == sorted facts.nodes;
       nodeDataDomain = sorted (builtins.attrNames facts.nodeData) == sorted facts.nodes;
       # A ROOT is present in the relation with an explicit `null`, never absent from it.
       rootIsPresent = facts.parentOf ? "top";
@@ -664,6 +684,8 @@ in
       includesDomain = true;
       foreignDomain = true;
       unresolvedDomain = true;
+      sitesDomain = true;
+      nodeIdOfRange = true;
       nodeDataDomain = true;
       rootIsPresent = true;
       rootAnswerIsNull = true;
@@ -1436,11 +1458,20 @@ in
       );
       # Each name below is exercised in this suite by BOTH a catchability assertion (on the real
       # path) and a message assertion (on the renderer).
-      covered = [ "danglingIncludeRefusal" ];
+      covered = [
+        "danglingIncludeRefusal"
+        "includeSitesDepthRefusal"
+      ];
     };
     expected = {
-      renderers = [ "danglingIncludeRefusal" ];
-      covered = [ "danglingIncludeRefusal" ];
+      renderers = [
+        "danglingIncludeRefusal"
+        "includeSitesDepthRefusal"
+      ];
+      covered = [
+        "danglingIncludeRefusal"
+        "includeSitesDepthRefusal"
+      ];
     };
   };
 
@@ -1515,6 +1546,303 @@ in
         unresolvedIncludesOf.x = [ ];
         sameAsExplicit = true;
         explicitNodes = [ "x" ];
+      };
+    };
+
+  # ── THE INCLUDE SITES: one ordered, classified relation over include positions ───────────────
+  # `includeSitesOf.<id>` is every include position of a node, in declared order, classified local /
+  # foreign / content (recursing into the element's own `includes`) / sealed. A consumer that
+  # delivers inline content walks it, so it must never have to re-run the resolver.
+  flake.tests.graph-facts.test-include-sites-classify-every-position-in-order =
+    let
+      mixed = aspects.graphFacts { } (sitesEval [
+        {
+          aspects.a.includes = [
+            "b"
+            (aspects.keyRef {
+              origin = [ "acme" ];
+              path = [ "ssh" ];
+            })
+            {
+              nixos.marks = [ "i" ];
+              includes = [
+                "b"
+                { nixos.marks = [ "deep" ]; }
+              ];
+            }
+            hostFn
+          ];
+          aspects.b.nixos.marks = [ "b" ];
+        }
+      ]);
+    in
+    {
+      expr = {
+        a = mixed.includeSitesOf.a;
+        # CONTROL: a node with no includes is present with an empty list.
+        b = mixed.includeSitesOf.b;
+      };
+      expected = {
+        a = [
+          {
+            kind = "local";
+            target = "b";
+          }
+          {
+            kind = "foreign";
+            ref = {
+              origin = [ "acme" ];
+              path = [ "ssh" ];
+              key = "ssh";
+            };
+          }
+          {
+            kind = "content";
+            sites = [
+              {
+                kind = "local";
+                target = "b";
+              }
+              {
+                kind = "content";
+                sites = [ ];
+              }
+            ];
+          }
+          { kind = "sealed"; }
+        ];
+        b = [ ];
+      };
+    };
+
+  # ★ A SPLIT ASPECT'S COERCED PART IS CONTENT. `aspectType` turns a function definition that is one
+  # of several definitions of an aspect into `{ includes = [ f ]; }`; that element is static content
+  # and its own includes resolve. A `{ host, ... }:` element is SEALED. A split whose second
+  # definition is `{ host, ... }:` makes the node itself a guard leaf, with no include sites.
+  flake.tests.graph-facts.test-include-sites-split-aspect-shapes =
+    let
+      sites = mods: (aspects.graphFacts { } (sitesEval mods)).includeSitesOf.p;
+      data = mods: (aspects.graphFacts { } (sitesEval mods)).nodeData.p;
+      attr = {
+        aspects.p.nixos.marks = [ "attr" ];
+      };
+      ssh = {
+        aspects.ssh.nixos.marks = [ "ssh" ];
+      };
+    in
+    {
+      expr = {
+        splitConfigFn = sites [
+          attr
+          ssh
+          {
+            aspects.p =
+              { config, ... }:
+              {
+                nixos.marks = [ "fn" ];
+                includes = [ "ssh" ];
+              };
+          }
+        ];
+        # CONTROL: the same function as the ONLY definition has no inline site; its include is the
+        # node's own.
+        singleConfigFn = sites [
+          ssh
+          {
+            aspects.p =
+              { config, ... }:
+              {
+                nixos.marks = [ "fn" ];
+                includes = [ "ssh" ];
+              };
+          }
+        ];
+        sealedAtPosition = sites [ { aspects.p.includes = [ hostFn ]; } ];
+        splitHostIsGuardLeaf = aspects.isGuardLeaf (data [
+          attr
+          { aspects.p = hostFn; }
+        ]);
+        splitHostSites = sites [
+          attr
+          { aspects.p = hostFn; }
+        ];
+        singleHostIsGuardLeaf = aspects.isGuardLeaf (data [ { aspects.p = hostFn; } ]);
+        # CONTROL: a plain aspect is not a guard leaf.
+        plainIsGuardLeaf = aspects.isGuardLeaf (data [ attr ]);
+      };
+      expected = {
+        splitConfigFn = [
+          {
+            kind = "content";
+            sites = [
+              {
+                kind = "local";
+                target = "ssh";
+              }
+            ];
+          }
+        ];
+        singleConfigFn = [
+          {
+            kind = "local";
+            target = "ssh";
+          }
+        ];
+        sealedAtPosition = [ { kind = "sealed"; } ];
+        splitHostIsGuardLeaf = true;
+        splitHostSites = [ ];
+        singleHostIsGuardLeaf = true;
+        plainIsGuardLeaf = false;
+      };
+    };
+
+  # A DANGLING REFERENCE INSIDE INLINE CONTENT refuses only for a reader that descends into it. The
+  # top-level relations of the same node, and the content site itself, still evaluate.
+  flake.tests.graph-facts.test-include-sites-nested-dangling-refuses-only-when-read =
+    let
+      f = aspects.graphFacts { } (sitesEval [
+        {
+          aspects.a.includes = [
+            {
+              nixos.marks = [ "i" ];
+              includes = [ "nope" ];
+            }
+          ];
+        }
+      ]);
+      site = builtins.head f.includeSitesOf.a;
+    in
+    {
+      expr = {
+        nestedRefuses = !(caught (builtins.deepSeq site.sites null));
+        kindEvaluates = caught (builtins.deepSeq site.kind null);
+        topLevelRelationsEvaluate = caught (
+          builtins.deepSeq [ f.includesOf f.foreignIncludesOf f.unresolvedIncludesOf ] null
+        );
+        unresolved = f.unresolvedIncludesOf.a;
+      };
+      expected = {
+        nestedRefuses = true;
+        kindEvaluates = true;
+        topLevelRelationsEvaluate = true;
+        unresolved = [ 0 ];
+      };
+    };
+
+  # ★ SELF-REFERENTIAL INLINE CONTENT REFUSES BY NAME. `let s = { includes = [ s ]; }` has positions
+  # without end; the recursion spends from `includeSitesMaxDepth` and throws catchably past it,
+  # where a reader following the sites would otherwise run until memory is exhausted.
+  flake.tests.graph-facts.test-include-sites-cyclic-content-refuses-by-name =
+    let
+      s = {
+        nixos.marks = [ "s" ];
+        includes = [ s ];
+      };
+      depthOf = sites: if sites == [ ] then 0 else 1 + depthOf (builtins.head sites).sites;
+      cyclic = aspects.graphFacts { } (sitesEval [ { aspects.a.includes = [ s ]; } ]);
+      # CONTROL, same predicate: content nested to depth 3 walks to the bottom.
+      finite = aspects.graphFacts { } (sitesEval [
+        {
+          aspects.a.includes = [
+            {
+              includes = [
+                {
+                  includes = [ { nixos.marks = [ "deep" ]; } ];
+                }
+              ];
+            }
+          ];
+        }
+      ]);
+      msg = factsInternals.includeSitesDepthRefusal "a" "0.0.0";
+    in
+    {
+      expr = {
+        cyclicRefuses = !(caught (depthOf cyclic.includeSitesOf.a));
+        finiteDepth = depthOf finite.includeSitesOf.a;
+        # The node's top-level relations do not descend, so they still answer.
+        cyclicUnresolved = cyclic.unresolvedIncludesOf.a;
+        budget = factsInternals.includeSitesMaxDepth;
+        messageNamesTheNode = lib.hasInfix "'a'" msg;
+        messageNamesThePosition = lib.hasInfix "position 0.0.0" msg;
+        messageNamesTheBudget = lib.hasInfix "256" msg;
+      };
+      expected = {
+        cyclicRefuses = true;
+        finiteDepth = 3;
+        cyclicUnresolved = [ 0 ];
+        budget = 256;
+        messageNamesTheNode = true;
+        messageNamesThePosition = true;
+        messageNamesTheBudget = true;
+      };
+    };
+
+  # THE KEY → ID RELATION: a member named by its local key resolves to its origin-qualified id.
+  flake.tests.graph-facts.test-node-id-of-qualifies-local-keys =
+    let
+      f = aspects.graphFacts { providerPrefix = [ "acme" ]; } (sitesEval [
+        {
+          aspects.a.inner.nixos.marks = [ "x" ];
+        }
+      ]);
+    in
+    {
+      expr = {
+        inherit (f) nodeIdOf;
+        rangeIsNodes = sorted (builtins.attrValues f.nodeIdOf) == sorted f.nodes;
+      };
+      expected = {
+        nodeIdOf = {
+          a = "acme/a";
+          "a/inner" = "acme/a/inner";
+        };
+        rangeIsNodes = true;
+      };
+    };
+
+  # ★★ THE THREE RELATIONS ARE PROJECTIONS OF `includeSitesOf`, NOT A SECOND PASS BESIDE IT. Both
+  # constructions give the same values, so no behavioural cell can separate them; this one reads the
+  # construction. `resolve` is APPLIED at exactly one site (inside `sitesOf`), and the classification
+  # pass the relations used to run on their own (`indexed` / `resolved` / `ofKind`) is gone. The
+  # counter is shown live on a text with two applications, in the same record.
+  flake.tests.graph-facts.test-relations-project-from-include-sites =
+    let
+      src = builtins.readFile ../../lib/facts.nix;
+      code = lib.concatStringsSep "\n" (
+        map (line: lib.head (lib.splitString "#" line)) (lib.splitString "\n" src)
+      );
+      lines = lib.splitString "\n";
+      applies =
+        text:
+        builtins.length (
+          builtins.filter (l: builtins.match ".*[^.a-zA-Z]resolve [a-z(].*" l != null) (lines text)
+        );
+      binds = name: builtins.any (l: builtins.match " *${name} *=.*" l != null) (lines code);
+    in
+    {
+      expr = {
+        resolveApplications = applies code;
+        controlTwoApplications = applies "r = resolve id at elem;\nx // { r = resolve (idOf e.path) x.i x.elem; }";
+        oldPassBindings = builtins.filter binds [
+          "indexed"
+          "resolved"
+          "ofKind"
+        ];
+        # CONTROL: the predicate finds bindings that do exist.
+        livePassBindings = builtins.filter binds [
+          "sitesOf"
+          "includeSitesOf"
+        ];
+      };
+      expected = {
+        resolveApplications = 1;
+        controlTwoApplications = 2;
+        oldPassBindings = [ ];
+        livePassBindings = [
+          "sitesOf"
+          "includeSitesOf"
+        ];
       };
     };
 }
