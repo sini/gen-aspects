@@ -221,7 +221,10 @@ constructor fixed: `schema.aspect.keySemantics = …` (meant to widen the class 
 and gen-schema's own formals, and a cnf collection named for a cnf key is refused the same way. Pass
 a formal to `mkAspectSchema`; an aspect field of the same name is written on the aspect, or as
 `schema.aspect.config.<name>` (under `closedKeys` it must be declared or listed in `freeformKeys`).
-The refusal covers the entry's direct definitions; a module the entry imports is not reached yet.
+The refusal covers every route into the entry: a formal at the top level of a module the entry
+imports (nested `imports`, `require`, a function or path module, a whole-module `mkIf`) is refused by
+gen-merge's collector with the same text, saying it was written in a module the kind entry imports and
+naming the module.
 
 ## Flat Registry
 
