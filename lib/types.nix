@@ -177,9 +177,9 @@ let
   # native guard path applies UNCONDITIONALLY and THROWS on a missing required coord (its contract, pinned
   # by ci/tests/gated-wrap.nix test-native-guard-not-gated); `wrapGatedFn`'s applicator SELF-GATES:
   # every required coord (a no-default formal — the same predicate `lib/can-take.nix`'s `canTake` builds
-  # as its `required` binding) present ⇒ `onResult (fn (intersectAttrs
-  # functionArgs fnArgs))`; a required coord MISSING ⇒ `{ }` (INERT, no throw — merges harmlessly through
-  # `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
+  # as its `required` binding) present ⇒ `onResult (fn <ctx>)`, `<ctx>` narrowed to `functionArgs` by the
+  # shared context door (lib/require-wrapped-closure.nix); a required coord MISSING ⇒ `{ }` (INERT, no
+  # throw — merges harmlessly through `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
   # consumer's fire path is a closure whose own `builtins.functionArgs` is `{ fnArgs = false; }`, so the
   # gate must read the inner fn's real formals — the override); `onResult` — a result hook (DEFAULT
   # identity) a consumer threads its post-fire processing through (den-hoag's class-key grounding rides
@@ -215,7 +215,7 @@ let
           __functor =
             _: fnArgs:
             if builtins.all (a: fnArgs ? ${a}) required then
-              onResult (fn (builtins.intersectAttrs functionArgs fnArgs))
+              onResult (fn (doors.requireRequiredCoords "wrapGatedFn" "`${name}`" functionArgs fnArgs))
             else
               { };
           __functionArgs = functionArgs;

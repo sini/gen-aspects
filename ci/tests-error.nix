@@ -279,20 +279,6 @@ in
         (
           exactly "gen-aspects.wrapGatedFn: `onResult` at `<gated>` must be callable (a function, or a record carrying `__functor`); received: int."
         );
-    # ── FALSIFIERS: the bound, pinned where a reader meets it. GREEN = RED = these aborts — except
-    # the RETURN bound below, which gen-merge now refuses catchably (a ThrownError, not an abort). ──
-    # M4b: a closed pattern given an extra coord. `functionArgs` erases the ellipsis, so no door can
-    # see it (the erasure itself is a flake.tests cell, wrap-fn.nix). A refusal here = over-reach.
-    test-falsifier-closed-pattern-extra-coord = {
-      expr = builtins.deepSeq ((aspects.wrapFn wcnf "n" ({ x }: { description = x; })) {
-        x = "a";
-        y = "b";
-      }) null;
-      expectedError = {
-        type = "TypeError";
-        msg = "^" + lib.escapeRegex "function 'anonymous lambda' called with unexpected argument 'y'";
-      };
-    };
     # The RETURN bound: a module-function return is admitted one level, and what IT returns is
     # gen-merge's module reader's contract — now a catchable refusal (gen-merge 1420cb7's third
     # `moduleSyntaxChecked` arm), not an abort, so the headline's own message still surfaces here.

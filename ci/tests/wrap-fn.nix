@@ -119,6 +119,15 @@ in
       ctx = {
         host = "cortex";
       };
+      closedX = { x }: { description = x; };
+      wide = {
+        x = "a";
+        y = "b";
+      };
+      closedNarrowed = got: {
+        expr = got;
+        expected = "a";
+      };
       selfF =
         let
           f = _: f;
@@ -217,7 +226,24 @@ in
           hatchGatedInert = { };
         };
       };
-      # The M4b falsifier's CAUSE (its abort is ci/tests-error.nix): `functionArgs` erases the ellipsis.
+      # THE CLOSED PATTERN GIVEN AN EXTRA COORD (0cmbt §3, N1), one cell per applicator: the context door
+      # narrows to the declared formals. RED on all but `wrapGatedFn` (which intersected locally before
+      # folding into the door): `called with unexpected argument 'y'`, uncatchable.
+      test-closed-pattern-wrapfn = closedNarrowed ((aspects.wrapFn cnf "n" closedX) wide).description;
+      test-closed-pattern-native = closedNarrowed ((native closedX) wide).description;
+      test-closed-pattern-carrier = closedNarrowed (aspects.applyGuard wide (carrier closedX))
+        .description;
+      test-closed-pattern-hatch = closedNarrowed (aspects.applyGuard wide closedX).description;
+      test-closed-pattern-gated =
+        closedNarrowed
+          ((aspects.wrapGatedFn { functionArgs.x = false; } closedX) wide).description;
+      # A closure declaring no formals is handed the context whole, `wrapGatedFn` included now that it
+      # takes the shared door (its local intersection handed a bare `ctx:` the empty set).
+      test-gated-no-formals-whole-context = {
+        expr = (aspects.wrapGatedFn { functionArgs = { }; } (c: c)) wide;
+        expected = wide;
+      };
+      # Why the door narrows rather than inspects: `functionArgs` erases the ellipsis.
       test-falsifier-functionargs-erases-ellipsis = {
         expr = {
           closedVsOpen = builtins.functionArgs ({ x }: 1) == builtins.functionArgs ({ x, ... }: 1);

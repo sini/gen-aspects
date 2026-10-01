@@ -9,9 +9,11 @@
 #
 # THE BOUND, stated where a reader meets it. A closure's INPUT is typed totally. Its RETURN is typed
 # ONE level: an attrset, or a module function of `cnf.moduleArgs`; what a module function itself
-# returns is gen-merge's module reader's contract, not this door's. Its CONTEXT is typed only for the
-# coords the closure declares: `builtins.functionArgs` erases the ellipsis, so a closed pattern
-# applied to an extra coord cannot be told from an open one here, and stays an interpreter abort.
+# returns is gen-merge's module reader's contract, not this door's. Its CONTEXT is typed for the
+# coords the closure declares, and a closure that declares formals is handed EXACTLY those formals:
+# `builtins.functionArgs` erases the ellipsis, so a closed pattern cannot be told from an open one,
+# and narrowing is the one application total over both (0cmbt §3, N1). A closure declaring none
+# (bare `ctx:`) is handed the context whole.
 # The same erasure makes an ellipsis-only module function `{ ... }:` indistinguishable from a bare
 # formal `q:`, so such a return is refused; its remedy is to name a module arg it reads.
 #
@@ -30,6 +32,7 @@ let
     concatStringsSep
     filter
     functionArgs
+    intersectAttrs
     isAttrs
     isFunction
     typeOf
@@ -90,10 +93,11 @@ in
         + "is applied to ONE context and its result merged, so a second parameter is never supplied."
       );
 
-  # The CONTEXT door. `required` is verbatim `wrapGatedFn`'s binding (lib/types.nix), the predicate
+  # The CONTEXT door: refuses a missing required coord, and narrows the context to the declared
+  # formals. `required` is verbatim `wrapGatedFn`'s binding (lib/types.nix), the predicate
   # `lib/can-take.nix` builds; the disposition is the opposite arm (refuse, never inert), because the
-  # native applicator's contract is unconditional. A closure declaring no formals reads nothing of
-  # its context, so the context is passed through unforced.
+  # native applicator's contract is unconditional (`wrapGatedFn` reaches this door only once its gate
+  # holds). A closure declaring no formals is passed the context through unforced.
   requireRequiredCoords =
     entry: at: formals: ctx:
     if formals == { } then
@@ -106,7 +110,7 @@ in
         missing = filter (n: !(ctx ? ${n})) required;
       in
       if missing == [ ] then
-        ctx
+        intersectAttrs formals ctx
       else
         throw (
           "gen-aspects.${entry}: the closure at ${at} requires context coord(s) `${names missing}` that "
