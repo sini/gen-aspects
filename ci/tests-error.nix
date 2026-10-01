@@ -501,4 +501,55 @@ in
             )
           );
     };
+
+  # den-hoag-q17cc · a construction formal written at the kind entry's top level. Before the door each
+  # evaluated at exit 0 and landed on EVERY aspect as a nested aspect, while the kind's own formal
+  # stayed what the constructor fixed. Each cell reads the instance's key set, the read that used to
+  # show the landed key, and never forces the landed value itself (it is self-similar).
+  flake.testsError.construction-formal-refusals =
+    let
+      barKeysWith =
+        entry:
+        builtins.attrNames
+          (mkSchemaEval {
+            modules = [
+              {
+                config.schema.aspect = entry;
+                config.aspects.bar = { };
+              }
+            ];
+          }).config.aspects.bar;
+    in
+    {
+      # G1 · a formal both libraries take: gen-schema's door answers, because its check wraps this
+      # library's whole `mkType` result.
+      test-shared-formal-gets-gen-schema-text =
+        thrown (barKeysWith { keySemantics.darwin.category = "class"; })
+          (
+            exactly "gen-schema: kind 'aspect': declaration key 'keySemantics' is a construction formal of this schema — it is fixed by the call that builds the schema option (`mkSchemaOption`, `mkSchemaEntryType`), and written on a kind entry it is not read as one; pass 'keySemantics' to that constructor, or write `config.keySemantics` for an instance field of that name, which a strict instance must declare as an option"
+          );
+
+      # G2 · a formal only mkAspectSchema takes.
+      test-cnf-formal-refuses-by-name = thrown (barKeysWith { providerPrefix = [ ]; }) (
+        exactly "gen-aspects: kind 'aspect': declaration key 'providerPrefix' is an mkAspectSchema construction formal — it is fixed by `mkAspectSchema { providerPrefix = …; }`, and written on a kind entry it is not read as one; pass it there, or write `config.providerPrefix` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`"
+      );
+
+      # C2 on this path · a name gen-schema writes onto the kind value.
+      test-published-name-refuses-on-this-path = thrown (barKeysWith { refs.forged = 1; }) (
+        exactly "gen-schema: kind 'aspect': declaration key 'refs' is a name gen-schema writes onto the kind value — written on a kind entry it lands on every instance, while reading `config.schema.aspect.refs` returns the published one; write `config.refs` for an instance field of that name, which a strict instance must declare as an option"
+      );
+
+      # G7 · a collection named for a cnf formal.
+      test-collection-named-for-a-formal-is-reserved =
+        thrown
+          (builtins.attrNames
+            (mkSchemaEval {
+              collections.providerPrefix.default = [ ];
+              modules = [ { config.schema.aspect = { }; } ];
+            }).config.schema.aspect
+          )
+          (
+            exactly "gen-aspects: mkAspectSchema: collection 'providerPrefix' is reserved — it is an mkAspectSchema construction formal"
+          );
+    };
 }

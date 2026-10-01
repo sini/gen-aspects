@@ -17,7 +17,7 @@
 }:
 let
   t = merge.types;
-  inherit (import ./cnf.nix) extendCnf checkedEntry;
+  inherit (import ./cnf.nix) extendCnf checkedEntry cnfKeys;
   checkedOpts = door: prelude.checkOptions "gen-aspects.mkAspectSchema.${door}";
 
   # Bound ONCE, outside the per-cnf function: it reads no cnf, and gen-schema's entry type compares
@@ -34,7 +34,21 @@ let
       # Build a module from caller-declared defs on the schema kind entry
       # (e.g. options.priority = mkOption {...}). These defs extend each
       # aspect instance with the declared options.
-      defsModules = map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
+      #
+      # A def's TOP-LEVEL key naming an mkAspectSchema construction formal (`cnfKeys`) refuses by
+      # name (den-hoag-q17cc): every def here is handed to the instance evaluation whole, so the key
+      # would land on every aspect as a nested aspect while the kind's own formal stays what the
+      # constructor fixed. gen-schema refuses its own formals first (`collections`, `keySemantics`
+      # are in both sets), because its check wraps this whole result. A module the def IMPORTS is
+      # not reached: that route is stated residue, pinned by `schema-formal-boundary`.
+      formalNamed = prelude.concatMap (
+        d: if builtins.isAttrs d.value then builtins.filter (k: d.value ? ${k}) cnfKeys else [ ]
+      ) defs;
+      defsModules =
+        if formalNamed != [ ] then
+          throw "gen-aspects: kind '${kind}': declaration key '${builtins.head formalNamed}' is an mkAspectSchema construction formal — it is fixed by `mkAspectSchema { ${builtins.head formalNamed} = …; }`, and written on a kind entry it is not read as one; pass it there, or write `config.${builtins.head formalNamed}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`"
+        else
+          map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
       allModules = defsModules ++ prelude.optional (kindModule != null) kindModule;
     in
     # Return a merged VALUE (not a type). This is what config.schema.aspect
@@ -60,12 +74,19 @@ in
   mkAspectSchema = checkedEntry (
     cnf:
     let
-      schemaOpt = genSchema.mkSchemaOption {
-        collections = cnf.collections;
-        # Record per-key semantics opaquely on each schema entry (load-bearing introspection).
-        keySemantics = cnf.keySemantics;
-        inherit mkType;
-      };
+      # A collection named for a construction formal would make that formal's key on a kind entry
+      # read as a collection, and the door in `mkType` would no longer see it.
+      formalCollections = builtins.filter (k: cnf.collections ? ${k}) cnfKeys;
+      schemaOpt =
+        if formalCollections != [ ] then
+          throw "gen-aspects: mkAspectSchema: collection '${builtins.head formalCollections}' is reserved — it is an mkAspectSchema construction formal"
+        else
+          genSchema.mkSchemaOption {
+            collections = cnf.collections;
+            # Record per-key semantics opaquely on each schema entry (load-bearing introspection).
+            keySemantics = cnf.keySemantics;
+            inherit mkType;
+          };
     in
     {
       schemaOption = schemaOpt;
