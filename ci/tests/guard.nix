@@ -305,6 +305,80 @@ in
       };
     };
 
+  # A custom form's `eval` takes the context door (lib/require-wrapped-closure.nix): a pattern of
+  # formals is handed exactly those coords, and the argument record exactly the fields its pattern
+  # names. Every closed-pattern row aborted uncatchably before the door (`called with unexpected
+  # argument 'extra'`); the bare, ellipsis and stated-formals functor rows are the shapes the door
+  # must leave firing. `selfReading` is an `eval` whose value reads the vocab's own guard results: a
+  # callable check forced at the vocab's first use cycles on it (`infinite recursion`, uncatchable).
+  flake.tests.guard.test-custom-form-narrowed-to-formals =
+    let
+      wide = {
+        host = "h";
+        extra = 1;
+      };
+      body = {
+        description = "fired";
+      };
+      closed = { host }: a: host == a.name.v;
+      form =
+        eval: ctx: args:
+        let
+          gv = aspects.mkGuardVocab {
+            guardForms.f = {
+              inherit eval;
+              reads = [ [ "host" ] ];
+            };
+          };
+        in
+        gv.applyGuard ctx (gv.guard (aspects.pred.custom "f" args) body);
+      selfReading =
+        let
+          gv = aspects.mkGuardVocab {
+            guardForms.f = {
+              eval = builtins.seq (gv.applyGuard wide (gv.vocab.always body)) closed;
+              reads = [ ];
+            };
+          };
+        in
+        gv.applyGuard wide (gv.vocab.always body);
+    in
+    {
+      expr = {
+        closedWide = form closed wide { name = "h"; };
+        closedWideNoFire = form closed (wide // { host = "z"; }) { name = "h"; };
+        defaultedLacking = form (
+          {
+            host ? null,
+          }:
+          a: host == a.name.v
+        ) { extra = 1; } { name = "h"; };
+        argPatternWide = form ({ host }: { name }: host == name.v) { host = "h"; } {
+          name = "h";
+          extra = 1;
+        };
+        bareWide = form (ctx: a: (ctx.host or null) == a.name.v) wide { name = "h"; };
+        ellipsisWide = form ({ ... }: _: true) wide { name = "h"; };
+        functorWide = form {
+          __functor = _: closed;
+          __functionArgs = {
+            host = false;
+          };
+        } wide { name = "h"; };
+        inherit selfReading;
+      };
+      expected = {
+        closedWide = body;
+        closedWideNoFire = null;
+        defaultedLacking = null;
+        argPatternWide = body;
+        bareWide = body;
+        ellipsisWide = body;
+        functorWide = body;
+        selfReading = body;
+      };
+    };
+
   # den-hoag-cr72: custom-form validation is EAGER at `applyGuard`, not lazy at dispatch-by-name.
   # The cell above only reaches the refusal because it dispatches the offending form BY NAME; the
   # defect at full strength is a vocabulary whose malformed entry is NEVER named by any dispatch —

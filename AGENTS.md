@@ -123,6 +123,10 @@ through one content-address encoding.
 `providerPrefix : [string]`, `collections`, and five booleans — `closedKeys`, `recursiveClosed`,
 `deferIncludeResolution`, `rejectBareModuleInclude`, plus `freeformKeys : [string]`. `mkGuardVocab`
 additionally reads `cnf.guardForms : { <name> = { eval = ctx: argData: bool; reads = [[attrPath]]; }; }`.
+`eval` is applied through the context door: a pattern of formals is handed exactly those coords (and
+`argData` exactly the fields its pattern names), a missing required coord or field is refused by name,
+and a non-callable `eval`, a non-function `eval ctx` or a non-bool result is refused by name. A closed
+empty pattern `{ }:` in either position aborts on a wider record until the door hands it `{ }`.
 
 **Record markers** (produced and consumed, not exports): `__guard` (defunctionalized guard record),
 `__isWrappedFn` + `__functionArgs` (raw-closure functor wrap), `__keyRef` (out-of-fixpoint reference),

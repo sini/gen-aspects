@@ -155,7 +155,34 @@ in
             any = builtins.any (evalPred ctx) pr.a.preds;
             always = true;
           }
-          // builtins.mapAttrs (_: form: form.eval ctx pr.a) checkedCustomForms;
+          # A custom form's `eval` is a caller-supplied function, applied through the same context door
+          # as the escape hatch and the carrier's function fragment: narrowed to its formals, a missing
+          # required coord refused by name. Each further failure mode refuses by name here, on the
+          # dispatched form only. The callable check stays here, not in `checkForm`: forcing every
+          # `eval` at the vocab's first use cycles when an `eval` reads this vocab's own guard results.
+          // builtins.mapAttrs (
+            name: form:
+            let
+              at = "custom form `${name}`";
+              applied =
+                if prelude.isFunction form.eval then
+                  form.eval (doors.requireRequiredCoords "guard" at (prelude.functionArgs form.eval) ctx)
+                else
+                  throw "gen-aspects.guard: ${at}'s `eval` must be callable (a function, or a record whose `__functor` yields a function); received: ${builtins.typeOf form.eval}.";
+              r =
+                if prelude.isFunction applied then
+                  applied (
+                    doors.requireRequiredCoords "guard" "${at}'s predicate arguments" (prelude.functionArgs applied)
+                      pr.a
+                  )
+                else
+                  throw "gen-aspects.guard: ${at}'s `eval` applied to a context returned ${builtins.typeOf applied}, not a function of the predicate's arguments; `eval` is `ctx: argData: bool`.";
+            in
+            if builtins.isBool r then
+              r
+            else
+              throw "gen-aspects.guard: ${at}'s `eval` must return a bool; returned ${builtins.typeOf r}. `eval` takes the context and the predicate's arguments, `ctx: argData: bool`."
+          ) checkedCustomForms;
         in
         # The refusal is the door: it renders the recognised set (never restated) and names the
         # path-parameterised form, so a caller holding a form name this vocabulary does not declare

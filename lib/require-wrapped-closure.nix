@@ -1,6 +1,6 @@
 # The doors of the raw-closure applicators: `wrapFn`, the aspect type's `wrapGuardFn`, the guard
-# carrier's function fragment, `applyGuard`'s escape-hatch arm and `wrapGatedFn`. Each applicator
-# takes a CALLER-SUPPLIED function, so each failure mode of that function gets a door here or a
+# carrier's function fragment, `applyGuard`'s escape-hatch arm, a custom guard form's `eval` and
+# `wrapGatedFn`. Each applicator takes a CALLER-SUPPLIED function, so each failure mode of that function gets a door here or a
 # falsifier cell in ci/ (den-hoag-g8lo's rule), and a refusal is minted at this library's door, naming this library's entry, rather than
 # inside gen-merge's module reader, which names neither (ADR-0025 item 1).
 #
@@ -16,6 +16,12 @@
 # declaring none (bare `ctx:`) is handed the context whole by this door; `wrapGatedFn` hands it `{ }`.
 # The same erasure makes an ellipsis-only module function `{ ... }:` indistinguishable from a bare
 # formal `q:`, so such a return is refused; its remedy is to name a module arg it reads.
+# A closed EMPTY pattern `{ }:` is the one context the bound does not reach: its `functionArgs` is
+# `{ }`, as a bare formal's is, so this door hands it the context whole and a wider context aborts
+# uncatchably (`called with unexpected argument`). That holds at every site of this door (not at
+# `wrapGatedFn`, which hands `{ }`), at a custom guard form's context position (`{ }: _: true`) and
+# at its predicate-argument position (`_: { }: true`) alike. It retires when
+# den-hoag-t5hli's ruled arm (a), `{ }:` handed `{ }`, lands in this door.
 #
 # ENUMERATED EXCEPTIONS, each pinned by a falsifier cell: the RETURN of the carrier's function
 # fragment and of `applyGuard`'s escape-hatch arm is handed back raw, and `wrapGatedFn`'s result is

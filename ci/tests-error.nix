@@ -364,6 +364,58 @@ in
       );
     };
 
+  # Each failure mode of a custom guard form's caller-supplied `eval` is refused BY NAME at the
+  # dispatch arm (lib/guard.nix `evalPred`). Every RED was an uncatchable interpreter abort, named in
+  # the cell's comment.
+  flake.testsError.custom-form-totality =
+    let
+      form =
+        eval: ctx:
+        let
+          gv = aspects.mkGuardVocab {
+            guardForms.f = {
+              inherit eval;
+              reads = [ ];
+            };
+          };
+        in
+        gv.applyGuard ctx (gv.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; });
+      wide = {
+        host = "h";
+        extra = 1;
+      };
+      at = "gen-aspects.guard: custom form `f`'s `eval`";
+      notCallable =
+        got:
+        exactly "${at} must be callable (a function, or a record whose `__functor` yields a function); received: ${got}.";
+      notBool =
+        got:
+        exactly "${at} must return a bool; returned ${got}. `eval` takes the context and the predicate's arguments, `ctx: argData: bool`.";
+    in
+    {
+      # RED: `called without required argument 'host'`.
+      test-missing-required-coord = thrown (form ({ host }: a: host == a.name.v) { extra = 1; }) (
+        d3 "guard" "custom form `f`" "host" "extra"
+      );
+      # RED: `attempt to call something which is not a function but an integer`.
+      test-not-callable = thrown (form 5 wide) (notCallable "int");
+      # RED: `attempt to call something which is not a function but an integer`.
+      test-functor-not-callable = thrown (form { __functor = 5; } wide) (notCallable "set");
+      # RED: `attempt to call something which is not a function but a Boolean`.
+      test-functor-one-argument = thrown (form { __functor = _: true; } wide) (notCallable "set");
+      # RED: `expected a Boolean but found a string`.
+      test-returns-non-bool = thrown (form (_: _: "yes") wide) (notBool "string");
+      # RED: `expected a Boolean but found a function`.
+      test-under-applied = thrown (form (
+        _: _: _:
+        true
+      ) wide) (notBool "lambda");
+      # RED: `attempt to call something which is not a function but a Boolean`.
+      test-one-argument = thrown (form (_: true) wide) (
+        exactly "${at} applied to a context returned bool, not a function of the predicate's arguments; `eval` is `ctx: argData: bool`."
+      );
+    };
+
   # den-hoag-661s2: the closed-key gate names the aspect beside the key, on both of its refusals.
   flake.testsError.closed-key-names-aspect =
     let
