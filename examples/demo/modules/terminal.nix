@@ -28,8 +28,8 @@
   ...
 }:
 let
-  # Stub options for the parametric aspects' nixos class content (firewall + nginx). A bare evalModules
-  # has no `networking`/`services` options and would throw; these mirror the NixOS option names the
+  # Stub options for the aspects' nixos class content (base-system locale + firewall + nginx). A bare
+  # evalModules has no `i18n`/`networking`/`services` options and would throw; these mirror the NixOS option names the
   # aspect modules set (kebab schema keys map to camelCase here). `warnings`/`assertions` are declared
   # too because `genBind.wrapAll`'s `.all` appends collision-validator modules that emit them (nixpkgs
   # supplies these in a real `nixosSystem`; a bare evalModules must stub them).
@@ -57,6 +57,22 @@ let
         default = [ ];
       };
       options.networking.firewall.logRefusedConnections = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+      };
+      options.i18n.defaultLocale = lib.mkOption {
+        type = lib.types.str;
+        default = "en_US.UTF-8";
+      };
+      options.time.timeZone = lib.mkOption {
+        type = lib.types.str;
+        default = "UTC";
+      };
+      options.services.timesyncd.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+      };
+      options.networking.useDHCP = lib.mkOption {
         type = lib.types.bool;
         default = false;
       };
