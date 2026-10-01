@@ -11,9 +11,9 @@
 # ONE level: an attrset, or a module function of `cnf.moduleArgs`; what a module function itself
 # returns is gen-merge's module reader's contract, not this door's. Its CONTEXT is typed for the
 # coords the closure declares, and a closure that declares formals is handed EXACTLY those formals:
-# `builtins.functionArgs` erases the ellipsis, so a closed pattern cannot be told from an open one,
-# and narrowing is the one application total over both (0cmbt §3, N1). A closure declaring none
-# (bare `ctx:`) is handed the context whole.
+# `builtins.functionArgs` erases the ellipsis, so by `functionArgs` a closed pattern cannot be told
+# from an open one, and narrowing is the one application total over both (0cmbt §3, N1). A closure
+# declaring none (bare `ctx:`) is handed the context whole by this door; `wrapGatedFn` hands it `{ }`.
 # The same erasure makes an ellipsis-only module function `{ ... }:` indistinguishable from a bare
 # formal `q:`, so such a return is refused; its remedy is to name a module arg it reads.
 #

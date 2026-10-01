@@ -178,7 +178,9 @@ let
   # by ci/tests/gated-wrap.nix test-native-guard-not-gated); `wrapGatedFn`'s applicator SELF-GATES:
   # every required coord (a no-default formal — the same predicate `lib/can-take.nix`'s `canTake` builds
   # as its `required` binding) present ⇒ `onResult (fn <ctx>)`, `<ctx>` narrowed to `functionArgs` by the
-  # shared context door (lib/require-wrapped-closure.nix); a required coord MISSING ⇒ `{ }` (INERT, no
+  # shared context door (lib/require-wrapped-closure.nix), and `{ }` when `functionArgs` is empty (a
+  # closed `{ }:` pattern cannot take a wider context, and `functionArgs` cannot tell it from `ctx:`);
+  # a required coord MISSING ⇒ `{ }` (INERT, no
   # throw — merges harmlessly through `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
   # consumer's fire path is a closure whose own `builtins.functionArgs` is `{ fnArgs = false; }`, so the
   # gate must read the inner fn's real formals — the override); `onResult` — a result hook (DEFAULT
@@ -215,7 +217,14 @@ let
           __functor =
             _: fnArgs:
             if builtins.all (a: fnArgs ? ${a}) required then
-              onResult (fn (doors.requireRequiredCoords "wrapGatedFn" "`${name}`" functionArgs fnArgs))
+              onResult (
+                fn (
+                  if functionArgs == { } then
+                    { }
+                  else
+                    doors.requireRequiredCoords "wrapGatedFn" "`${name}`" functionArgs fnArgs
+                )
+              )
             else
               { };
           __functionArgs = functionArgs;

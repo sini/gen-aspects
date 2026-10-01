@@ -237,11 +237,15 @@ in
       test-closed-pattern-gated =
         closedNarrowed
           ((aspects.wrapGatedFn { functionArgs.x = false; } closedX) wide).description;
-      # A closure declaring no formals is handed the context whole, `wrapGatedFn` included now that it
-      # takes the shared door (its local intersection handed a bare `ctx:` the empty set).
-      test-gated-no-formals-whole-context = {
+      # `wrapGatedFn` hands a closure whose `functionArgs` is empty `{ }`, never the context: a closed
+      # `{ }:` pattern aborts uncatchably on a wider one and `functionArgs` cannot tell it from `ctx:`.
+      test-gated-no-formals-empty-context = {
         expr = (aspects.wrapGatedFn { functionArgs = { }; } (c: c)) wide;
-        expected = wide;
+        expected = { };
+      };
+      test-gated-closed-empty-pattern = {
+        expr = (aspects.wrapGatedFn { functionArgs = builtins.functionArgs ({ }: "ce"); } ({ }: "ce")) wide;
+        expected = "ce";
       };
       # Why the door narrows rather than inspects: `functionArgs` erases the ellipsis.
       test-falsifier-functionargs-erases-ellipsis = {
