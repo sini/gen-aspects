@@ -51,7 +51,9 @@
 # its partial application to `f`, one `toXML` of `f`'s pattern: `wrapFn` and `wrapGuardFn` bind it
 # once per definition, a custom form's context position once per vocabulary; the carrier's function
 # fragment, `applyGuard`'s escape hatch and a custom form's predicate-argument position classify at
-# every application, since each holds the function only there. So no termination argument is owed.
+# every application, since each holds the function only there. A function with formals renders no
+# `toXML`, but at those three sites its narrowing door is still built per application. So no
+# termination argument is owed.
 let
   inherit (builtins)
     attrNames

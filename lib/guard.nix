@@ -264,9 +264,10 @@ in
           # door. The closure's RETURN is handed back raw: an enumerated exception, retired with the
           # hatch under den-hoag-lwbb1 (ci/tests/wrap-fn.nix `test-falsifier-hatch-return-untyped`).
           #
-          # ★ The wrap record is tested FIRST, and the hatch reads the closure through the prelude's
-          # PAIR of readers (P2-OQ15 arm (i)). A wrap record is a functor, and the prelude's readers
-          # are functor-aware: tested second, it would take the hatch; paired with
+          # ★ The wrap record is tested FIRST; the hatch tests the closure with `prelude.isFunction`
+          # and reads it through `requireContextOf`, which restates `prelude.functionArgs` (P2-OQ15
+          # arm (i)). A wrap record is a functor, and both readers are functor-aware: tested second,
+          # it would take the hatch; paired with
           # `builtins.functionArgs`, it aborts past `tryEval` (`'functionArgs' requires a function`).
           # A non-wrap functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, a gen `door`)
           # is callable and states its formals, so it takes the context door like a lambda.
