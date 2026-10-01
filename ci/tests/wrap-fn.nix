@@ -303,4 +303,161 @@ in
         };
       };
     };
+
+  # THE SHAPE CLASSIFIER (den-hoag-t5hli ruled arm (a); 0cmbt spec §2.3, cells S1-S3, S5): a function
+  # declaring no formals is classified by its `toXML` pattern at every site of the context door. S1's
+  # RED, before the classifier: every `{ }:` arm aborted uncatchably, `function 'anonymous lambda'
+  # called with unexpected argument 'host'` (`'name'` at the predicate-argument position).
+  flake.tests.shape-classifier =
+    let
+      ctx = {
+        host = "h";
+        extra = "x";
+      };
+      keys = c: builtins.concatStringsSep "," (builtins.attrNames c);
+      closedEmpty = { }: { description = "ce"; };
+      functorClosedEmpty = {
+        __functor = self: { }: { description = "fce"; };
+      };
+      bare = c: { description = "bare:${keys c}"; };
+      atEllipsis =
+        a@{ ... }:
+        {
+          description = "at:${keys a}";
+        };
+      native =
+        v:
+        (aspects.aspectType cnf).merge
+          [ "n" ]
+          [
+            {
+              file = "<t>";
+              value = v;
+            }
+          ];
+      gv = aspects.mkGuardVocab { };
+      carrier =
+        v:
+        (aspects.aspectType cnf).merge
+          [ "n" ]
+          [
+            {
+              file = "<a>";
+              value = v;
+            }
+            {
+              file = "<b>";
+              value = gv.vocab.whenEq [ "host" ] "nope" { description = "b"; };
+            }
+          ];
+      # A custom guard form whose `eval` is the subject, dispatched against `ctx` with a non-empty
+      # predicate argument record, so both of its positions are handed a wider value.
+      form =
+        eval:
+        let
+          v = aspects.mkGuardVocab {
+            guardForms.f = {
+              inherit eval;
+              reads = [ ];
+            };
+          };
+        in
+        v.applyGuard ctx (v.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; });
+      via = f: {
+        wrapFn = ((aspects.wrapFn cnf "n" f) ctx).description;
+        merge = ((native f) ctx).description;
+        carrier = (aspects.applyGuard ctx (carrier f)).description;
+        applyGuard = (aspects.applyGuard ctx f).description;
+      };
+    in
+    {
+      # S1: `{ }:` is handed `{ }` at every site of the door.
+      test-closed-empty = {
+        expr = via closedEmpty // {
+          functor = (aspects.applyGuard ctx functorClosedEmpty).description;
+          formContext = (form ({ }: _: true)).description;
+          formArgument = (form (_: { }: true)).description;
+        };
+        expected = {
+          wrapFn = "ce";
+          merge = "ce";
+          carrier = "ce";
+          applyGuard = "ce";
+          functor = "fce";
+          formContext = "fired";
+          formArgument = "fired";
+        };
+      };
+      # S2, the control that the classifier moves only `{ }:`: `ctx:` and `a@{ ... }:` are handed the
+      # context whole, as before it.
+      test-context-shapes-unmoved = {
+        expr = {
+          bare = via bare;
+          atEllipsis = via atEllipsis;
+        };
+        expected = {
+          bare = {
+            wrapFn = "bare:extra,host";
+            merge = "bare:extra,host";
+            carrier = "bare:extra,host";
+            applyGuard = "bare:extra,host";
+          };
+          atEllipsis = {
+            wrapFn = "at:extra,host";
+            merge = "at:extra,host";
+            carrier = "at:extra,host";
+            applyGuard = "at:extra,host";
+          };
+        };
+      };
+      # S3, the control that formals still narrow (76cmu's door, unmoved).
+      test-formals-narrow-unmoved = {
+        expr = via ({ host }: { description = "d-${host}"; });
+        expected = {
+          wrapFn = "d-h";
+          merge = "d-h";
+          carrier = "d-h";
+          applyGuard = "d-h";
+        };
+      };
+      # S5, the classifier table (0cmbt spec §2.3, item 15): what each shape is handed, read through the
+      # escape hatch, whose return is handed back raw. A formal's throwing default is never forced.
+      test-classifier-table = {
+        expr = builtins.mapAttrs (_: f: aspects.applyGuard ctx f) {
+          bare = c: c;
+          ellipsis = { ... }@a: a;
+          atEllipsis = a@{ ... }: a;
+          atClosedEmpty = a@{ }: a;
+          closedEmptyAt = { }@a: a;
+          defaultThrows =
+            a@{
+              host ? throw "default forced",
+            }:
+            a;
+          functorBare = {
+            __functor = self: c: c;
+          };
+          functorClosedEmpty = {
+            __functor = self: a@{ }: a;
+          };
+          setFunctionArgsEmpty = {
+            __functor = self: c: c;
+            __functionArgs = { };
+          };
+        };
+        expected = {
+          bare = ctx;
+          ellipsis = ctx;
+          atEllipsis = ctx;
+          atClosedEmpty = { };
+          closedEmptyAt = { };
+          defaultThrows = {
+            host = "h";
+          };
+          functorBare = ctx;
+          functorClosedEmpty = { };
+          setFunctionArgsEmpty = ctx;
+        };
+      };
+    };
 }

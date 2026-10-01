@@ -112,6 +112,11 @@ let
     cnf: loc: defs:
     let
       at = "aspect `${prelude.concatStringsSep "." loc}`";
+      # Each definition's context door, classified once here, never per application.
+      doored = map (d: {
+        inherit (d) file value;
+        door = doors.requireContextOf "aspectType" at d.value;
+      }) defs;
     in
     mkWrapped {
       # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
@@ -121,10 +126,8 @@ let
           doorArgs cnf (loc ++ [ "<function body>" ]) (
             map (d: {
               inherit (d) file;
-              value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (
-                d.value (doors.requireRequiredCoords "aspectType" at (builtins.functionArgs d.value) fnArgs)
-              );
-            }) defs
+              value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (d.value (d.door fnArgs));
+            }) doored
           )
         )).config;
       functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
@@ -148,6 +151,7 @@ let
     cnf: name: fn:
     let
       at = "`${name}`";
+      door = doors.requireContextOf "wrapFn" at fn;
     in
     builtins.seq (doors.requireClosure "wrapFn" at fn) (mkWrapped {
       # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
@@ -159,9 +163,7 @@ let
             [
               {
                 file = "<wrapFn>";
-                value = doors.requireAspectContent "wrapFn" at (mkIsModuleFn cnf) (
-                  fn (doors.requireRequiredCoords "wrapFn" at (builtins.functionArgs fn) fnArgs)
-                );
+                value = doors.requireAspectContent "wrapFn" at (mkIsModuleFn cnf) (fn (door fnArgs));
               }
             ]
         )).config;

@@ -51,6 +51,13 @@ let
           value = gv.vocab.whenEq [ "host" ] "nope" { description = "b"; };
         }
       ];
+  unreadable =
+    entry: at:
+    exactly (
+      "gen-aspects.${entry}: the function at ${at} declares no formals and its pattern cannot be read "
+      + "(a primop, or a functor whose __functor does not return a lambda); give it a pattern: `ctx:`, "
+      + "`{ ... }:` or a formal set."
+    );
   d1 =
     entry: at: detail:
     exactly (
@@ -171,6 +178,18 @@ in
   # BY NAME at this library's door. Every RED here was an interpreter abort minted in gen-merge (or a
   # silent success), named in the cell's comment.
   flake.testsError.wrap-totality = {
+    # S4 (0cmbt spec §2.3): a function whose pattern `toXML` cannot render (a primop) refuses by name
+    # at the context door. RED: `wrapFn` and the merge refused later with the return door's
+    # `returned: list`, and `applyGuard` handed back the raw list.
+    test-primop-wrapfn = thrown ((aspects.wrapFn wcnf "n" builtins.attrNames) wctx) (
+      unreadable "wrapFn" "`n`"
+    );
+    test-primop-native = thrown ((native builtins.attrNames) wctx) (
+      unreadable "aspectType" "aspect `n`"
+    );
+    test-primop-applyguard = thrown (aspects.applyGuard wctx builtins.attrNames) (
+      unreadable "guard" "`applyGuard`"
+    );
     # RED: `expected a set but found a function` (TypeError, gen-merge `configOf`), uncatchable.
     test-wrapfn-self-returning = thrown ((aspects.wrapFn wcnf "n" selfF) wctx) (
       d2 "wrapFn" "`n`" (fnRet "")
