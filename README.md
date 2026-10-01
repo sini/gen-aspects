@@ -214,6 +214,15 @@ Schema-declared options propagate to aspect instances via `mkAspectModule`. When
 
 `mkAspectModule` lazily injects `config.schema.aspect.__defsModule` into each aspect's `aspectModules`, so schema extensions are available without manual wiring. This `__defsModule` seam is why `aspectSubmodule` mounts `imports = facetModules ++ cnf.aspectModules` — `aspectModules` must stay live even though per-key channels are now declared through `keySemantics` rather than injected as modules.
 
+A construction formal written at the kind entry's top level is refused by name, because there it
+would land on every aspect as a nested aspect while the schema's own formal stayed what the
+constructor fixed: `schema.aspect.keySemantics = …` (meant to widen the class vocabulary) or
+`schema.aspect.providerPrefix = …`. The names are the `mkAspectSchema` cnf keys (`aspects.cnfKeys`)
+and gen-schema's own formals, and a cnf collection named for a cnf key is refused the same way. Pass
+a formal to `mkAspectSchema`; an aspect field of the same name is written on the aspect, or as
+`schema.aspect.config.<name>` (under `closedKeys` it must be declared or listed in `freeformKeys`).
+The refusal covers the entry's direct definitions; a module the entry imports is not reached yet.
+
 ## Flat Registry
 
 The `flatten` function walks the recursive aspect tree and produces a flat attrset keyed by path identity:

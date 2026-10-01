@@ -117,6 +117,14 @@ through one content-address encoding.
 | `schemaRecord.identity`        | `{ aspectPath, pathKey, key, isMeaningfulName }`                                                                                      |
 | re-exports                     | `aspectType`, `aspectPath`, `pathKey`, `key`, `isMeaningfulName`, `canTake`, `mkIsModuleFn`                                           |
 
+**A construction formal on the kind entry refuses by name** (`lib/schema.nix`, bindings `formalNamed`
+in `mkType` and `formalCollections` in `mkAspectSchema`; `den-hoag-q17cc`): a top-level key of a
+`config.schema.aspect` def naming a `cnfKeys` member, and a `cnf.collections` entry of such a name.
+gen-schema refuses its own formals first (`collections`, `keySemantics` are in both sets). DIRECT defs
+only: a formal inside an imported module still lands (stated residue, `den-hoag-8x97u`; pinned by
+`construction-formals.test-imported-formal-still-lands`). Tests: `construction-formal-refusals.*` in
+`ci/tests-error.nix`, `ci/tests/construction-formals.nix`.
+
 **`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset:
 `keySemantics : { <key> = { category = "class" | "channel" | "facet"; option ? ; module ? ; }; }`,
 `aspectModules : [module]`, `metaModules : [module]`, `moduleArgs : { <arg> = bool; }`,
