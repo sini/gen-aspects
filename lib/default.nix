@@ -35,6 +35,8 @@ let
     inherit prelude;
     inherit (identity) hashIdentity;
     inherit (guardModule) mkGuardVocab;
+    inherit (factsModule) graphCore;
+    inherit (types) aspectId;
   };
   schemaModule = import ./schema.nix {
     inherit prelude merge;
@@ -78,6 +80,11 @@ in
   # mint: a wrap record or a guard carrier applied to a context is a node of its own, identified by
   # its aspect and by the sources of the keys it receives there (0cmbt spec §2.5). See lib/instance.nix.
   inherit (instanceModule) instanceOf;
+  # `instancesFor cnf aspects scopes` → `{ vertices; reaches; nested; }` — the instance relation: one
+  # vertex per minted instance, scope → instance edges (fanning out over descendant tuples), and
+  # nested edges from vertices, minted in depth passes over reached pairs only (0cmbt spec §2.6). The
+  # materialised view htfv3's `project` reads. See lib/instance.nix.
+  inherit (instanceModule) instancesFor;
   # `structuralKeys` (the six native structural option names as ONE binding) + `keyCategory cnf key` — the
   # single aspect-key classification surface a consumer reads a key's category from. See lib/types.nix.
   # `hasClassContent v` is its companion over the class VALUE: the has-content fact this library's
@@ -113,6 +120,10 @@ in
   # are BOTH the node's walk position, so a disagreement between them is inexpressible — see
   # lib/facts.nix for the measurement that makes one source a correctness requirement.
   inherit (factsModule) graphFacts;
+  # `includeSitesOfEntry cnf aspects entry` — `graphFacts`' include-site classification over any
+  # aspect value: a node's value gives its `includeSitesOf`, an applied instance body the sites its
+  # consumer descends. One function for both, so the relation and its reader cannot disagree.
+  inherit (factsModule) includeSitesOfEntry;
   inherit (guardModule)
     mkGuardVocab
     toArgData

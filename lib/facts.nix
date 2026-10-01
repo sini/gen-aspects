@@ -101,7 +101,7 @@ let
     + "finish, so the include sites refuse by name here instead. Name the repeated content as an "
     + "aspect and include it by reference: a cycle between named aspects is well defined.";
 in
-{
+rec {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
   # reads a refusal, never renders one. The budget travels with them so a cell straddling it reads
   # the number from here.
@@ -120,7 +120,10 @@ in
   # that same id, so `attrNames` over any of them IS the node set — totality, asserted in
   # `ci/tests/graph-facts.nix`. The one exception is `nodeIdOf`, keyed by the LOCAL key a member is
   # named by, whose values are those ids.
-  graphFacts = checkedEntry (
+  #
+  # `graphCore` takes a constructed `cnf` (behind `checkedEntry`) and is shared with `instancesFor`
+  # (lib/instance.nix), so the relation reads the one classification rather than a second one.
+  graphCore =
     cnf: aspects:
     let
       # THE NODE ID IS THE ORIGIN-QUALIFIED WALK KEY. The origin qualifier is just another identity
@@ -345,10 +348,14 @@ in
             r
         ) elems;
 
+      # A whole value's include sites: a node's, or an applied instance body's (`includeSitesOfEntry`).
+      # `id` names the value in a refusal only.
+      sitesOfEntry = id: v: sitesOf id [ ] (includesOfValue id v);
+
       includeSitesOf = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
-          value = sitesOf (idOf e.path) [ ] (includesOfValue (idOf e.path) e.value);
+          value = sitesOfEntry (idOf e.path) e.value;
         }) entries
       );
 
@@ -392,16 +399,33 @@ in
       nodeIdOf = builtins.mapAttrs (k: _: qualify k) localNodes;
     in
     {
-      inherit
-        nodes
-        parentOf
-        includeSitesOf
-        includesOf
-        foreignIncludesOf
-        unresolvedIncludesOf
-        nodeIdOf
-        nodeData
-        ;
-    }
+      facts = {
+        inherit
+          nodes
+          parentOf
+          includeSitesOf
+          includesOf
+          foreignIncludesOf
+          unresolvedIncludesOf
+          nodeIdOf
+          nodeData
+          ;
+      };
+      inherit sitesOfEntry;
+    };
+
+  graphFacts = checkedEntry (cnf: aspects: (graphCore cnf aspects).facts);
+
+  # `includeSitesOfEntry cnf aspects entry` → the include sites of any aspect value against this
+  # tree, by the classification `graphFacts` publishes as `includeSitesOf` (one function, two
+  # callers): a node's value gives its `includeSitesOf` entry, and an applied instance body gives
+  # the sites its consumer descends (htfv3 spec gate K1, arm (A)). Partially applied to `cnf` and
+  # `aspects`, the registry it resolves against is built once.
+  includeSitesOfEntry = checkedEntry (
+    cnf: aspects:
+    let
+      inherit (graphCore cnf aspects) sitesOfEntry;
+    in
+    entry: sitesOfEntry (entry.key or "<entry>") entry
   );
 }

@@ -80,8 +80,24 @@ source of kind `aspect-instance`, `aspect`, `include-site` or `named-value`, whi
 Enumerated, not refused: a source that is the instance's own id aborts with `infinite recursion`.
 The caller's obligation, unchecked: each source supplies the value the context carries under its key.
 The id reads only the sources, so a mismatch mints one id with two different entries, and a relation
-keeping one vertex per id (U4's `vertices`) keeps one of them silently.
+keeping one vertex per id (`instancesFor`'s `vertices`, which enumerates it) keeps one of them.
 Tests: `ci/tests/instances.nix`; `instance-doors.*` in `ci/tests-error.nix`.
+
+`instancesFor cnf aspects scopes` → `{ vertices; reaches; nested; }` is the instance relation (0cmbt
+spec §2.6), with `scopes.<node> = { members; context; sources; descendants ? [ { context; sources; } ]; }`.
+`vertices.<iid> = { aspect; formals; entry; }` holds one cell per `instanceOf` id (`aspect` is the
+parametric node's facts id); `reaches.<node>.<aspect>` and `nested.<iid>.<aspect>` are ascending id
+lists. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
+nodes and inline content. Fan-out on REQUIRED formals only (O3, defaulted, reversible: the `required`
+binding in `lib/instance.nix`); a nested instance never fans out, and a pair no tuple supplies has no
+edge. Applied bodies are classified by `includeSitesOfEntry`; a body's static targets resolve at node
+scope. Guard records (O1) are leaves with no edge. Reading any field forces every pass. Refused by
+name: `scopes` not an attrset; a scope not `{ members; context; sources; descendants? }`; a member
+that is not a node id; a non-attrset `context` or `sources`; malformed `descendants`. Enumerated, not
+refused: one source handed two context values gives one vertex holding one of the two entries.
+`includeSitesOfEntry cnf aspects entry` is `graphFacts`' `includeSitesOf` classification over any
+aspect value (a node's value, or an applied instance body).
+Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doors.*` in `ci/tests-error.nix`.
 
 **Identity** — `lib/identity.nix`, `lib/types.nix`
 
@@ -325,7 +341,7 @@ nix eval --json .#lib --apply 'l: {
 Current output (verbatim):
 
 ```json
-{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","tagEq"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","hasClassContent","instanceOf","isGuardLeaf","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenTagEq"]}
+{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","tagEq"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","hasClassContent","includeSitesOfEntry","instanceOf","instancesFor","isGuardLeaf","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenTagEq"]}
 ```
 
 **Checks.** Test-runner invocation (from the repo root; CI runs the same command from the

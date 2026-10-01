@@ -789,4 +789,73 @@ in
         at "was handed sources of type string; sources map each context key to the identity that supplied it."
       );
     };
+
+  # The instance relation's doors (lib/instance.nix `instancesFor`; den-hoag-0cmbt spec §2.6, the C1
+  # revision gate's C-B). Each is a catchable throw naming `instancesFor` and the node.
+  flake.testsError.instance-relation-doors =
+    let
+      entity = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
+      tree = {
+        p = aspects.wrapFn { } "p" ({ host, ... }: { description = "p-${host}"; });
+        w = {
+          name = "w";
+          includes = [ "p" ];
+        };
+      };
+      ok = {
+        members = [ "w" ];
+        context.host = "h1";
+        sources.host = entity "h1";
+      };
+      rel = scope: aspects.instancesFor { } tree { a = scope; };
+      at = msg: exactly "gen-aspects.instancesFor (node 'a'): ${msg}";
+    in
+    {
+      test-scopes-not-attrs = thrown (aspects.instancesFor { } tree [ ]) (
+        exactly "gen-aspects.instancesFor: `scopes` must be an attrset of node scopes, not a list."
+      );
+      # C-B. RED (without the door): `attribute '<member>' missing`, uncatchable.
+      test-member-not-a-node = thrown (rel (ok // { members = [ "absent" ]; })) (
+        at "member 'absent' is not a node of this tree; a member is a `graphFacts` node id (resolve a local key through `nodeIdOf`)."
+      );
+      test-member-not-a-string = thrown (rel (ok // { members = [ 1 ]; })) (
+        at "member of type int is not a node of this tree; a member is a `graphFacts` node id (resolve a local key through `nodeIdOf`)."
+      );
+      test-members-not-a-list = thrown (rel (ok // { members = "w"; })) (
+        at "`members` must be a list of facts ids, not a string."
+      );
+      test-scope-missing-sources = thrown (rel (removeAttrs ok [ "sources" ])) (
+        exactly "gen-aspects.instancesFor (node 'a'): required field 'sources' is missing (required: 'members', 'context', 'sources') (in prelude.checkRequired)"
+      );
+      test-scope-unknown-field = thrown (rel (ok // { extra = 1; })) (
+        exactly "gen-aspects.instancesFor (node 'a'): 'extra' is not an option of this door; the options are closed (accepted: 'members', 'context', 'sources', 'descendants') (in prelude.checkOptions)"
+      );
+      test-context-not-attrs = thrown (rel (ok // { context = "h1"; })) (
+        at "`context` must be an attrset of coords, not a string."
+      );
+      test-descendants-not-a-list = thrown (rel (ok // { descendants = { }; })) (
+        at "`descendants` must be a list of { context; sources; } records, not a set."
+      );
+      test-descendant-missing-sources =
+        thrown (rel (ok // { descendants = [ { context.user = "u1"; } ]; }))
+          (
+            exactly "gen-aspects.instancesFor (node 'a'), descendant 0: required field 'sources' is missing (required: 'context', 'sources') (in prelude.checkRequired)"
+          );
+      test-descendant-sources-not-attrs =
+        thrown
+          (rel (
+            ok
+            // {
+              descendants = [
+                {
+                  context.user = "u1";
+                  sources = "u1";
+                }
+              ];
+            }
+          ))
+          (
+            exactly "gen-aspects.instancesFor (node 'a'), descendant 0: `sources` must be an attrset mapping each context key to its supplier's identity, not a string."
+          );
+    };
 }
