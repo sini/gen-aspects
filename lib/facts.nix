@@ -67,6 +67,22 @@ let
   # The door a declaration or a bare identifier is resolved at, named first (R6) with the aspect and
   # the include position at fault, since nothing downstream can name them once the edge leaves.
   includesDoor = id: i: "gen-aspects.includes (aspect '${id}', include position ${toString i})";
+  # The same door for the aspect's own `includes`, which has no position.
+  memberDoor = id: "gen-aspects.includes (aspect '${id}')";
+
+  # memberKeyRefusal / expect: a directly-supplied registry bypasses the aspect type, so a key this
+  # file reads can carry the wrong type, and the builtin the read feeds (`imap0`, `split`, `tail`)
+  # then aborts past `tryEval` with an interpreter type error naming neither the aspect nor the key,
+  # in a class the evaluators do not agree on. Each read is checked first and refuses by name at its
+  # door: `prelude.checkOptions`' "must be an attrset, not a …" form, for a field.
+  memberKeyRefusal =
+    door: key: want: v:
+    "${door}: '${key}' must be ${want}, not a ${builtins.typeOf v}";
+
+  expect =
+    door: key: want: pred: v:
+    if pred v then v else throw (memberKeyRefusal door key want v);
+  expectList = door: key: expect door key "a list" builtins.isList;
 
   # includeSitesMaxDepth / includeSitesDepthRefusal: `includeSitesOf` recurses into inline content's
   # own `includes`, and inline content can be NON-WELL-FOUNDED (`let s = { includes = [ s ]; }`). Its
@@ -89,7 +105,12 @@ in
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
   # reads a refusal, never renders one. The budget travels with them so a cell straddling it reads
   # the number from here.
-  inherit danglingIncludeRefusal includeSitesDepthRefusal includeSitesMaxDepth;
+  inherit
+    danglingIncludeRefusal
+    includeSitesDepthRefusal
+    includeSitesMaxDepth
+    memberKeyRefusal
+    ;
 
   # `graphFacts cnf aspects` →
   #   { nodes; parentOf; includeSitesOf; includesOf; foreignIncludesOf; unresolvedIncludesOf;
@@ -243,7 +264,10 @@ in
           else
             throw (danglingIncludeRefusal id i target)
         else if builtins.isAttrs elem && elem ? key then
-          if isIncludeContent elem then { kind = "content"; } else local (includesDoor id i) elem
+          if isIncludeContent (includesDoor id i) elem then
+            { kind = "content"; }
+          else
+            local (includesDoor id i) elem
         else if builtins.isString elem then
           # A bare string is unconditionally a REFERENCE (den-hoag-2zjg1 rulings B / TERM "i") —
           # content is never string-shaped — so it has no `isIncludeContent` escape hatch. It
@@ -268,16 +292,23 @@ in
       # refuses when none exists. Content copied from another aspect or another tree keeps the
       # chain and key of where it was written, so it stays content: it denotes no node anywhere.
       isIncludeContent =
-        elem:
+        door: elem:
         let
           pastFirst = xs: builtins.elem "includes" (builtins.tail xs);
+          key = expect door "key" "a string" builtins.isString elem.key;
         in
-        pastFirst (builtins.filter builtins.isString (builtins.split "/" elem.key))
-        && pastFirst (elem.meta.aspect-chain or [ null ]);
+        pastFirst (builtins.filter builtins.isString (builtins.split "/" key))
+        && pastFirst (expectList door "meta.aspect-chain" (elem.meta.aspect-chain or [ null ]));
 
       # A member with no `includes` (a hand-built or direct registry never passed the aspect type) reads
       # as the type's declared default, so the typed and untyped paths answer alike.
-      includesOfValue = v: if isGuardLeaf v then [ ] else v.includes or includesDefault;
+      # One whose `includes` is not a list refuses by name instead of aborting in `imap0`.
+      includesOfValue =
+        id: v:
+        if isGuardLeaf v then
+          [ ]
+        else
+          expectList (memberDoor id) "includes" (v.includes or includesDefault);
 
       # ★ THE ONE CLASSIFICATION PASS. Every include position of a node, in declared order, classified
       # by `resolve`:
@@ -308,7 +339,7 @@ in
                 if builtins.length p >= includeSitesMaxDepth then
                   throw (includeSitesDepthRefusal id at)
                 else
-                  sitesOf id p (elem.includes or includesDefault);
+                  sitesOf id p (expectList (includesDoor id at) "includes" (elem.includes or includesDefault));
             }
           else
             r
@@ -317,7 +348,7 @@ in
       includeSitesOf = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
-          value = sitesOf (idOf e.path) [ ] (includesOfValue e.value);
+          value = sitesOf (idOf e.path) [ ] (includesOfValue (idOf e.path) e.value);
         }) entries
       );
 

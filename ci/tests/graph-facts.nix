@@ -1461,16 +1461,19 @@ in
       covered = [
         "danglingIncludeRefusal"
         "includeSitesDepthRefusal"
+        "memberKeyRefusal"
       ];
     };
     expected = {
       renderers = [
         "danglingIncludeRefusal"
         "includeSitesDepthRefusal"
+        "memberKeyRefusal"
       ];
       covered = [
         "danglingIncludeRefusal"
         "includeSitesDepthRefusal"
+        "memberKeyRefusal"
       ];
     };
   };
@@ -1546,6 +1549,76 @@ in
         unresolvedIncludesOf.x = [ ];
         sameAsExplicit = true;
         explicitNodes = [ "x" ];
+      };
+    };
+
+  # ── A MEMBER KEY OF THE WRONG TYPE REFUSES BY NAME (den-hoag-rc4mb) ──
+  # Every key `graphFacts` reads from a directly-supplied member with an assumed type: the aspect's own
+  # `includes`, and an include element's `key`, `meta.aspect-chain` and (inline content) `includes`.
+  # Each aborted past `tryEval` in a builtin before; each now refuses catchably. The message is
+  # asserted on the real path in `ci/tests-error.nix` (`member-key-type`).
+  flake.tests.graph-facts.test-member-key-of-wrong-type-refuses =
+    let
+      f =
+        m:
+        aspects.graphFacts { } {
+          x = {
+            name = "x";
+          }
+          // m;
+        };
+      content = {
+        key = "x/includes/0";
+        meta.aspect-chain = [
+          "x"
+          "includes"
+        ];
+      };
+      refused = r: !(caught (builtins.deepSeq r.includeSitesOf null));
+      msg = factsInternals.memberKeyRefusal "gen-aspects.includes (aspect 'x')" "includes" "a list" "s";
+    in
+    {
+      expr = {
+        includesString = refused (f {
+          includes = "notalist";
+        });
+        includesSet = refused (f {
+          includes.y = 1;
+        });
+        contentIncludes = refused (f {
+          includes = [ (content // { includes = "notalist"; }) ];
+        });
+        keyInt = refused (f {
+          includes = [ { key = 5; } ];
+        });
+        chainString = refused (f {
+          includes = [ (content // { meta.aspect-chain = "x/includes"; }) ];
+        });
+        # The node set does not read `includes`, so it still answers.
+        nodesAnswer = (f { includes = "notalist"; }).nodes;
+        # CONTROLS, same predicate: well-formed inline content, `[ ]` and a missing `includes` pass.
+        contentOk = refused (f {
+          includes = [ (content // { includes = [ ]; }) ];
+        });
+        empty = refused (f {
+          includes = [ ];
+        });
+        missing = refused (f { });
+        messageNamesTheAspect = lib.hasInfix "(aspect 'x')" msg;
+        messageNamesTheKey = lib.hasInfix "'includes' must be a list, not a string" msg;
+      };
+      expected = {
+        includesString = true;
+        includesSet = true;
+        contentIncludes = true;
+        keyInt = true;
+        chainString = true;
+        nodesAnswer = [ "x" ];
+        contentOk = false;
+        empty = false;
+        missing = false;
+        messageNamesTheAspect = true;
+        messageNamesTheKey = true;
       };
     };
 
