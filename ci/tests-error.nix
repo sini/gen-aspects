@@ -378,6 +378,42 @@ in
       );
     };
 
+  # den-hoag-rc4mb: a member key `graphFacts` reads with an assumed type refuses naming the door, the
+  # aspect, the include position where there is one, and the key.
+  flake.testsError.member-key-type =
+    let
+      sites =
+        m:
+        (aspects.graphFacts { } {
+          x = {
+            name = "x";
+          }
+          // m;
+        }).includeSitesOf;
+      content = {
+        key = "x/includes/0";
+        meta.aspect-chain = [
+          "x"
+          "includes"
+        ];
+      };
+      at0 = "gen-aspects.includes (aspect 'x', include position 0): ";
+    in
+    {
+      test-includes-not-a-list = thrown (sites { includes = "notalist"; }) (
+        exactly "gen-aspects.includes (aspect 'x'): 'includes' must be a list, not a string"
+      );
+      test-content-includes-not-a-list = thrown (sites {
+        includes = [ (content // { includes = "notalist"; }) ];
+      }) (exactly "${at0}'includes' must be a list, not a string");
+      test-key-not-a-string = thrown (sites { includes = [ { key = 5; } ]; }) (
+        exactly "${at0}'key' must be a string, not a int"
+      );
+      test-chain-not-a-list = thrown (sites {
+        includes = [ (content // { meta.aspect-chain = "x/includes"; }) ];
+      }) (exactly "${at0}'meta.aspect-chain' must be a list, not a string");
+    };
+
   # den-hoag-661s2: the closed-key gate names the aspect beside the key, on both of its refusals.
   flake.testsError.closed-key-names-aspect =
     let
