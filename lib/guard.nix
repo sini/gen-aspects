@@ -170,9 +170,10 @@ in
           }
           # A custom form's `eval` is a caller-supplied function, applied through the same shape
           # classifier as the escape hatch and the carrier's function fragment, but never narrowed to
-          # the entity kinds: narrowed to its formals, a missing required coord refused by name. Each further failure mode refuses by name here, on the
-          # dispatched form only. The callable check stays here, not in `checkForm`: forcing every
-          # `eval` at the vocab's first use cycles when an `eval` reads this vocab's own guard results.
+          # the entity kinds: narrowed to its formals, a missing required coord refused by name. Each
+          # further failure mode refuses by name here, on the dispatched form only. The callable check
+          # stays here, not in `checkForm`: forcing every `eval` at the vocab's first use cycles when
+          # an `eval` reads this vocab's own guard results.
           // builtins.mapAttrs (
             name: form:
             let

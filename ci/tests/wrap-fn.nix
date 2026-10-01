@@ -465,7 +465,8 @@ in
   # its entity kinds as `cnf.entityKinds`, the context keys that carry them; a context shape (`ctx:`,
   # `{ ... }:`) is handed the context narrowed to those keys at every instance-producing applicator,
   # formals are narrowed to exactly the formals, and a custom form's `eval`, a predicate that mints no
-  # instance, is never narrowed at either of its positions. Every wrap record publishes `__receives`, the keys its door hands at a context.
+  # instance, is never narrowed at either of its positions. Every wrap record publishes `__receives`,
+  # the keys its door hands at a context.
   # K-a's RED, before the key: `gen-aspects: unrecognised cnf key 'entityKinds'.`
   flake.tests.entity-kinds =
     let
@@ -550,8 +551,9 @@ in
         .description or "not fired";
     in
     {
-      # K-a: with `entityKinds = [ "host" ]`, the context shapes are handed `{ host }` at every context
-      # position, and `__receives` names `host` alone.
+      # K-a: with `entityKinds = [ "host" ]`, the context shapes are handed `{ host }` only at the
+      # instance-producing applicators (`wrapFn`, `wrapGuardFn`, the carrier's function fragment, the
+      # hatch), and `__receives` names `host` alone. A custom form's `eval` is never narrowed.
       test-kinds-narrow-context-shapes = {
         expr = {
           bare = via kcnf bare;

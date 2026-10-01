@@ -218,9 +218,10 @@ let
   #
   # `entityKinds` is the one VALUE checked here, beside the key set: a framework whose closures all
   # declare formals never reads a narrowed context, so a shape check at the first read would never
-  # fire for it. `[ ]` is refused with the off-shape values: it would hand every context shape `{ }`,
-  # and `null` is how a framework declares no kinds. Whether a kind NAME is one the framework has is
-  # not checkable without a declared vocabulary (den-hoag-closed-world-guards-uir7d).
+  # fire for it. `[ ]` is refused with the off-shape values: it would hand every context shape `{ }`.
+  # `null` does not declare "no kinds": it leaves the kinds UNDECLARED and hands the whole context.
+  # Whether a declared empty set differs from undeclared, and whether a kind NAME is one the
+  # framework has, wait on a declared vocabulary (den-hoag-closed-world-guards-uir7d).
   checkedEntry =
     f: cnf:
     let
