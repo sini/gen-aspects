@@ -72,8 +72,9 @@ let
       regime = "minted";
     };
     # The framework's entity kinds, as the context keys that carry them (ADR-0027: entity kinds are
-    # the framework's to declare). A context shape is handed the context narrowed to them; `null`
-    # hands it whole (lib/require-wrapped-closure.nix `requireContextOf`).
+    # the framework's to declare). At an instance-producing applicator, a context shape is handed the
+    # context narrowed to them; `null` hands it whole (lib/require-wrapped-closure.nix
+    # `requireContextOf`). A guard predicate's evaluation is never narrowed.
     entityKinds = {
       default = null;
       regime = "minted";
@@ -214,15 +215,44 @@ let
   # a configuration through it. This placement is load-bearing: forcing a returned option DECLARATION
   # does not force validation buried inside its type, so a check placed there would be a landmine
   # firing at whatever unrelated read first happens to build the submodule.
+  #
+  # `entityKinds` is the one VALUE checked here, beside the key set: a framework whose closures all
+  # declare formals never reads a narrowed context, so a shape check at the first read would never
+  # fire for it. `[ ]` is refused with the off-shape values: it would hand every context shape `{ }`,
+  # and `null` is how a framework declares no kinds. Whether a kind NAME is one the framework has is
+  # not checkable without a declared vocabulary (den-hoag-closed-world-guards-uir7d).
   checkedEntry =
     f: cnf:
     let
       c = checkedCnf cnf;
     in
-    builtins.seq c (f c);
+    builtins.seq c (builtins.seq (checkEntityKinds c.entityKinds) (f c));
+
+  # `kinds` itself when it is `null` or a non-empty list of strings, a refusal by name otherwise.
+  # Also read by `requireContextOf`, for a record extended past `checkedEntry` (`extendCnf`).
+  checkEntityKinds =
+    kinds:
+    let
+      received =
+        if !builtins.isList kinds then
+          builtins.typeOf kinds
+        else if kinds == [ ] then
+          "[ ]"
+        else
+          "a list holding a value of type ${
+            builtins.typeOf (builtins.head (builtins.filter (k: !builtins.isString k) kinds))
+          }";
+    in
+    if
+      kinds == null || builtins.isList kinds && kinds != [ ] && builtins.all builtins.isString kinds
+    then
+      kinds
+    else
+      throw "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: ${received}.";
 in
 {
   inherit
+    checkEntityKinds
     cnfConstruction
     cnfDefaults
     cnfKeys

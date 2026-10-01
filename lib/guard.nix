@@ -144,14 +144,17 @@ in
       # strictness the caller never asked for. checkedCustomForms is the validated passthrough.
       checkedCustomForms = builtins.deepSeq (builtins.mapAttrs checkForm cnf.guardForms) cnf.guardForms;
       # The context door at this vocabulary's entity kinds, its kind set built once per vocabulary.
-      # Every CONTEXT position takes it; a custom form's predicate-argument position takes
-      # `argumentsOf`, which never narrows, because `pr.a` is not a context.
+      # Only the positions that apply a closure producing aspect content take it (the carrier's
+      # function fragment and the escape hatch): narrowing is grounded in the identity of the
+      # instance such a closure mints (0cmbt design §3, R8). A custom form's `eval` is a predicate,
+      # mints no instance, and takes `predicateOf` at both of its positions, which never narrows:
+      # it reads the context its `reads` declare, as the core forms do.
       contextOf = doors.requireContextOf cnf.entityKinds;
-      argumentsOf = doors.requireContextOf null;
+      predicateOf = doors.requireContextOf null;
       # Each custom form's context door, classified once per vocabulary; lazy, so an `eval` is read
       # only by the dispatch that names its form.
       evalDoors = builtins.mapAttrs (
-        name: form: contextOf "guard" "custom form `${name}`" form.eval
+        name: form: predicateOf "guard" "custom form `${name}`" form.eval
       ) checkedCustomForms;
       # O2: ONE global dispatcher, case-analysis on the predicate tag.
       evalPred =
@@ -165,9 +168,9 @@ in
             any = builtins.any (evalPred ctx) pr.a.preds;
             always = true;
           }
-          # A custom form's `eval` is a caller-supplied function, applied through the same context door
-          # as the escape hatch and the carrier's function fragment: narrowed to its formals, a missing
-          # required coord refused by name. Each further failure mode refuses by name here, on the
+          # A custom form's `eval` is a caller-supplied function, applied through the same shape
+          # classifier as the escape hatch and the carrier's function fragment, but never narrowed to
+          # the entity kinds: narrowed to its formals, a missing required coord refused by name. Each further failure mode refuses by name here, on the
           # dispatched form only. The callable check stays here, not in `checkForm`: forcing every
           # `eval` at the vocab's first use cycles when an `eval` reads this vocab's own guard results.
           // builtins.mapAttrs (
@@ -181,7 +184,7 @@ in
                   throw "gen-aspects.guard: ${at}'s `eval` must be callable (a function, or a record whose `__functor` yields a function); received: ${builtins.typeOf form.eval}.";
               r =
                 if prelude.isFunction applied then
-                  applied (argumentsOf "guard" "${at}'s predicate arguments" applied pr.a)
+                  applied (predicateOf "guard" "${at}'s predicate arguments" applied pr.a)
                 else
                   throw "gen-aspects.guard: ${at}'s `eval` applied to a context returned ${builtins.typeOf applied}, not a function of the predicate's arguments; `eval` is `ctx: argData: bool`.";
             in

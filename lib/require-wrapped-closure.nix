@@ -21,7 +21,10 @@
 # `functionArgs` is `{ }` for `x:`, `{ ... }:` and `{ }:` alike: a `<varpat>` (`ctx:`) or an
 # ellipsis `<attrspat>` (`{ ... }:`, `a@{ ... }:`, `{ ... }@a:`) is handed the context, narrowed to
 # the framework's entity kinds when it declares them (`cnf.entityKinds`, 0cmbt spec §2.4) and whole
-# otherwise, and never narrowed at the predicate-argument position, which is not a context; a bare
+# otherwise. Narrowing applies ONLY at the instance-producing applicators (`wrapFn`, `wrapGuardFn`,
+# the carrier's function fragment, the escape hatch), whose closures produce aspect content keyed on
+# what they receive (0cmbt design §3, R8); a custom guard form's `eval` is a predicate, mints no
+# instance, and is never narrowed at either of its positions; a bare
 # `<attrspat>` with no `<attr>` (`{ }:`, `a@{ }:`) is handed `{ }`; anything else (a primop, or a
 # partly applied one) refuses by name. A functor is read through `__functionArgs` when it states one
 # (nixpkgs `setFunctionArgs`, a gen-prelude `door`) and through `f.__functor f`'s pattern otherwise.
@@ -60,8 +63,8 @@
 # vocabulary; once per wrap at `wrapFn` and `wrapGuardFn`), and narrowing a context shape to it
 # is one `intersectAttrs`, O(|kinds|). So no termination argument is owed.
 let
+  inherit (import ./cnf.nix) checkEntityKinds;
   inherit (builtins)
-    all
     attrNames
     concatStringsSep
     filter
@@ -69,8 +72,6 @@ let
     intersectAttrs
     isAttrs
     isFunction
-    isList
-    isString
     listToAttrs
     match
     toXML
@@ -172,18 +173,15 @@ in
   # framework's entity-kind set, `cnf.entityKinds` (ADR-0027: the framework's to declare): a context
   # key IS the name of the entity kind whose value it carries, so a context shape (`ctx:`,
   # `{ ... }:`) is handed the context narrowed to those keys, and `null` hands it whole. Formals are
-  # narrowed to exactly the formals, whatever the kinds. A position whose value is not a context (a
-  # custom form's predicate arguments) passes `null`, and is never narrowed.
+  # narrowed to exactly the formals, whatever the kinds. Only an instance-producing applicator passes
+  # the kinds; a predicate's evaluation (a custom form's `eval`, at its context and its
+  # predicate-argument positions) passes `null`, and is never narrowed.
   requireContextOf =
     kinds:
     let
-      kindSet =
-        if isList kinds && all isString kinds then
-          genAttrs kinds (_: null)
-        else
-          throw "gen-aspects: cnf.entityKinds must be null or a list of context keys (strings); received: ${typeOf kinds}.";
-      # Lazy as the context it narrows: an off-shape set refuses at the first read of the context (a
-      # body's, or `__receives`'), and a body that reads none is handed nothing it could misread.
+      # The shape is checked eagerly at `checkedEntry` (lib/cnf.nix); restated here for a record
+      # extended past it, where it refuses at the first read of the context.
+      kindSet = genAttrs (checkEntityKinds kinds) (_: null);
       narrow =
         if kinds == null then
           _: _: ctx:

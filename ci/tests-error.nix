@@ -190,9 +190,9 @@ in
     test-primop-applyguard = thrown (aspects.applyGuard wctx builtins.attrNames) (
       unreadable "guard" "`applyGuard`"
     );
-    # `cnf.entityKinds` (0cmbt spec §2.4) is read where the context door narrows, so an off-shape value
-    # refuses there by name. RED: `map` over a string, `expected a list but found a string`, an
-    # uncatchable type error inside the door.
+    # `cnf.entityKinds` (0cmbt spec §2.4) is checked at the public entry (`checkedEntry`), so an
+    # off-shape value refuses there by name, before anything reads a narrowed context. RED: `map` over
+    # a string, `expected a list but found a string`, an uncatchable type error inside the door.
     test-entity-kinds-not-a-list =
       thrown
         (
@@ -202,7 +202,39 @@ in
             wctx
         )
         (
-          exactly "gen-aspects: cnf.entityKinds must be null or a list of context keys (strings); received: string."
+          exactly "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: string."
+        );
+    # `[ ]` would hand every context shape `{ }`; it refuses at the entry even though this vocabulary
+    # has no closure that reads a narrowed context. RED (the check only at the first read): no throw.
+    test-entity-kinds-empty = thrown (aspects.mkGuardVocab { entityKinds = [ ]; }) (
+      exactly "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: [ ]."
+    );
+    # A non-string kind refuses at the entry, under a closure with formals that never reads a narrowed
+    # context. RED (the check only at the first read): `{ host = "cortex"; }` is returned.
+    test-entity-kinds-non-string =
+      thrown
+        (
+          (aspects.wrapFn
+            (
+              wcnf
+              // {
+                entityKinds = [
+                  "host"
+                  1
+                ];
+              }
+            )
+            "n"
+            (
+              { host, ... }: {
+                description = host;
+              }
+            )
+          )
+            wctx
+        )
+        (
+          exactly "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: a list holding a value of type int."
         );
     # RED: `expected a set but found a function` (TypeError, gen-merge `configOf`), uncatchable.
     test-wrapfn-self-returning = thrown ((aspects.wrapFn wcnf "n" selfF) wctx) (

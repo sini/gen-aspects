@@ -463,9 +463,9 @@ in
 
   # ENTITY-KIND NARROWING AND `__receives` (0cmbt spec §2.4, cells K-a and K-b). A framework declares
   # its entity kinds as `cnf.entityKinds`, the context keys that carry them; a context shape (`ctx:`,
-  # `{ ... }:`) is handed the context narrowed to those keys at every CONTEXT position of the door,
-  # formals are narrowed to exactly the formals, and a custom form's predicate-argument position is
-  # never narrowed. Every wrap record publishes `__receives`, the keys its door hands at a context.
+  # `{ ... }:`) is handed the context narrowed to those keys at every instance-producing applicator,
+  # formals are narrowed to exactly the formals, and a custom form's `eval`, a predicate that mints no
+  # instance, is never narrowed at either of its positions. Every wrap record publishes `__receives`, the keys its door hands at a context.
   # K-a's RED, before the key: `gen-aspects: unrecognised cnf key 'entityKinds'.`
   flake.tests.entity-kinds =
     let
@@ -529,7 +529,7 @@ in
             c
             // {
               guardForms.f = {
-                eval = c: a: c.host == "h" && !(c ? extra) && a ? name;
+                eval = c: a: c.host == "h" && c ? extra && a ? name;
                 reads = [ ];
               };
             }
@@ -621,10 +621,11 @@ in
           };
         };
       };
-      # A custom form's `eval`: its context position is narrowed to the kinds, and its
-      # predicate-argument position never is, because `pr.a` is not a context. RED (narrowing the
-      # argument position too): `a` is handed `{ }`, so the form does not fire. `formUnnarrowed` is the
-      # control that, unset, the context position still carries `extra`.
+      # A custom form's `eval` is never narrowed, at either position: under the kinds its context
+      # still carries `extra` and its predicate arguments still carry `name`. RED (narrowing the
+      # context position, `contextOf` in `evalDoors`): `extra` is dropped, so the form does not fire;
+      # RED (narrowing the argument position too): `a` is handed `{ }`. `formUnnarrowed` is the
+      # control with the kinds unset.
       test-kinds-custom-form-positions = {
         expr = {
           kinds = form kcnf;
@@ -635,6 +636,66 @@ in
           unset = "fired";
         };
       };
+      # Parity with the core forms: under the kinds, a context-shaped custom form reading `tags.role`
+      # fires wherever the built-in `tagEq` fires, by a tolerant read and by a strict one, and a
+      # mismatch fires neither. RED (narrowing the context position, `contextOf` in `evalDoors`):
+      # `soft` is "not fired" and `hard` aborts on `attribute 'tags' missing`, past `tryEval`.
+      test-kinds-custom-form-tag-parity =
+        let
+          tctx = {
+            host = "h";
+            tags.role = "web";
+          };
+          v = aspects.mkGuardVocab (
+            kcnf
+            // {
+              guardForms = {
+                soft = {
+                  eval = c: a: (c.tags.role or null) == a.v.v;
+                  reads = [
+                    [
+                      "tags"
+                      "role"
+                    ]
+                  ];
+                };
+                hard = {
+                  eval = c: a: c.tags.role == a.v.v;
+                  reads = [
+                    [
+                      "tags"
+                      "role"
+                    ]
+                  ];
+                };
+              };
+            }
+          );
+          run = pr: (v.applyGuard tctx (v.guard pr { description = "fired"; })).description or "not fired";
+          at = role: {
+            tagEq = run (aspects.pred.tagEq "role" role);
+            soft = run (aspects.pred.custom "soft" { v = role; });
+            hard = run (aspects.pred.custom "hard" { v = role; });
+          };
+        in
+        {
+          expr = {
+            web = at "web";
+            db = at "db";
+          };
+          expected = {
+            web = {
+              tagEq = "fired";
+              soft = "fired";
+              hard = "fired";
+            };
+            db = {
+              tagEq = "not fired";
+              soft = "not fired";
+              hard = "not fired";
+            };
+          };
+        };
       # `wrapGatedFn`'s hand-built record carries `__receives` too: the narrowed formals when it fires,
       # `[ ]` when a required coord is missing, and `[ ]` for declared-empty formals.
       test-gated-receives = {
