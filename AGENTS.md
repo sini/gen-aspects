@@ -64,6 +64,22 @@ through one content-address encoding.
 | `wrapFn`      | `cnf -> name -> fn -> wrappedRecord` (`__isWrappedFn`)                                |
 | `wrapGatedFn` | `{ functionArgs, name ? "<gated>", meta ? {}, onResult ? id } -> fn -> wrappedRecord` |
 
+**Instances** — `lib/instance.nix`
+
+| Export       | Signature                                                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `instanceOf` | `cnf -> { aspect, value, context, sources } -> { id, entry, formals }` — the instance mint (0cmbt spec §2.5): `formals` maps each key `value` receives at `context` to its source, `id` = `hashIdentity "aspect-instance"` over `{ aspect; formals; }` |
+
+`value` is a wrap record (its received keys are `__receives context`) or a guard carrier whose fragments
+are `fn` or `unconditional` (the union of its `fn` fragments' door keys at `cnf.entityKinds`). Each
+`sources` entry is the identity of the entity or K1 argument binding that supplied the key: the
+sources reach the mint beside the context, and the functor keeps its arity (design K3's "hands over an
+instance it minted" arm). Refused by name: a non-parametric value; a guard record, alone or as a
+fragment (spec §4.1 O1); a received key with no source; a source that is not `<kind>:<64 hex>`; a
+source of kind `aspect-instance`, `aspect`, `include-site` or `named-value`, which supply no argument.
+Enumerated, not refused: a source that is the instance's own id aborts with `infinite recursion`.
+Tests: `ci/tests/instances.nix`; `instance-doors.*` in `ci/tests-error.nix`.
+
 **Identity** — `lib/identity.nix`, `lib/types.nix`
 
 | Export             | Signature                                                                                                                        |
@@ -306,7 +322,7 @@ nix eval --json .#lib --apply 'l: {
 Current output (verbatim):
 
 ```json
-{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","tagEq"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","hasClassContent","isGuardLeaf","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenTagEq"]}
+{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","evalPred","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","tagEq"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","hasClassContent","instanceOf","isGuardLeaf","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","toArgData","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenTagEq"]}
 ```
 
 **Checks.** Test-runner invocation (from the repo root; CI runs the same command from the

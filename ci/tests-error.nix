@@ -13,6 +13,7 @@
   aspects,
   mkSchemaEval,
   genMerge,
+  genIdentity,
   ...
 }:
 let
@@ -686,6 +687,106 @@ in
       # would drop an in-place marker. Its default-branch twin is gen-schema's function-def cell.
       test-functor-def-imports-route-formal-refuses = cell (functorDef [ { closedKeys = true; } ]) (
         cnfText "closedKeys"
+      );
+    };
+
+  # The instance mint's doors (lib/instance.nix; den-hoag-0cmbt spec §2.5, cells I-6 and I-7, and the
+  # spec gate's C3). Each is a catchable throw naming `instanceOf`.
+  flake.testsError.instance-doors =
+    let
+      entity = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
+      aid = aspects.aspectId [ "probe" ] { name = "p"; };
+      p = aspects.wrapFn { } "p" ({ host, ... }: { description = "p-${host}"; });
+      bare = aspects.wrapFn { } "b" (c: {
+        description = "b";
+      });
+      mint =
+        value: context: sources:
+        aspects.instanceOf { } {
+          aspect = "A";
+          inherit value context sources;
+        };
+      at = msg: exactly "gen-aspects.instanceOf: aspect `A` ${msg}";
+      byKind =
+        kind:
+        thrown (mint p { host = "h1"; } { host = genIdentity.hashIdentity kind [ "name" ] (_: "n"); }) (
+          at (
+            "was handed, for formal(s) `host`, the identity of a node of kind `${kind}`, which supplies "
+            + "no argument; hand the identity of the entity or argument binding that supplied it. An "
+            + "instance's reaching node is an edge, never a formal's source."
+          )
+        );
+    in
+    {
+      # RED (without the door): `attempt to call something which is not a function but a set`, uncatchable.
+      test-not-parametric = thrown (mint { description = "s"; } { } { }) (
+        at "is not parametric: it is neither a wrap record (`__isWrappedFn`) nor a guard carrier, so it has no instances."
+      );
+      # A guard record, alone or as a carrier's fragment, reads context through its predicate (O1). RED
+      # (without the door): the lone record aborts as above, uncatchably; the carrier refuses for the
+      # wrong reason (no supplier for `host`).
+      test-guard-record = thrown (mint (gv.vocab.whenEq [ "host" ] "h1" { }) { host = "h1"; } { }) (
+        at "carries a guard record, whose instance identity is not defined yet: a first-order guard reads its context through its predicate (den-hoag-0cmbt spec §4.1 O1)."
+      );
+      test-carrier-record-fragment =
+        thrown (mint (carrier ({ host, ... }: { description = host; })) { host = "h1"; } { })
+          (
+            at "carries a guard record, whose instance identity is not defined yet: a first-order guard reads its context through its predicate (den-hoag-0cmbt spec §4.1 O1)."
+          );
+      # I-6. RED (without the door): `attribute 'extra' missing`, uncatchable.
+      test-no-supplier = thrown (mint bare
+        {
+          host = "h1";
+          extra = "x";
+        }
+        { host = entity "h1"; }
+      ) (at "reads formal(s) `extra` with no known supplier; the sources map carries: host.");
+      # I-7. RED (without the door): `expected a list but found null`, uncatchable, in the kind check that
+      # reads the shape this door establishes.
+      test-value-as-source = thrown (mint p { host = "h1"; } { host = "h1"; }) (
+        at "was handed a source for formal(s) `host` that is not an identity (`<kind>:<sha256>`); hand the identity of the entity or argument binding that supplied it, never its value."
+      );
+      # C3: an identity of a kind that supplies no argument, each tag refused by name. RED (without the
+      # kind check): each mints at rc 0. `aspect` is the shape `aspectId` mints.
+      test-source-kind-aspect-instance = byKind "aspect-instance";
+      test-source-kind-aspect = byKind "aspect";
+      test-source-kind-include-site = byKind "include-site";
+      test-source-kind-named-value = byKind "named-value";
+      test-source-aspect-id = thrown (mint p { host = "h1"; } { host = aid; }) (
+        at (
+          "was handed, for formal(s) `host`, the identity of a node of kind `aspect`, which supplies "
+          + "no argument; hand the identity of the entity or argument binding that supplied it. An "
+          + "instance's reaching node is an edge, never a formal's source."
+        )
+      );
+      # The argument record and its field types. RED (without the doors): the extra field and the
+      # non-string `aspect` are admitted silently and the cell's empty context refuses at `wrapFn`'s
+      # door instead; string `sources` aborts `expected a set but found a string`, uncatchably.
+      test-unknown-field =
+        thrown
+          (aspects.instanceOf { } {
+            aspect = "A";
+            value = p;
+            context = { };
+            sources = { };
+            extra = 1;
+          })
+          (
+            exactly "gen-aspects.instanceOf: 'extra' is not an option of this door; the options are closed (accepted: 'aspect', 'value', 'context', 'sources') (in prelude.checkOptions)"
+          );
+      test-aspect-not-string =
+        thrown
+          (aspects.instanceOf { } {
+            aspect = { };
+            value = p;
+            context = { };
+            sources = { };
+          })
+          (
+            exactly "gen-aspects.instanceOf: `aspect` must be the aspect's identity, a string; received: set."
+          );
+      test-sources-not-attrs = thrown (mint p { host = "h1"; } "h1") (
+        at "was handed sources of type string; sources map each context key to the identity that supplied it."
       );
     };
 }

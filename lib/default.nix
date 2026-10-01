@@ -31,6 +31,11 @@ let
     inherit (types) includesDefault;
   };
   guardModule = import ./guard.nix { inherit prelude merge; };
+  instanceModule = import ./instance.nix {
+    inherit prelude;
+    inherit (identity) hashIdentity;
+    inherit (guardModule) mkGuardVocab;
+  };
   schemaModule = import ./schema.nix {
     inherit prelude merge;
     genSchema = schema;
@@ -69,6 +74,10 @@ in
   # THE canonical, uniform aspect content-address (all three kinds). den-hoag retired its
   # `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`. See lib/types.nix.
   inherit (types) aspectId;
+  # `instanceOf cnf { aspect; value; context; sources; }` → `{ id; entry; formals; }` — the instance
+  # mint: a wrap record or a guard carrier applied to a context is a node of its own, identified by
+  # its aspect and by the sources of the keys it receives there (0cmbt spec §2.5). See lib/instance.nix.
+  inherit (instanceModule) instanceOf;
   # `structuralKeys` (the six native structural option names as ONE binding) + `keyCategory cnf key` — the
   # single aspect-key classification surface a consumer reads a key's category from. See lib/types.nix.
   # `hasClassContent v` is its companion over the class VALUE: the has-content fact this library's
