@@ -684,11 +684,11 @@
         "gen-prelude": "gen-prelude_14"
       },
       "locked": {
-        "lastModified": 1790868264,
-        "narHash": "sha256-IIsGZkYsqkTG2JxQUnP3k6BTh46bjSrvSyPs9E5R4XA=",
+        "lastModified": 1790868797,
+        "narHash": "sha256-2CjHe7kwOdkCK36XIdUjDmWJJIILKfFLfIuXN0DJwV8=",
         "owner": "sini",
         "repo": "gen-schema",
-        "rev": "fd1930799887f4892f71d8ce7afd66cadfb8d044",
+        "rev": "c14c0b64df57e8ecba05096000d642788ef60a44",
         "type": "github"
       },
       "original": {
