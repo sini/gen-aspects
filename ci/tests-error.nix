@@ -190,6 +190,20 @@ in
     test-primop-applyguard = thrown (aspects.applyGuard wctx builtins.attrNames) (
       unreadable "guard" "`applyGuard`"
     );
+    # `cnf.entityKinds` (0cmbt spec §2.4) is read where the context door narrows, so an off-shape value
+    # refuses there by name. RED: `map` over a string, `expected a list but found a string`, an
+    # uncatchable type error inside the door.
+    test-entity-kinds-not-a-list =
+      thrown
+        (
+          (aspects.wrapFn (wcnf // { entityKinds = "host"; }) "n" (c: {
+            description = c.host;
+          }))
+            wctx
+        )
+        (
+          exactly "gen-aspects: cnf.entityKinds must be null or a list of context keys (strings); received: string."
+        );
     # RED: `expected a set but found a function` (TypeError, gen-merge `configOf`), uncatchable.
     test-wrapfn-self-returning = thrown ((aspects.wrapFn wcnf "n" selfF) wctx) (
       d2 "wrapFn" "`n`" (fnRet "")

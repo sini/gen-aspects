@@ -256,6 +256,7 @@ in
       "closedKeys"
       "collections"
       "deferIncludeResolution"
+      "entityKinds"
       "freeformKeys"
       "guardForms"
       "keySemantics"

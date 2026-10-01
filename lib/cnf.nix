@@ -71,6 +71,13 @@ let
       default = false;
       regime = "minted";
     };
+    # The framework's entity kinds, as the context keys that carry them (ADR-0027: entity kinds are
+    # the framework's to declare). A context shape is handed the context narrowed to them; `null`
+    # hands it whole (lib/require-wrapped-closure.nix `requireContextOf`).
+    entityKinds = {
+      default = null;
+      regime = "minted";
+    };
     freeformKeys = {
       default = [ ];
       regime = "minted";

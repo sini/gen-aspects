@@ -19,7 +19,9 @@
 # THE SHAPE CLASSIFIER (`requireContextOf`; den-hoag-t5hli ruled arm (a), 0cmbt spec §2.3). A
 # function declaring NO formals is classified by its pattern as `builtins.toXML` renders it, because
 # `functionArgs` is `{ }` for `x:`, `{ ... }:` and `{ }:` alike: a `<varpat>` (`ctx:`) or an
-# ellipsis `<attrspat>` (`{ ... }:`, `a@{ ... }:`, `{ ... }@a:`) is handed the value whole; a bare
+# ellipsis `<attrspat>` (`{ ... }:`, `a@{ ... }:`, `{ ... }@a:`) is handed the context, narrowed to
+# the framework's entity kinds when it declares them (`cnf.entityKinds`, 0cmbt spec §2.4) and whole
+# otherwise, and never narrowed at the predicate-argument position, which is not a context; a bare
 # `<attrspat>` with no `<attr>` (`{ }:`, `a@{ }:`) is handed `{ }`; anything else (a primop, or a
 # partly applied one) refuses by name. A functor is read through `__functionArgs` when it states one
 # (nixpkgs `setFunctionArgs`, a gen-prelude `door`) and through `f.__functor f`'s pattern otherwise.
@@ -47,15 +49,19 @@
 # den-hoag-lwbb1 (first-order guard bodies); they are hatch tests, deleted, not migrated.
 #
 # COST: no traversal. `requireClosure` is O(1); `requireAspectContent` and `requireRequiredCoords`
-# are O(|formals|); rendering a refusal is O(|context|). `requireContextOf entry at f` classifies on
-# its partial application to `f`, one `toXML` of `f`'s pattern: `wrapFn` and `wrapGuardFn` bind it
-# once per definition, a custom form's context position once per vocabulary; the carrier's function
-# fragment, `applyGuard`'s escape hatch and a custom form's predicate-argument position classify at
-# every application, since each holds the function only there. A function with formals renders no
-# `toXML`, but at those three sites its narrowing door is still built per application. So no
-# termination argument is owed.
+# are O(|formals|); rendering a refusal is O(|context|). `requireContextOf kinds entry at f`
+# classifies on its partial application to `f`, one `toXML` of `f`'s pattern: `wrapFn` and
+# `wrapGuardFn` bind it once per definition, a custom form's context position once per vocabulary;
+# the carrier's function fragment, `applyGuard`'s escape hatch and a custom form's
+# predicate-argument position classify at every application, since each holds the function only
+# there. A function with formals renders no
+# `toXML`, but at those three sites its narrowing door is still built per application. The
+# entity-kind set is built once per `requireContextOf kinds` partial application (once per guard
+# vocabulary; once per wrap at `wrapFn` and `wrapGuardFn`), and narrowing a context shape to it
+# is one `intersectAttrs`, O(|kinds|). So no termination argument is owed.
 let
   inherit (builtins)
+    all
     attrNames
     concatStringsSep
     filter
@@ -63,11 +69,25 @@ let
     intersectAttrs
     isAttrs
     isFunction
+    isList
+    isString
+    listToAttrs
     match
     toXML
     typeOf
     ;
+  genAttrs =
+    names: f:
+    listToAttrs (
+      map (n: {
+        name = n;
+        value = f n;
+      }) names
+    );
   names = concatStringsSep ", ";
+  notContext =
+    entry: at: ctx:
+    throw "gen-aspects.${entry}: the closure at ${at} was applied to a value of type ${typeOf ctx}, not a context; a context is an attrset of coords.";
   # The CONTEXT door over declared formals: refuses a missing required coord, and narrows the context
   # to them. `required` is verbatim `wrapGatedFn`'s binding (lib/types.nix), the predicate
   # `lib/can-take.nix` builds; the disposition is the opposite arm (refuse, never inert), because the
@@ -76,7 +96,7 @@ let
   requireRequiredCoords =
     entry: at: formals: ctx:
     if !(isAttrs ctx) then
-      throw "gen-aspects.${entry}: the closure at ${at} was applied to a value of type ${typeOf ctx}, not a context; a context is an attrset of coords."
+      notContext entry at ctx
     else
       let
         required = filter (n: !formals.${n}) (attrNames formals);
@@ -148,8 +168,30 @@ in
   inherit requireRequiredCoords;
 
   # The CONTEXT door over a FUNCTION, the shape classifier stated in the header. Partially applied to
-  # `f` it is `f`'s door, so a caller that holds `f` across applications binds it once.
+  # `f` it is `f`'s door, so a caller that holds `f` across applications binds it once. `kinds` is the
+  # framework's entity-kind set, `cnf.entityKinds` (ADR-0027: the framework's to declare): a context
+  # key IS the name of the entity kind whose value it carries, so a context shape (`ctx:`,
+  # `{ ... }:`) is handed the context narrowed to those keys, and `null` hands it whole. Formals are
+  # narrowed to exactly the formals, whatever the kinds. A position whose value is not a context (a
+  # custom form's predicate arguments) passes `null`, and is never narrowed.
   requireContextOf =
+    kinds:
+    let
+      kindSet =
+        if isList kinds && all isString kinds then
+          genAttrs kinds (_: null)
+        else
+          throw "gen-aspects: cnf.entityKinds must be null or a list of context keys (strings); received: ${typeOf kinds}.";
+      # Lazy as the context it narrows: an off-shape set refuses at the first read of the context (a
+      # body's, or `__receives`'), and a body that reads none is handed nothing it could misread.
+      narrow =
+        if kinds == null then
+          _: _: ctx:
+          ctx
+        else
+          entry: at: ctx:
+          if isAttrs ctx then intersectAttrs kindSet ctx else notContext entry at ctx;
+    in
     entry: at: f:
     let
       raw = if isAttrs f then f.__functor f else f;
@@ -160,7 +202,7 @@ in
     if formals != { } then
       requireRequiredCoords entry at formals
     else if has ".*<varpat .*" || has ".*<attrspat[^>]*ellipsis=\"1\".*" then
-      ctx: ctx
+      narrow entry at
     else if has ".*<attrspat[^>]*>[[:space:]]*</attrspat>.*" then
       _: { }
     else

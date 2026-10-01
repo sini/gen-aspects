@@ -460,4 +460,194 @@ in
         };
       };
     };
+
+  # ENTITY-KIND NARROWING AND `__receives` (0cmbt spec §2.4, cells K-a and K-b). A framework declares
+  # its entity kinds as `cnf.entityKinds`, the context keys that carry them; a context shape (`ctx:`,
+  # `{ ... }:`) is handed the context narrowed to those keys at every CONTEXT position of the door,
+  # formals are narrowed to exactly the formals, and a custom form's predicate-argument position is
+  # never narrowed. Every wrap record publishes `__receives`, the keys its door hands at a context.
+  # K-a's RED, before the key: `gen-aspects: unrecognised cnf key 'entityKinds'.`
+  flake.tests.entity-kinds =
+    let
+      ctx = {
+        host = "h";
+        extra = "x";
+      };
+      keys = c: builtins.concatStringsSep "," (builtins.attrNames c);
+      kcnf = cnf // {
+        entityKinds = [ "host" ];
+      };
+      bare = c: { description = "bare:${keys c}"; };
+      atEllipsis =
+        a@{ ... }:
+        {
+          description = "at:${keys a}";
+        };
+      via =
+        c: f:
+        let
+          gv = aspects.mkGuardVocab c;
+          native =
+            v:
+            (aspects.aspectType c).merge
+              [ "n" ]
+              [
+                {
+                  file = "<t>";
+                  value = v;
+                }
+              ];
+          carrier =
+            v:
+            (aspects.aspectType c).merge
+              [ "n" ]
+              [
+                {
+                  file = "<a>";
+                  value = v;
+                }
+                {
+                  file = "<b>";
+                  value = gv.vocab.whenEq [ "host" ] "nope" { description = "b"; };
+                }
+              ];
+        in
+        {
+          wrapFn = ((aspects.wrapFn c "n" f) ctx).description;
+          merge = ((native f) ctx).description;
+          carrier = (gv.applyGuard ctx (carrier f)).description;
+          applyGuard = (gv.applyGuard ctx f).description;
+          receivesWrapFn = (aspects.wrapFn c "n" f).__receives ctx;
+          receivesMerge = (native f).__receives ctx;
+        };
+      # A custom form whose `eval` reads both of its positions: the context keys it is handed and
+      # whether its predicate argument record still carries `name`.
+      form =
+        c:
+        let
+          v = aspects.mkGuardVocab (
+            c
+            // {
+              guardForms.f = {
+                eval = c: a: c.host == "h" && !(c ? extra) && a ? name;
+                reads = [ ];
+              };
+            }
+          );
+        in
+        (v.applyGuard ctx (v.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; }))
+        .description or "not fired";
+      formUnnarrowed =
+        let
+          v = aspects.mkGuardVocab {
+            guardForms.f = {
+              eval = c: a: c ? extra && a ? name;
+              reads = [ ];
+            };
+          };
+        in
+        (v.applyGuard ctx (v.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; }))
+        .description or "not fired";
+    in
+    {
+      # K-a: with `entityKinds = [ "host" ]`, the context shapes are handed `{ host }` at every context
+      # position, and `__receives` names `host` alone.
+      test-kinds-narrow-context-shapes = {
+        expr = {
+          bare = via kcnf bare;
+          atEllipsis = via kcnf atEllipsis;
+        };
+        expected = {
+          bare = {
+            wrapFn = "bare:host";
+            merge = "bare:host";
+            carrier = "bare:host";
+            applyGuard = "bare:host";
+            receivesWrapFn = [ "host" ];
+            receivesMerge = [ "host" ];
+          };
+          atEllipsis = {
+            wrapFn = "at:host";
+            merge = "at:host";
+            carrier = "at:host";
+            applyGuard = "at:host";
+            receivesWrapFn = [ "host" ];
+            receivesMerge = [ "host" ];
+          };
+        };
+      };
+      # K-b, the control that the default reproduces the behaviour before the key: unset, the context
+      # is handed whole and every supplied key is received.
+      test-kinds-unset-hands-whole = {
+        expr = via cnf bare;
+        expected = {
+          wrapFn = "bare:extra,host";
+          merge = "bare:extra,host";
+          carrier = "bare:extra,host";
+          applyGuard = "bare:extra,host";
+          receivesWrapFn = [
+            "extra"
+            "host"
+          ];
+          receivesMerge = [
+            "extra"
+            "host"
+          ];
+        };
+      };
+      # Formals are narrowed to exactly the formals, whatever the kinds: `extra` is not a kind and is
+      # still handed to the closure that names it. `{ }:` receives nothing.
+      test-kinds-leave-formals-and-empty = {
+        expr = {
+          formals = via kcnf ({ extra, ... }: { description = "f:${extra}"; });
+          empty = via kcnf ({ }: { description = "ce"; });
+        };
+        expected = {
+          formals = {
+            wrapFn = "f:x";
+            merge = "f:x";
+            carrier = "f:x";
+            applyGuard = "f:x";
+            receivesWrapFn = [ "extra" ];
+            receivesMerge = [ "extra" ];
+          };
+          empty = {
+            wrapFn = "ce";
+            merge = "ce";
+            carrier = "ce";
+            applyGuard = "ce";
+            receivesWrapFn = [ ];
+            receivesMerge = [ ];
+          };
+        };
+      };
+      # A custom form's `eval`: its context position is narrowed to the kinds, and its
+      # predicate-argument position never is, because `pr.a` is not a context. RED (narrowing the
+      # argument position too): `a` is handed `{ }`, so the form does not fire. `formUnnarrowed` is the
+      # control that, unset, the context position still carries `extra`.
+      test-kinds-custom-form-positions = {
+        expr = {
+          kinds = form kcnf;
+          unset = formUnnarrowed;
+        };
+        expected = {
+          kinds = "fired";
+          unset = "fired";
+        };
+      };
+      # `wrapGatedFn`'s hand-built record carries `__receives` too: the narrowed formals when it fires,
+      # `[ ]` when a required coord is missing, and `[ ]` for declared-empty formals.
+      test-gated-receives = {
+        expr = {
+          fires = (aspects.wrapGatedFn { functionArgs.host = false; } (_: { })).__receives ctx;
+          inert = (aspects.wrapGatedFn { functionArgs.user = false; } (_: { })).__receives ctx;
+          empty = (aspects.wrapGatedFn { functionArgs = { }; } (_: { })).__receives ctx;
+        };
+        expected = {
+          fires = [ "host" ];
+          inert = [ ];
+          empty = [ ];
+        };
+      };
+    };
 }

@@ -61,15 +61,20 @@ let
   # context args become a merged aspect) and in the formals/name/meta sources. Keeping the shape in
   # one place is the R11 no-drift argument: constructor and readers (flatten/identity/guard,
   # resolved-aspects) live in one lib, so the tag's shape can never skew across callers.
+  # `receives` is `__receives` (0cmbt spec §2.4): a context ↦ the keys the wrap's definitions are
+  # handed by the context door at it, unioned over the definitions, which an instance's formals
+  # read (`instanceOf`).
   mkWrapped =
     {
       apply,
+      receives,
       functionArgs,
       name,
       meta,
     }:
     {
       __functor = _: fnArgs: apply fnArgs;
+      __receives = receives;
       # nixpkgs `functionTo` sets `__functionArgs` (via setFunctionArgs) so downstream
       # `functionArgs`/`lib.isFunction` see the closure's arg shape; reproduced here.
       __functionArgs = functionArgs;
@@ -112,10 +117,11 @@ let
     cnf: loc: defs:
     let
       at = "aspect `${prelude.concatStringsSep "." loc}`";
+      contextOf = doors.requireContextOf cnf.entityKinds;
       # Each definition's context door, classified once here, never per application.
       doored = map (d: {
         inherit (d) file value;
-        door = doors.requireContextOf "aspectType" at d.value;
+        door = contextOf "aspectType" at d.value;
       }) defs;
     in
     mkWrapped {
@@ -130,6 +136,7 @@ let
             }) doored
           )
         )).config;
+      receives = fnArgs: builtins.attrNames (prelude.foldl' (acc: d: acc // d.door fnArgs) { } doored);
       functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
       name = prelude.last loc;
       meta = {
@@ -151,7 +158,7 @@ let
     cnf: name: fn:
     let
       at = "`${name}`";
-      door = doors.requireContextOf "wrapFn" at fn;
+      door = doors.requireContextOf cnf.entityKinds "wrapFn" at fn;
     in
     builtins.seq (doors.requireClosure "wrapFn" at fn) (mkWrapped {
       # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
@@ -167,6 +174,7 @@ let
               }
             ]
         )).config;
+      receives = fnArgs: builtins.attrNames (door fnArgs);
       functionArgs = builtins.functionArgs fn;
       inherit name;
       meta = {
@@ -189,8 +197,8 @@ let
   # identity) a consumer threads its post-fire processing through (den-hoag's class-key grounding rides
   # here, keeping den vocab OUT of gen-aspects). SELF-CONTAINED — built directly (NOT via `mkWrapped`,
   # whose required `name`/`meta` formals a param-less call would trip), mirroring `mkWrapped`'s tag field
-  # set EXACTLY — `__functor`, `__functionArgs`, `__isWrappedFn`, `name`, `meta` — so a `__isWrappedFn`
-  # reader cannot tell a gated record from a plain one.
+  # set EXACTLY — `__functor`, `__receives`, `__functionArgs`, `__isWrappedFn`, `name`, `meta` — so a
+  # `__isWrappedFn` reader cannot tell a gated record from a plain one.
   # The spec record is MIXED (`functionArgs` required, the rest defaulted) and closed over the whole
   # set, so it composes the two shared door checks: native formals refused a missing or an unknown
   # field past `tryEval`.
@@ -213,22 +221,19 @@ let
       fn:
       let
         required = builtins.filter (n: !functionArgs.${n}) (builtins.attrNames functionArgs);
+        fires = fnArgs: builtins.all (a: fnArgs ? ${a}) required;
+        handed =
+          fnArgs:
+          if functionArgs == { } then
+            { }
+          else
+            doors.requireRequiredCoords "wrapGatedFn" "`${name}`" functionArgs fnArgs;
       in
       builtins.seq (doors.requireCallable "wrapGatedFn" "the value wrapped at `${name}`" fn) (
         builtins.seq (doors.requireCallable "wrapGatedFn" "`onResult` at `${name}`" onResult) {
-          __functor =
-            _: fnArgs:
-            if builtins.all (a: fnArgs ? ${a}) required then
-              onResult (
-                fn (
-                  if functionArgs == { } then
-                    { }
-                  else
-                    doors.requireRequiredCoords "wrapGatedFn" "`${name}`" functionArgs fnArgs
-                )
-              )
-            else
-              { };
+          __functor = _: fnArgs: if fires fnArgs then onResult (fn (handed fnArgs)) else { };
+          # What an inert application is handed is nothing: `[ ]` when a required coord is missing.
+          __receives = fnArgs: if fires fnArgs then builtins.attrNames (handed fnArgs) else [ ];
           __functionArgs = functionArgs;
           __isWrappedFn = true;
           inherit name meta;

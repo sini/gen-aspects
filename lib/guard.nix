@@ -143,10 +143,15 @@ in
       # make every entry's `reads` and `eval` strict, which is not what the check needs and is a
       # strictness the caller never asked for. checkedCustomForms is the validated passthrough.
       checkedCustomForms = builtins.deepSeq (builtins.mapAttrs checkForm cnf.guardForms) cnf.guardForms;
+      # The context door at this vocabulary's entity kinds, its kind set built once per vocabulary.
+      # Every CONTEXT position takes it; a custom form's predicate-argument position takes
+      # `argumentsOf`, which never narrows, because `pr.a` is not a context.
+      contextOf = doors.requireContextOf cnf.entityKinds;
+      argumentsOf = doors.requireContextOf null;
       # Each custom form's context door, classified once per vocabulary; lazy, so an `eval` is read
       # only by the dispatch that names its form.
       evalDoors = builtins.mapAttrs (
-        name: form: doors.requireContextOf "guard" "custom form `${name}`" form.eval
+        name: form: contextOf "guard" "custom form `${name}`" form.eval
       ) checkedCustomForms;
       # O2: ONE global dispatcher, case-analysis on the predicate tag.
       evalPred =
@@ -176,7 +181,7 @@ in
                   throw "gen-aspects.guard: ${at}'s `eval` must be callable (a function, or a record whose `__functor` yields a function); received: ${builtins.typeOf form.eval}.";
               r =
                 if prelude.isFunction applied then
-                  applied (doors.requireContextOf "guard" "${at}'s predicate arguments" applied pr.a)
+                  applied (argumentsOf "guard" "${at}'s predicate arguments" applied pr.a)
                 else
                   throw "gen-aspects.guard: ${at}'s `eval` applied to a context returned ${builtins.typeOf applied}, not a function of the predicate's arguments; `eval` is `ctx: argData: bool`.";
             in
@@ -207,7 +212,7 @@ in
         if f.kind == "record" then
           (if evalPred ctx f.pred then f.body else null)
         else if f.kind == "fn" then
-          f.fn (doors.requireContextOf "guard" "aspect `${prelude.concatStringsSep "." loc}`" f.fn ctx)
+          f.fn (contextOf "guard" "aspect `${prelude.concatStringsSep "." loc}`" f.fn ctx)
         else
           f.body;
     in
@@ -274,7 +279,7 @@ in
           else if g.__isWrappedFn or false then
             g ctx
           else if prelude.isFunction g then
-            g (doors.requireContextOf "guard" "`applyGuard`" g ctx)
+            g (contextOf "guard" "`applyGuard`" g ctx)
           else
             throw "gen-aspects.guard: applyGuard: not a guard record or callable"
         );
