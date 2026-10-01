@@ -40,7 +40,8 @@ let
       # would land on every aspect as a nested aspect while the kind's own formal stays what the
       # constructor fixed. gen-schema refuses its own formals first (`collections`, `keySemantics`
       # are in both sets), because its check wraps this whole result. A module the def IMPORTS is
-      # not reached: that route is stated residue, pinned by `schema-formal-boundary`.
+      # reached at gen-merge's collector instead (den-hoag-8x97u): the modules built here carry
+      # `reservation`, below, so each write meets exactly one of the two doors.
       formalNamed = prelude.concatMap (
         d: if builtins.isAttrs d.value then builtins.filter (k: d.value ? ${k}) cnfKeys else [ ]
       ) defs;
@@ -48,7 +49,38 @@ let
         if formalNamed != [ ] then
           throw "gen-aspects: kind '${kind}': declaration key '${builtins.head formalNamed}' is an mkAspectSchema construction formal — it is fixed by `mkAspectSchema { ${builtins.head formalNamed} = …; }`, and written on a kind entry it is not read as one; pass it there, or write `config.${builtins.head formalNamed}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`"
         else
-          map (d: d.value) (builtins.filter (d: builtins.isAttrs d.value) defs);
+          map (
+            d:
+            if d.value ? __functor then
+              {
+                __reservedKeys = reservation;
+                imports = [ d.value ];
+              }
+            else
+              d.value // { __reservedKeys = reservation; }
+          ) (builtins.filter (d: builtins.isAttrs d.value) defs);
+      # THE IMPORTS-ROUTE RESERVATION (den-hoag-8x97u). The instance modules here (`__defsModule`
+      # and the functor's `allModules`) are built by this library, not gen-schema, so it marks them
+      # itself with gen-merge's `__reservedKeys`: `cnfKeys` with this library's text, united with
+      # gen-schema's `entryReservation kind` (its formals, its published names, and the kind shape the
+      # `inherits` alias reads, exempt), gen-schema's text winning on the shared names as its door
+      # does on direct defs. The marker rides in place on an attrset def; a functor def is wrapped,
+      # because its applied result would drop an in-place key.
+      reservation =
+        let
+          r = genSchema.entryReservation kind;
+        in
+        r
+        // {
+          names =
+            builtins.listToAttrs (
+              map (f: {
+                name = f;
+                value = "gen-aspects: kind '${kind}': declaration key '${f}' is an mkAspectSchema construction formal, written in a module this kind entry imports — it is fixed by `mkAspectSchema { ${f} = …; }`, and written there it is not read as one; pass it there, or write `config.${f}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`";
+              }) cnfKeys
+            )
+            // r.names;
+        };
       allModules = defsModules ++ prelude.optional (kindModule != null) kindModule;
     in
     # Return a merged VALUE (not a type). This is what config.schema.aspect

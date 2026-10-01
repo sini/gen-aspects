@@ -102,12 +102,13 @@ in
       expected = "schemakind:076e00e60a6ad55a288d5c067a560186877622488d5c40127bf98408638c9410";
     };
 
-    # ★ THE BOUNDARY PIN (gate C1). A formal at the top level of a module the entry IMPORTS is not
-    # refused: each def reaches the instance evaluation whole, imports included, and only gen-merge's
-    # collector still knows the imported module was shorthand. Stated residue, carried by
-    # den-hoag-8x97u; the collector-level door flips this cell.
-    test-imported-formal-still-lands = {
-      expr = builtins.elem "keySemantics" (
+    # ★ THE IMPORTS ROUTE IS REFUSED (den-hoag-8x97u). A formal at the top level of a module the entry
+    # IMPORTS refuses at gen-merge's collector, which reads the reservation `mkType` marks its
+    # modules with; the message is pinned in `ci/tests-error.nix` (`imports-route-refusals`). This
+    # cell was the boundary pin while the route was residue, reading `true` for "still lands". The
+    # read stays shallow (the key list).
+    test-imported-formal-refused = {
+      expr = refuses (
         builtins.attrNames
           (evalWith [ { config.schema.aspect.imports = [ { keySemantics.darwin.category = "class"; } ]; } ])
           .aspects.bar

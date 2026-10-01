@@ -478,4 +478,75 @@ in
             exactly "gen-aspects: mkAspectSchema: collection 'providerPrefix' is reserved — it is an mkAspectSchema construction formal"
           );
     };
+
+  # ★ THE SAME NAMES IN A MODULE THE KIND ENTRY IMPORTS (den-hoag-8x97u). `mkType` marks the instance
+  # modules it builds with gen-merge's `__reservedKeys` (`cnfKeys` ∪ gen-schema's `entryReservation`),
+  # so the collector refuses the name with its owner's text and the module's attribution. Before the
+  # door each read below listed the name among `aspects.bar`'s keys. Every read is SHALLOW, the key
+  # list only: a deep force of the landed value at RED does not terminate under a 12G cap. The
+  # controls, forced first: an imported declared option, and the same functor def importing one,
+  # both compose 7.
+  flake.testsError.imports-route-refusals =
+    let
+      int0 = genMerge.mkOption {
+        type = genMerge.types.int;
+        default = 0;
+      };
+      barWith =
+        entry:
+        (mkSchemaEval {
+          modules = [
+            {
+              config.schema.aspect = entry;
+              config.aspects.bar = { };
+            }
+          ];
+        }).config.aspects.bar;
+      functorDef = imported: { __functor = _: _: { imports = imported; }; };
+      controls =
+        (barWith {
+          options.priority = int0;
+          imports = [ { priority = 7; } ];
+        }).priority == 7
+        &&
+          (barWith (functorDef [
+            { options.priority = int0; }
+            { priority = 7; }
+          ])).priority == 7;
+      owned = text: {
+        type = "ThrownError";
+        msg = "^" + lib.escapeRegex text + " [(]module `[^']*'[)]$";
+      };
+      cnfText =
+        f:
+        "gen-aspects: kind 'aspect': declaration key '${f}' is an mkAspectSchema construction formal, written in a module this kind entry imports — it is fixed by `mkAspectSchema { ${f} = …; }`, and written there it is not read as one; pass it there, or write `config.${f}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`";
+      cell = entry: text: {
+        expr =
+          assert controls;
+          builtins.attrNames (barWith entry);
+        expectedError = owned text;
+      };
+    in
+    {
+      # A cnf formal through a function module, read after gen-merge applies it.
+      test-cnf-formal-through-function-module = cell {
+        imports = [ ({ ... }: { closedKeys = true; }) ];
+      } (cnfText "closedKeys");
+
+      # A gen-schema formal through `imports`: gen-schema's text wins on the shared name.
+      test-shared-formal-through-imports-gets-gen-schema-text =
+        cell { imports = [ { keySemantics.darwin.category = "class"; } ]; }
+          "gen-schema: kind 'aspect': declaration key 'keySemantics' is a construction formal of this schema, written in a module this kind entry imports — it is fixed by the call that builds the schema option (`mkSchemaOption`, `mkSchemaEntryType`), and written there it is not read as one; pass 'keySemantics' to that constructor, or write `config.keySemantics` for an instance field of that name, which a strict instance must declare as an option";
+
+      # A cnf formal through a whole-module `mkIf`, read after push-down.
+      test-cnf-formal-through-mkif = cell {
+        imports = [ (genMerge.mkIf true { providerPrefix = [ "x" ]; }) ];
+      } (cnfText "providerPrefix");
+
+      # A FUNCTOR kind entry def importing a cnf formal: the def is wrapped, since its applied result
+      # would drop an in-place marker. Its default-branch twin is gen-schema's function-def cell.
+      test-functor-def-imports-route-formal-refuses = cell (functorDef [ { closedKeys = true; } ]) (
+        cnfText "closedKeys"
+      );
+    };
 }
