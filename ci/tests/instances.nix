@@ -87,6 +87,29 @@ in
         entry = "p-h1";
       };
     };
+    # The id is keyed on the received keys' SOURCES, never their values (design K3). At an equal
+    # context value, an entity source and an argument binding are two instances; at an equal source,
+    # two context values are one. RED (seeded: the id's formals = the received keys' context values):
+    # both arms are false.
+    test-id-keyed-on-sources = {
+      expr =
+        let
+          at =
+            v: s:
+            inst { } p {
+              context.host = v;
+              sources.host = s;
+            };
+        in
+        {
+          bySource = (at "h1" (entity "h1")).id != (at "h1" (binding "h1")).id;
+          byValue = (at "h1" (entity "h1")).id == (at "h2" (entity "h1")).id;
+        };
+      expected = {
+        bySource = true;
+        byValue = true;
+      };
+    };
     # I-3. `{ }:` receives nothing: no formals, one id across scopes.
     test-closed-empty-one-id = {
       expr = {

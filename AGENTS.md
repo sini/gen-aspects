@@ -78,6 +78,9 @@ instance it minted" arm). Refused by name: a non-parametric value; a guard recor
 fragment (spec §4.1 O1); a received key with no source; a source that is not `<kind>:<64 hex>`; a
 source of kind `aspect-instance`, `aspect`, `include-site` or `named-value`, which supply no argument.
 Enumerated, not refused: a source that is the instance's own id aborts with `infinite recursion`.
+The caller's obligation, unchecked: each source supplies the value the context carries under its key.
+The id reads only the sources, so a mismatch mints one id with two different entries, and a relation
+keeping one vertex per id (U4's `vertices`) keeps one of them silently.
 Tests: `ci/tests/instances.nix`; `instance-doors.*` in `ci/tests-error.nix`.
 
 **Identity** — `lib/identity.nix`, `lib/types.nix`

@@ -42,6 +42,11 @@
 # uncatchably. And the received keys inherit the context door's bound (lib/require-wrapped-closure.nix):
 # a forwarding wrapper around `{ }:` classifies as a context shape, so its instance is keyed on the
 # context it is handed rather than on `{ }`.
+# THE CALLER'S OBLIGATION. Each source must be the supplier of the value the context carries under its
+# key. The id reads only the sources, and the minter holds no registry to check them against the
+# context, so a mismatch is not refused: two contexts with one source and different values mint ONE id
+# carrying two different entries, and a relation keeping one vertex per id (U4's `vertices`) keeps one
+# of them silently.
 #
 # COST: O(definitions × formals) for the received keys, one `hashIdentity` over O(formals) labelled
 # entries, and one application. A wrap record's doors are classified once per definition when it is
