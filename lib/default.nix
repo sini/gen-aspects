@@ -80,7 +80,7 @@ in
   # mint: a wrap record or a guard carrier applied to a context is a node of its own, identified by
   # its aspect and by the sources of the keys it receives there (0cmbt spec §2.5). See lib/instance.nix.
   inherit (instanceModule) instanceOf;
-  # `instancesFor cnf aspects scopes` → `{ vertices; reaches; nested; }` — the instance relation: one
+  # `instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; reaches; nested; }` — the instance relation: one
   # vertex per minted instance, scope → instance edges (fanning out over descendant tuples), and
   # nested edges from vertices, minted in depth passes over reached pairs only (0cmbt spec §2.6). The
   # materialised view htfv3's `project` reads. See lib/instance.nix.

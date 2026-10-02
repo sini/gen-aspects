@@ -45,8 +45,8 @@
 # THE CALLER'S OBLIGATION. Each source must be the supplier of the value the context carries under its
 # key. The id reads only the sources, and the minter holds no registry to check them against the
 # context, so a mismatch is not refused: two contexts with one source and different values mint ONE id
-# carrying two different entries, and a relation keeping one vertex per id (`instancesFor`'s
-# `vertices`, below, which enumerates it) keeps one of them.
+# carrying two different entries. `instancesFor` (below) cannot be handed that input: it derives each
+# context from its sources through one `suppliers` map (spec §2.6, gate C-1).
 #
 # COST: O(definitions × formals) for the received keys, one `hashIdentity` over O(formals) labelled
 # entries, and one application. A wrap record's doors are classified once per definition when it is
@@ -148,8 +148,10 @@ in
 {
   instanceOf = checkedEntry mint;
 
-  # THE INSTANCE RELATION (den-hoag-0cmbt spec §2.6, owner-ruled C1): `instancesFor cnf aspects scopes`,
-  #   scopes = { <node> = { members; context; sources; descendants ? [ { context; sources; } … ]; }; }
+  # THE INSTANCE RELATION (den-hoag-0cmbt spec §2.6, owner-ruled C1): `instancesFor cnf aspects
+  # { suppliers; scopes; }`,
+  #   suppliers = { <source identity> = { <key> = <value>; … }; … }
+  #   scopes    = { <node> = { members; sources; descendants ? [ { sources; } … ]; }; }
   #   ⇒ { vertices.<iid> = { aspect; formals; entry; };   one content cell per instance id
   #       reaches.<node>.<aspect> = [ <iid> … ];           scope → instance edges
   #       nested.<iid>.<aspect>   = [ <iid> … ]; }         reaching edges FROM vertices
@@ -162,17 +164,30 @@ in
   # minted at the node's scope. A slot per (scope, parametric node) would be an edge where no scope
   # reaches, which a query following instance edges would deliver.
   #
-  # FAN-OUT (design §3). An aspect whose REQUIRED formals the scope's own context carries is minted
-  # once, at the scope's tuple; otherwise once per descendant tuple that carries them; none gives no
-  # edge, and the consumer's door names it. A context shape requires nothing and never fans out.
+  # A TUPLE'S CONTEXT IS DERIVED, never handed: `context = mapAttrs (k: src: suppliers.${src}.${k})
+  # sources`. One source names one value per key by attrset construction, so two scopes sharing a
+  # source cannot carry two values for it, and one scope never reads another's content (gate C-1). The
+  # value lives on the node its source names (ADR-0016 r6); how several emissions of one supplier
+  # compose is its assembler's, under the minting phase spec R§4.4 (spec §4.1 O4), never this relation's.
+  #
+  # FAN-OUT (design §3). Two key sets, each with one site:
+  # - `fanOutKeys` (O3, spec §4.1; defaulted, reversible: the REQUIRED formals) decides whether the
+  #   scope's own tuple mints, or each descendant tuple that carries them does;
+  # - `admits` (every required formal is supplied) decides whether a tuple can mint at all.
+  # At node scope: the scope's tuple when it carries `fanOutKeys`; otherwise each descendant tuple that
+  # carries `fanOutKeys` and `admits`; otherwise the scope's tuple when it `admits`; otherwise no edge,
+  # and the consumer's door names it. A context shape requires nothing and never fans out. Under the
+  # default the third branch adds nothing; fanning out on defaulted formals too is the one edit
+  # `fanOutKeys = formalsWhere (_: true)`, and the third branch then keeps a host's defaulted edge.
   #
   # THE PASSES (spec §2.5's depth passes). Pass d+1 reads only the CONTENT of pass-d vertices: each
   # vertex's applied body is classified by `includeSitesOfEntry`'s classification (the one `project`
   # descends, inline `content` included), once per vertex. Its parametric targets are minted at the
   # vertex's own tuple (its context and sources narrowed to its formals) as `nested` edges, so a
   # vertex two nodes reach is applied once and its nested instances minted once. A nested instance
-  # does not fan out: a vertex is shared, so it sees no scope's descendants, and a nested aspect
-  # whose required formals the vertex's tuple lacks has no edge. Its STATIC targets resolve at NODE
+  # does not fan out (its site is `mintOne`'s `children`, ground design §3, never O3): a vertex is
+  # shared, so it sees no scope's descendants, and a nested aspect its vertex's tuple does not
+  # `admit` has no edge. Its STATIC targets resolve at NODE
   # scope (htfv3 Open 4): their parametric includes become `reaches.<node>` edges for every node
   # reaching the vertex, never `nested` ones. One vertex index over all depths at once diverges
   # (ADR-0033 clause 1), so each pass's index is built from the previous pass's alone.
@@ -187,27 +202,34 @@ in
   # it reaches it. A sealed or foreign include site is not walked.
   #
   # WHAT IT FORCES. Reading any field forces every pass: each reached instance is applied once (its
-  # body decides the next pass) and hashed once, so a mint refusal (no supplier, a non-identity
-  # source) fires on any read, shared by every node, as `realize`'s `_contentCheck` already shares it.
+  # body decides the next pass) and hashed once, so a mint refusal (a non-identity source, a
+  # non-supplier kind) or the supplier door fires on any read, shared by every node, as `realize`'s
+  # `_contentCheck` already shares it.
   #
   # ONE ID, SEVERAL CONTRIBUTIONS. Equal ids from several reaching identifiers (nodes, or parent
   # vertices) are one vertex, whose content is the contribution of the earliest pass and, within a
-  # pass, of the least reaching identifier under string order (spec §2.5, obligation 2). Under the
-  # caller's obligation (each source supplies the value its context key carries) the contributions
-  # agree extensionally. A caller breaking it, one source for two values, gets one vertex holding one
-  # of the two entries: the id reads only sources, and comparing the context values instead would be
-  # Nix `==`, false on any function-bearing value, so it would refuse honest callers. That is
-  # ADR-0025 item 1's class, enumerated here; `instanceOf` states the same obligation.
+  # pass, of the least reaching identifier under string order (spec §2.5, obligation 2). Equal ids
+  # mean equal formals, so the same source per received key, so the same `suppliers` value: the
+  # contributions are one declaration applied to one input, identical by construction, and the order
+  # picks among identical values. No content rule is exercised (ADR-0016 OPEN 2.C is not reached).
   #
-  # THE DOORS, each a catchable `throw` naming the node: `scopes` is not an attrset; a scope is not
-  # the record above (an unknown field, a missing `members`, `context` or `sources`); `members` is not
-  # a list or names an id that is not a node of this tree; `context` or `sources` is not an attrset;
-  # `descendants` is not a list of `{ context; sources; }` records of attrsets.
+  # THE DOORS, each a catchable `throw` naming the node (and the descendant's index): the input is not
+  # `{ suppliers; scopes; }`; `suppliers` or `scopes` is not an attrset; a scope is not the record
+  # above (an unknown field, the retired `context` among them, a missing `members` or `sources`);
+  # `members` is not a list or names an id that is not a node of this tree; `sources` is not an
+  # attrset; `descendants` is not a list of `{ sources; }` records; a tuple key whose source is not a
+  # string, is not a name in `suppliers`, or names an entry that is not an attrset holding that key.
+  # The supplier door reads key names only, so no supplied value is forced.
   #
   # COST (derived; spec §3b G1 measures it): one application and one hash per distinct reached
-  # instance, the static walk per node, and the body classification per vertex.
+  # instance, one attribute lookup per (tuple, key), the static walk per node, and the body
+  # classification per vertex. Two routes: the whole relation is O(Σ reach) over every handed scope,
+  # and a reader of one node pays all of it, the price of sharing a vertex across nodes; handed ONE
+  # scope, it is O(reach(n)), constant in N. The RESTRICTION PROPERTY: the relation handed a subset of
+  # the scopes equals the whole relation's slice for them, because a scope's values derive from its
+  # own sources through `suppliers` and never from which other scopes are handed.
   instancesFor = checkedEntry (
-    cnf: aspects: scopes:
+    cnf: aspects: input:
     let
       core = graphCore cnf aspects;
       inherit (core.facts) nodeData includeSitesOf;
@@ -225,21 +247,40 @@ in
       unique = xs: builtins.attrNames (set xs);
 
       # ── the doors ──
+      top =
+        let
+          fields = [
+            "suppliers"
+            "scopes"
+          ];
+        in
+        prelude.checkOptions rdoor fields (prelude.checkRequired rdoor fields input);
+      inherit (top) suppliers scopes;
+      supplied =
+        src: k:
+        builtins.isString src
+        && suppliers ? ${src}
+        && builtins.isAttrs suppliers.${src}
+        && suppliers.${src} ? ${k};
       tupleOf =
         door: t:
         let
-          fields = [
-            "context"
-            "sources"
-          ];
+          fields = [ "sources" ];
           r = prelude.checkOptions door fields (prelude.checkRequired door fields t);
+          unsupplied = builtins.filter (k: !(supplied r.sources.${k} k)) (builtins.attrNames r.sources);
         in
-        if !(builtins.isAttrs r.context) then
-          throw "${door}: `context` must be an attrset of coords, not a ${builtins.typeOf r.context}."
-        else if !(builtins.isAttrs r.sources) then
+        if !(builtins.isAttrs r.sources) then
           throw "${door}: `sources` must be an attrset mapping each context key to its supplier's identity, not a ${builtins.typeOf r.sources}."
+        else if unsupplied != [ ] then
+          throw "${door}: key(s) ${
+            prelude.concatStringsSep ", " (map (k: "'${k}'") unsupplied)
+          } name a source that `suppliers` holds no value for under that key; a context value is supplied as `suppliers.<source>.<key>`, never beside the scope."
         else
-          { inherit (r) context sources; };
+          {
+            inherit (r) sources;
+            # derived, never handed (gate C-1): one source names one value per key
+            context = builtins.mapAttrs (k: src: suppliers.${src}.${k}) r.sources;
+          };
       scopeOf =
         n: s:
         let
@@ -248,14 +289,12 @@ in
             prelude.checkOptions door
               [
                 "members"
-                "context"
                 "sources"
                 "descendants"
               ]
               (
                 prelude.checkRequired door [
                   "members"
-                  "context"
                   "sources"
                 ] s
               );
@@ -272,17 +311,19 @@ in
             if builtins.isString m then "'${m}'" else "of type ${builtins.typeOf m}"
           } is not a node of this tree; a member is a `graphFacts` node id (resolve a local key through `nodeIdOf`)."
         else if !(builtins.isList ds) then
-          throw "${door}: `descendants` must be a list of { context; sources; } records, not a ${builtins.typeOf ds}."
+          throw "${door}: `descendants` must be a list of { sources; } records, not a ${builtins.typeOf ds}."
         else
           builtins.seq (builtins.foldl' (_: t: builtins.seq t null) null dts) (
-            tupleOf door { inherit (r) context sources; }
+            tupleOf door { inherit (r) sources; }
             // {
               inherit (r) members;
               descendants = dts;
             }
           );
       sc =
-        if !(builtins.isAttrs scopes) then
+        if !(builtins.isAttrs suppliers) then
+          throw "${rdoor}: `suppliers` must be an attrset `<source identity>.<key> = <value>`, not a ${builtins.typeOf suppliers}."
+        else if !(builtins.isAttrs scopes) then
           throw "${rdoor}: `scopes` must be an attrset of node scopes, not a ${builtins.typeOf scopes}."
         else
           builtins.mapAttrs scopeOf scopes;
@@ -294,20 +335,35 @@ in
         v:
         (v.__isWrappedFn or false)
         || (v.__guard or false) && v ? fragments && builtins.all (f: f.kind != "record") v.fragments;
-      # O3 (spec §4.1; defaulted, reversible): fan-out triggers on REQUIRED formals only, required by
-      # any definition. Fanning out on defaulted formals too is this binding keeping every formal.
-      required =
-        v:
-        let
-          fas =
-            if v ? fragments then
-              map (f: builtins.functionArgs f.fn) (builtins.filter (f: f.kind == "fn") v.fragments)
-            else
-              [ v.__functionArgs ];
-        in
-        unique (builtins.concatMap (fa: builtins.filter (k: !fa.${k}) (builtins.attrNames fa)) fas);
-      requiredOf = builtins.mapAttrs (_: v: if mintable v then required v else [ ]) nodeData;
-      carries = t: a: builtins.all (k: t.context ? ${k}) requiredOf.${a};
+      # Per node, the formals of its definitions (unioned over a carrier's `fn` fragments) whose
+      # `functionArgs` flag (true = defaulted) passes `keep`.
+      formalsWhere =
+        keep:
+        builtins.mapAttrs (
+          _: v:
+          let
+            fas =
+              if v ? fragments then
+                map (f: builtins.functionArgs f.fn) (builtins.filter (f: f.kind == "fn") v.fragments)
+              else
+                [ v.__functionArgs ];
+          in
+          if mintable v then
+            unique (builtins.concatMap (fa: builtins.filter (k: keep fa.${k}) (builtins.attrNames fa)) fas)
+          else
+            [ ]
+        ) nodeData;
+      requiredOf = formalsWhere (defaulted: !defaulted);
+      # O3 (spec §4.1; defaulted, reversible), its ONE site: the formals whose absence from the scope's
+      # tuple sends the mint to the descendant tuples. Required only, since a default declares that the
+      # aspect runs without the formal; fanning out on defaulted formals too is
+      # `fanOutKeys = formalsWhere (_: true)`.
+      fanOutKeys = requiredOf;
+      carriesAll = ks: t: builtins.all (k: t.sources ? ${k}) ks;
+      # Whether a tuple fans the aspect out, and whether it can mint it at all (every required formal
+      # supplied). They coincide under the default; the split keeps an O3 reversal from deleting edges.
+      fans = t: a: carriesAll fanOutKeys.${a} t;
+      admits = t: a: carriesAll requiredOf.${a} t;
       aspectIdOf = builtins.mapAttrs (_: aspectId origin) nodeData;
 
       locals =
@@ -356,8 +412,8 @@ in
         {
           inherit (i) id formals entry;
           aspect = a;
-          # nested: parametric targets at the vertex's own tuple, never fanned out
-          children = builtins.concatMap (r: if carries tuple r then [ (mintOne r tuple) ] else [ ]) (
+          # nested: parametric targets at the vertex's own tuple, never fanned out (design §3; not O3)
+          children = builtins.concatMap (r: if admits tuple r then [ (mintOne r tuple) ] else [ ]) (
             builtins.filter (r: mintable nodeData.${r}) targets
           );
           # static targets: their parametric reach, resolved at node scope
@@ -368,7 +424,20 @@ in
         let
           s = sc.${n};
         in
-        map (mintOne a) (if carries s a then [ s ] else builtins.filter (t: carries t a) s.descendants);
+        map (mintOne a) (
+          if fans s a then
+            [ s ]
+          else
+            let
+              ds = builtins.filter (t: fans t a && admits t a) s.descendants;
+            in
+            if ds != [ ] then
+              ds
+            else if admits s a then
+              [ s ]
+            else
+              [ ]
+        );
 
       # The canonical record per id: the least reaching identifier (`by`) wins, since `listToAttrs`
       # keeps a name's first occurrence.

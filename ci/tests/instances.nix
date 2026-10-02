@@ -134,12 +134,8 @@ let
         ];
     gr = (aspects.mkGuardVocab { }).vocab.whenEq [ "host" ] "h1" { description = "gr"; };
   };
+  # A tuple names its suppliers only; its context is derived through `relSuppliers` (spec §2.6).
   tuple = host: user: {
-    context = {
-      inherit host;
-      flavor = "vanilla";
-    }
-    // (if user == null then { } else { inherit user; });
     sources = {
       host = entity host;
       flavor = binding "flavor";
@@ -164,7 +160,26 @@ let
     j = relScope "h6" [ "u6" ] [ "eu" ];
     k = relScope "h7" [ ] [ "wc" ];
   };
-  r = aspects.instancesFor { } rel relScopes;
+  # Written as a literal: one value per (source, key) by construction, and a repeated name aborts.
+  relSuppliers = {
+    ${entity "h1"}.host = "h1";
+    ${entity "h2"}.host = "h2";
+    ${entity "h3"}.host = "h3";
+    ${entity "h4"}.host = "h4";
+    ${entity "h5"}.host = "h5";
+    ${entity "h6"}.host = "h6";
+    ${entity "h7"}.host = "h7";
+    ${entity "u1"}.user = "u1";
+    ${entity "u2"}.user = "u2";
+    ${entity "u3"}.user = "u3";
+    ${entity "u5"}.user = "u5";
+    ${entity "u6"}.user = "u6";
+    ${binding "flavor"}.flavor = "vanilla";
+  };
+  r = aspects.instancesFor { } rel {
+    suppliers = relSuppliers;
+    scopes = relScopes;
+  };
   desc = id: r.vertices.${id}.entry.description;
   descs = map desc;
   facts = aspects.graphFacts { } rel;
@@ -286,7 +301,7 @@ in
   };
 
   # `instancesFor` (spec §2.6). The REDs named per cell were driven on this tree under a plant
-  # (reports/den-hoag-0cmbt-u4-build-v0.md).
+  # (reports/den-hoag-0cmbt-u4b-build-v0.md).
   flake.tests.instance-relation = {
     # R-1. Only reached pairs are edges: `a` reaches `e`, `s` and `u` through static `w`, never `w` itself
     # or an unreached parametric node. RED (every parametric node minted at every scope): `a` carries
@@ -437,7 +452,7 @@ in
         nestedQ = 1;
       };
     };
-    # R-9. A body's include under inline content is classified as `project` classifies it: `q` is a
+    # C-A. A body's include under inline content is classified as `project` classifies it: `q` is a
     # nested edge of E3(h5), and static `w3` resolves `u` at node scope (fanned out over i's user).
     # RED (a top-level-only body walk): no nested `q`, no `u`.
     test-inline-content-in-body = {
@@ -462,5 +477,47 @@ in
         total = true;
       };
     };
+    # R-9 (gate C-1). One scope never reads another's content: every instance a scope reaches, and the
+    # nested one under it, is applied at the value its OWN sources name in `suppliers`. x and y share
+    # source H, w has its own. RED (every key read from the first `suppliers` entry): w reads h1, or x
+    # and y read h2.
+    test-scope-reads-own-content =
+      let
+        sup = {
+          ${entity "H"}.host = "h1";
+          ${entity "H2"}.host = "h2";
+        };
+        src = {
+          x = entity "H";
+          y = entity "H";
+          w = entity "H2";
+        };
+        rr = aspects.instancesFor { } rel {
+          suppliers = sup;
+          scopes = builtins.mapAttrs (_: s: {
+            members = [ "e" ];
+            sources.host = s;
+          }) src;
+        };
+        read = n: map (id: rr.vertices.${id}.entry.description) rr.reaches.${n}.e;
+      in
+      {
+        expr = {
+          read = builtins.mapAttrs (n: _: read n) src;
+          agrees = builtins.all (n: read n == [ "e-${sup.${src.${n}}.host}" ]) (builtins.attrNames src);
+          nestedW = map (
+            eid: map (id: rr.vertices.${id}.entry.description) rr.nested.${eid}.q
+          ) rr.reaches.w.e;
+        };
+        expected = {
+          read = {
+            x = [ "e-h1" ];
+            y = [ "e-h1" ];
+            w = [ "e-h2" ];
+          };
+          agrees = true;
+          nestedW = [ [ "q-h2" ] ];
+        };
+      };
   };
 }

@@ -79,22 +79,26 @@ fragment (spec §4.1 O1); a received key with no source; a source that is not `<
 source of kind `aspect-instance`, `aspect`, `include-site` or `named-value`, which supply no argument.
 Enumerated, not refused: a source that is the instance's own id aborts with `infinite recursion`.
 The caller's obligation, unchecked: each source supplies the value the context carries under its key.
-The id reads only the sources, so a mismatch mints one id with two different entries, and a relation
-keeping one vertex per id (`instancesFor`'s `vertices`, which enumerates it) keeps one of them.
+The id reads only the sources, so a mismatch mints one id with two different entries; `instancesFor`
+cannot be handed that input, since it derives each context from one `suppliers` map.
 Tests: `ci/tests/instances.nix`; `instance-doors.*` in `ci/tests-error.nix`.
 
-`instancesFor cnf aspects scopes` → `{ vertices; reaches; nested; }` is the instance relation (0cmbt
-spec §2.6), with `scopes.<node> = { members; context; sources; descendants ? [ { context; sources; } ]; }`.
+`instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; reaches; nested; }` is the instance
+relation (0cmbt spec §2.6), with `suppliers.<source>.<key> = <value>` and
+`scopes.<node> = { members; sources; descendants ? [ { sources; } ]; }`. A tuple's context is derived,
+`mapAttrs (k: src: suppliers.${src}.${k}) sources`, so one source names one value per key and one scope
+never reads another's content.
 `vertices.<iid> = { aspect; formals; entry; }` holds one cell per `instanceOf` id (`aspect` is the
 parametric node's facts id); `reaches.<node>.<aspect>` and `nested.<iid>.<aspect>` are ascending id
 lists. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
-nodes and inline content. Fan-out on REQUIRED formals only (O3, defaulted, reversible: the `required`
-binding in `lib/instance.nix`); a nested instance never fans out, and a pair no tuple supplies has no
-edge. Applied bodies are classified by `includeSitesOfEntry`; a body's static targets resolve at node
+nodes and inline content. Fan-out on REQUIRED formals only (O3, defaulted, reversible: its one site is
+the `fanOutKeys` binding in `lib/instance.nix`; `admits` separately decides whether a tuple can mint); a
+nested instance never fans out (`mintOne`'s `children`), and a pair no tuple supplies has no edge. Applied bodies are classified by `includeSitesOfEntry`; a body's static targets resolve at node
 scope. Guard records (O1) are leaves with no edge. Reading any field forces every pass. Refused by
-name: `scopes` not an attrset; a scope not `{ members; context; sources; descendants? }`; a member
-that is not a node id; a non-attrset `context` or `sources`; malformed `descendants`. Enumerated, not
-refused: one source handed two context values gives one vertex holding one of the two entries.
+name: the input not `{ suppliers; scopes; }`; `suppliers` or `scopes` not an attrset; a scope not
+`{ members; sources; descendants? }` (a retired `context` is an unknown field); a member that is not a
+node id; a non-attrset `sources`; malformed `descendants`; a tuple key whose source `suppliers` holds no
+value for under that key.
 `includeSitesOfEntry cnf aspects entry` is `graphFacts`' `includeSitesOf` classification over any
 aspect value (a node's value, or an applied instance body).
 Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doors.*` in `ci/tests-error.nix`.
