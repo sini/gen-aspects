@@ -364,6 +364,9 @@ in
       # supplied). They coincide under the default; the split keeps an O3 reversal from deleting edges.
       fans = t: a: carriesAll fanOutKeys.${a} t;
       admits = t: a: carriesAll requiredOf.${a} t;
+      # A descendant tuple mints when it both fans out and admits: one test over the union, per aspect
+      # once, so the per-tuple cost is the single test the unsplit binding paid.
+      fansAndAdmits = builtins.mapAttrs (a: ks: unique (ks ++ requiredOf.${a})) fanOutKeys;
       aspectIdOf = builtins.mapAttrs (_: aspectId origin) nodeData;
 
       locals =
@@ -429,7 +432,7 @@ in
             [ s ]
           else
             let
-              ds = builtins.filter (t: fans t a && admits t a) s.descendants;
+              ds = builtins.filter (carriesAll fansAndAdmits.${a}) s.descendants;
             in
             if ds != [ ] then
               ds
