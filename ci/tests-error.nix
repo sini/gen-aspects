@@ -579,19 +579,28 @@ in
   # remedy names the extension route only where the type reads extensions.
   flake.testsError.orphan-leaf-names-path =
     let
-      cnf.keySemantics.nixos.category = "class";
+      # Two classes and a channel: the message lists the class keys in full and only those.
+      cnf.keySemantics = {
+        nixos.category = "class";
+        darwin.category = "class";
+        welt.category = "channel";
+      };
       at =
         body:
         (mkSchemaEval (
           cnf
           // {
+            fixtureKeySemantics = { };
             modules = [ { config.aspects.hem = body; } ];
           }
         )).config.aspects.hem;
-      # The fixture's two classes (`mkSchemaEval`) and this cnf's: the declared class keys in full.
+      # Composed from the cnf above, never restated, so the pin cannot drift from the fixture.
+      classKeys = lib.concatStringsSep ", " (
+        builtins.attrNames (lib.filterAttrs (_: e: e.category == "class") cnf.keySemantics)
+      );
       declare =
         "Declare the key — a keySemantics class/channel/facet, or a schema extension "
-        + "`schema.aspect.options.<key>` — or correct its spelling. Declared class keys: classOne, classTwo, nixos.";
+        + "`schema.aspect.options.<key>` — or correct its spelling. Declared class keys: ${classKeys}.";
       # The include element's own segment, read from the library rather than restated, so the pin
       # cannot drift with gen-merge's naming of a list element (den-hoag-26thl).
       seg = (builtins.head (at { includes = [ { } ]; }).includes).name;
@@ -647,7 +656,7 @@ in
           "gen-aspects: aspect `hem`: orphan leaf at `hem.trim.x` (a value of type int below the "
           + "undeclared key path `trim` is neither class content nor an aspect). Declare the key as a "
           + "keySemantics class/channel/facet (this aspect type reads no schema extension; "
-          + "`mkAspectModule` threads them), or correct its spelling. Declared class keys: nixos."
+          + "`mkAspectModule` threads them), or correct its spelling. Declared class keys: ${classKeys}."
         )
       );
     };
