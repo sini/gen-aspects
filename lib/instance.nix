@@ -174,9 +174,10 @@ in
   # - `fanOutKeys` (O3, spec §4.1; defaulted, reversible: the REQUIRED formals) decides whether the
   #   scope's own tuple mints, or each descendant tuple that carries them does;
   # - `admits` (every required formal is supplied) decides whether a tuple can mint at all.
-  # At node scope: the scope's tuple when it carries `fanOutKeys`; otherwise each descendant tuple that
-  # carries `fanOutKeys` and `admits`; otherwise the scope's tuple when it `admits`; otherwise no edge,
-  # and the consumer's door names it. A context shape requires nothing and never fans out. Under the
+  # At node scope: the scope's tuple when it carries `fanOutKeys` and `admits`; otherwise each
+  # descendant tuple that does; otherwise the scope's tuple when it `admits`; otherwise no edge, and the
+  # consumer's door names it. Every branch requires `admits`, so under any `fanOutKeys` an edge comes
+  # only from a tuple that can mint. A context shape requires nothing and never fans out. Under the
   # default the third branch adds nothing; fanning out on defaulted formals too is the one edit
   # `fanOutKeys = formalsWhere (_: true)`, and the third branch then keeps a host's defaulted edge.
   #
@@ -360,12 +361,12 @@ in
       # `fanOutKeys = formalsWhere (_: true)`.
       fanOutKeys = requiredOf;
       carriesAll = ks: t: builtins.all (k: t.sources ? ${k}) ks;
-      # Whether a tuple fans the aspect out, and whether it can mint it at all (every required formal
-      # supplied). They coincide under the default; the split keeps an O3 reversal from deleting edges.
-      fans = t: a: carriesAll fanOutKeys.${a} t;
+      # Whether a tuple can mint the aspect at all: it supplies every required formal.
       admits = t: a: carriesAll requiredOf.${a} t;
-      # A descendant tuple mints when it both fans out and admits: one test over the union, per aspect
-      # once, so the per-tuple cost is the single test the unsplit binding paid.
+      # Whether a tuple both carries `fanOutKeys` and admits: one test over the union, built once per
+      # aspect, so a tuple costs the single test the unsplit binding paid. It equals `fanOutKeys` under
+      # either O3 arm (both are supersets of the required formals); under any other `fanOutKeys` it still
+      # keeps an edge from a tuple that cannot mint.
       fansAndAdmits = builtins.mapAttrs (a: ks: unique (ks ++ requiredOf.${a})) fanOutKeys;
       aspectIdOf = builtins.mapAttrs (_: aspectId origin) nodeData;
 
@@ -428,7 +429,7 @@ in
           s = sc.${n};
         in
         map (mintOne a) (
-          if fans s a then
+          if carriesAll fansAndAdmits.${a} s then
             [ s ]
           else
             let
