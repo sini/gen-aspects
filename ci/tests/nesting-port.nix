@@ -211,7 +211,8 @@ in
   };
 
   # The sub-option protocol reads as it did before the port: no module set, and the option names of
-  # the aspect submodule where the type answers with it.
+  # the aspect submodule where the type answers with it, with gen-merge's `_freeformOptions` beside
+  # them, nixpkgs' answer for a freeform submodule.
   flake.tests.nesting-port.test-the-sub-option-protocol-reads-as-before = {
     expr = builtins.mapAttrs (_: ty: {
       modules = ty.getSubModules;
@@ -220,6 +221,7 @@ in
     expected =
       let
         aspectOptions = [
+          "_freeformOptions"
           "classOne"
           "description"
           "id_hash"
