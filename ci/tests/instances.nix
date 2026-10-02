@@ -477,6 +477,30 @@ in
         total = true;
       };
     };
+    # The restriction property (gate P-3): the relation handed one scope is the whole relation's
+    # slice for it, its edges and every vertex it reaches, nested ones included. `control` is the slice
+    # of another node, which differs. RED (an id that depends on which scopes are handed): false.
+    test-restriction-to-one-scope =
+      let
+        rA = aspects.instancesFor { } rel {
+          suppliers = relSuppliers;
+          scopes = { inherit (relScopes) a; };
+        };
+        slice =
+          rr: builtins.mapAttrs (id: _: rr.vertices.${id} // { nested = rr.nested.${id}; }) rA.vertices;
+      in
+      {
+        expr = {
+          reaches = rA.reaches.a == r.reaches.a;
+          vertices = slice rA == slice r;
+          control = rA.reaches.a == r.reaches.b;
+        };
+        expected = {
+          reaches = true;
+          vertices = true;
+          control = false;
+        };
+      };
     # R-9 (gate C-1). One scope never reads another's content: every instance a scope reaches, and the
     # nested one under it, is applied at the value its OWN sources name in `suppliers`. x and y share
     # source H, w has its own. RED (every key read from the first `suppliers` entry): w reads h1, or x
