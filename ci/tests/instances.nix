@@ -7,37 +7,55 @@
 {
   aspects,
   genIdentity,
+  genAlgebra,
+  mkSchemaEval,
   ...
 }:
 let
+  t = (genAlgebra.term genIdentity.hashIdentity).term;
   entity = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
   binding = n: genIdentity.hashIdentity "argument-binding" [ "name" ] (_: n);
   aspect = aspects.aspectId [ "probe" ] { name = "p"; };
-  keys = c: builtins.concatStringsSep "," (builtins.attrNames c);
-  p = aspects.wrapFn { } "p" ({ host, ... }: { description = "p-${host}"; });
-  bare = aspects.wrapFn { } "b" (c: {
-    description = "b:${keys c}";
-  });
-  bareK = aspects.wrapFn { entityKinds = [ "host" ]; } "b" (c: {
-    description = "b:${keys c}";
-  });
-  empty = aspects.wrapFn { } "e" ({ }: { description = "e"; });
-  # Two definitions under one key, one a context shape and one with formals: the aspect type's merge
-  # builds a guard carrier (K2's site), never a wrap record.
+  # A first-order guard reading `host` (design Section 3: context reads become read terms).
+  p = aspects.guard (aspects.pred.has "host") {
+    description = t.concat [
+      (t.lit "p-")
+      (t.readCtx "host" [ ])
+    ];
+  };
+  # A guard reading nothing (design Section 3: constants become `always`).
+  empty = aspects.guard aspects.pred.always { description = "e"; };
+  # Two guard-record definitions under one key, one reading `host` and one reading `x`: the aspect
+  # type's merge builds a guard carrier (K2's site).
   kinds = {
     entityKinds = [ "host" ];
   };
+  # `x` is a declared coordinate that is not an entity kind (design Q5 (A)).
+  kindsX.entityKinds = {
+    host = true;
+    x = false;
+  };
   twoDefs =
-    (aspects.aspectType kinds).merge
+    (aspects.aspectType kindsX).merge
       [ "m" ]
       [
         {
           file = "/a.nix";
-          value = c: { description = "a:${keys c}"; };
+          value = aspects.guard (aspects.pred.has "host") {
+            description = t.concat [
+              (t.lit "a:")
+              (t.readCtx "host" [ ])
+            ];
+          };
         }
         {
           file = "/b.nix";
-          value = { x }: { description = "b:${x}"; };
+          value = aspects.guard (aspects.pred.has "x") {
+            description = t.concat [
+              (t.lit "b:")
+              (t.readCtx "x" [ ])
+            ];
+          };
         }
       ];
   scope = host: extra: {
@@ -68,18 +86,36 @@ let
   # The relation's fixture (spec §2.6): a and c are two entities on host h1 (equal tuples), b another
   # host; `w` is static and reaches `e` (host) and `u` (user, a descendant formal); `e`'s body includes
   # `q`. Each case's node is named in its cell.
-  rel = {
-    e = aspects.wrapFn { } "e" (
-      { host, ... }:
-      {
-        description = "e-${host}";
-        includes = [ "q" ];
-      }
-    );
-    q = aspects.wrapFn { } "q" ({ host, ... }: { description = "q-${host}"; });
-    u = aspects.wrapFn { } "u" ({ user, ... }: { description = "u-${user}"; });
+  # Placed through the aspect type, where each guard meets its cnf and is checked (a first-order
+  # guard has an identity once checked).
+  rel = (mkSchemaEval { modules = [ { config.aspects = relDefs; } ]; }).config.aspects;
+  relDefs = {
+    e = aspects.guard (aspects.pred.has "host") {
+      description = t.concat [
+        (t.lit "e-")
+        (t.readCtx "host" [ ])
+      ];
+      includes = [ "q" ];
+    };
+    q = aspects.guard (aspects.pred.has "host") {
+      description = t.concat [
+        (t.lit "q-")
+        (t.readCtx "host" [ ])
+      ];
+    };
+    u = aspects.guard (aspects.pred.has "user") {
+      description = t.concat [
+        (t.lit "u-")
+        (t.readCtx "user" [ ])
+      ];
+    };
     # one global argument binding supplies `flavor` to every scope
-    s = aspects.wrapFn { } "s" ({ flavor, ... }: { description = "s-${flavor}"; });
+    s = aspects.guard (aspects.pred.has "flavor") {
+      description = t.concat [
+        (t.lit "s-")
+        (t.readCtx "flavor" [ ])
+      ];
+    };
     w = {
       name = "w";
       includes = [
@@ -89,49 +125,38 @@ let
       ];
     };
     # a parametric body including a STATIC node (the static-node rule)
-    e2 = aspects.wrapFn { } "e2" ({ host, ... }: { includes = [ "w2" ]; });
+    e2 = aspects.guard (aspects.pred.has "host") { includes = [ "w2" ]; };
     w2 = {
       name = "w2";
       includes = [ "q" ];
     };
     # a parametric body including `q` and a static node under inline content
-    e3 = aspects.wrapFn { } "e3" (
-      { host, ... }:
-      {
-        includes = [
-          {
-            name = "lit";
-            includes = [
-              "q"
-              "w3"
-            ];
-          }
-        ];
-      }
-    );
+    e3 = aspects.guard (aspects.pred.has "host") {
+      includes = [
+        {
+          name = "lit";
+          includes = [
+            "q"
+            "w3"
+          ];
+        }
+      ];
+    };
     w3 = {
       name = "w3";
       includes = [ "u" ];
     };
     # a parametric body including an aspect whose formal its tuple lacks
-    eu = aspects.wrapFn { } "eu" ({ host, ... }: { includes = [ "u" ]; });
+    eu = aspects.guard (aspects.pred.has "host") { includes = [ "u" ]; };
     # a static node holding inline content (stamped by the aspect type's merge, so it is content and
     # not sealed), and a guard record (no instance identity yet: O1)
-    wc =
-      (aspects.aspectType { }).merge
-        [ "wc" ]
-        [
-          {
-            file = "<wc>";
-            value.includes = [
-              {
-                name = "lit";
-                includes = [ "e" ];
-              }
-              "gr"
-            ];
-          }
-        ];
+    wc.includes = [
+      {
+        name = "lit";
+        includes = [ "e" ];
+      }
+      "gr"
+    ];
     gr = (aspects.mkGuardVocab { }).vocab.whenEq [ "host" ] "h1" { description = "gr"; };
   };
   # A tuple names its suppliers only; its context is derived through `relSuppliers` (spec §2.6).
@@ -240,15 +265,15 @@ in
         same = true;
       };
     };
-    # I-4. Two definitions: the carrier's formals are the union of its function fragments' door keys
-    # (`c:` narrowed to the kinds, `{ x }:` its formal), and the entry is the carrier discharged.
+    # I-4. Two definitions: the carrier's formals are the union of its record fragments' reads
+    # (`host` and `x`, not the unread `extra`), and the entry is the carrier discharged.
     test-two-definitions-union = {
       expr = {
         isCarrier = twoDefs ? fragments;
-        formals = builtins.attrNames (inst kinds twoDefs twoDefsScope).formals;
+        formals = builtins.attrNames (inst kindsX twoDefs twoDefsScope).formals;
         entry =
-          (inst kinds twoDefs twoDefsScope).entry
-          == (aspects.mkGuardVocab kinds).applyGuard twoDefsScope.context twoDefs;
+          (inst kindsX twoDefs twoDefsScope).entry
+          == (aspects.mkGuardVocab kindsX).applyGuard twoDefsScope.context twoDefs;
       };
       expected = {
         isCarrier = true;
@@ -262,41 +287,24 @@ in
     # I-5. A formal named `aspect` nests under `formals` and does not clash with the relatum.
     test-formal-named-aspect = {
       expr =
-        (inst { } (aspects.wrapFn { } "fa" ({ aspect }: { description = "fa-${aspect}"; })) {
-          context.aspect = "A";
-          sources.aspect = binding "A";
-        }).formals;
+        (inst { }
+          (aspects.guard (aspects.pred.has "aspect") {
+            description = t.concat [
+              (t.lit "fa-")
+              (t.readCtx "aspect" [ ])
+            ];
+          })
+          {
+            context.aspect = "A";
+            sources.aspect = binding "A";
+          }
+        ).formals;
       expected.aspect = binding "A";
     };
     # I-7's minting arm: an identity-shaped source of a supplier kind mints an instance identity.
     test-identity-source-mints = {
       expr = builtins.match "aspect-instance:[0-9a-f]{64}" (inst { } p (scope "h1" "x")).id != null;
       expected = true;
-    };
-    # K-a through the mint. A context shape under `entityKinds = [ "host" ]` receives `host` alone.
-    test-kinds-narrow-formals = {
-      expr = {
-        formals = builtins.attrNames (inst kinds bareK (scope "h1" "x")).formals;
-        entry = (inst kinds bareK (scope "h1" "x")).entry.description;
-      };
-      expected = {
-        formals = [ "host" ];
-        entry = "b:host";
-      };
-    };
-    # K-b through the mint. With the kinds undeclared it receives, and is keyed on, the whole context.
-    test-kinds-null-whole-context = {
-      expr = {
-        formals = builtins.attrNames (inst { } bare (scope "h1" "x")).formals;
-        entry = (inst { } bare (scope "h1" "x")).entry.description;
-      };
-      expected = {
-        formals = [
-          "extra"
-          "host"
-        ];
-        entry = "b:extra,host";
-      };
     };
   };
 
@@ -380,7 +388,8 @@ in
     };
     # R-5. An unsuppliable reached pair has no edge and no throw: f reaches `u` with no tuple carrying
     # `user`; eu's vertex at h6 includes `u` and its tuple lacks `user` (O3: no nested fan-out). RED
-    # (minted regardless): wrapFn's `requires context coord(s) 'user'` refusal on any read.
+    # (minted regardless): the guard's `has user` condition never holds, so a mint would refuse on
+    # any read.
     test-unsuppliable-no-edge = {
       expr = {
         fHasE = r.reaches.f ? e;
@@ -416,7 +425,8 @@ in
     # RED (the first descendant tuple taken): one id, [ "u-u1" ].
     test-fan-out = {
       expr = {
-        uA = descs r.reaches.a.u;
+        # an instance set is keyed by id, so its order is the ids' and not the users'
+        uA = builtins.sort builtins.lessThan (descs r.reaches.a.u);
         eCountA = builtins.length r.reaches.a.e;
         uC = descs r.reaches.c.u;
         bHasU = r.reaches.b ? u;
@@ -465,6 +475,74 @@ in
         nodeU = [ "u-u5" ];
       };
     };
+    # OQ-U2.9 arm (B), one uniform rule (den-hoag-lwbb1 v2 gate BC-1/BC-2): in an APPLIED body a
+    # key-less attrset is content, and a guard record stays sealed, its content awaiting its own firing.
+    # The body is a real firing (`applyGuard` over a placed guard). RED (the guard-leaf exclusion
+    # dropped, gate `arm-Bng.patch`): `nestedGuard` reads "content". RED (2a's stamp-only test, no arm
+    # (B)): `literal` reads "sealed".
+    test-applied-body-sites =
+      let
+        body =
+          aspects.applyGuard { }
+            (mkSchemaEval {
+              modules = [
+                {
+                  config.aspects.fired = aspects.guard aspects.pred.always {
+                    includes = [
+                      (aspects.guard (aspects.pred.has "host") { includes = [ "q" ]; })
+                      { includes = [ "q" ]; }
+                      "q"
+                    ];
+                  };
+                }
+              ];
+            }).config.aspects.fired;
+        kinds = map (x: x.kind) (aspects.includeSitesOfEntry { } rel body);
+      in
+      {
+        expr = {
+          nestedGuard = builtins.elemAt kinds 0;
+          literal = builtins.elemAt kinds 1;
+          reference = builtins.elemAt kinds 2;
+        };
+        expected = {
+          nestedGuard = "sealed";
+          literal = "content";
+          reference = "local";
+        };
+      };
+    # ★ s6 — A DEFAULTED-REVERSIBLE CHOICE, PINNED AT TODAY'S BEHAVIOUR, PENDING AN OWNER CONFIRMATION.
+    # This cell does not assert what is right. A module function written as an include element of an
+    # applied parametric body (`includes = [ ({ config, ... }: { includes = [ "q" ]; }) ]`) is SEALED:
+    # arm (B) reads only attrsets, and the design makes a module slot opaque to the algebra. 2a's
+    # `wrapFn` path served it as content with site `q`; arm (s6-b), coercing such an element through
+    # the aspect type at its include position, would serve it again (den-hoag-lwbb1 v2 gate G2-C1,
+    # §4). Pinned so the reading that decides s6 flips it deliberately rather than silently. Control:
+    # the same `includes` written as a literal is content.
+    test-s6-module-fn-in-applied-body-is-sealed =
+      let
+        fire =
+          elem:
+          aspects.applyGuard { }
+            (mkSchemaEval {
+              modules = [
+                { config.aspects.fired = aspects.guard aspects.pred.always { includes = [ elem ]; }; }
+              ];
+            }).config.aspects.fired;
+        kinds = body: map (x: x.kind) (aspects.includeSitesOfEntry { } rel body);
+      in
+      {
+        expr = {
+          pinned = kinds (fire ({ config, ... }: { includes = [ "q" ]; }));
+          control = kinds (fire {
+            includes = [ "q" ];
+          });
+        };
+        expected = {
+          pinned = [ "sealed" ];
+          control = [ "content" ];
+        };
+      };
     # A static node's inline content is walked at depth 0, and a guard record (O1) is a leaf with no
     # edge, never a refusal. `nested` is total over `vertices`.
     test-content-walked-guard-record-no-edge = {

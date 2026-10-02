@@ -2,8 +2,8 @@
 #
 # Palmer et al. (2024) "Intensional Functions" §2: one type, dispatch in merge.
 # aspectType dispatches by value shape — attrsets and module functions to
-# aspectSubmodule, guard functions to a functor wrap (deferred for pipeline resolution),
-# primitives pass through.
+# aspectSubmodule, guard records (guard.nix) to their checked term, primitives pass through; a
+# context closure is refused by name (design Section 3: closures cross the gen-rules door).
 #
 # Each declared aspect key's option is built generically from cnf.keySemantics (class →
 # deferredModule, channel → raw, facet → the entry's option/module). The module system's own
@@ -13,20 +13,10 @@
 # constructor (deferredModule) — inspectable before forcing, evaluated only when
 # the consuming NixOS/homeManager evaluation imports it.
 #
-# Guard functions ({ thimble, ... }: { ... }) are preserved via a functor wrap
-# (inspectable `__functor` wrapping; cf. Reynolds 1972 defunctionalization by ANALOGY —
-# the closure is preserved inside __functor, not eliminated; there is no per-form
-# constructor and no single global apply, so this is not the literal §6 transform).
-# Port note: the wrap is now a hand-built functor (gen-merge has no `functionTo`);
-# it reproduces the old `(lib.types.functionTo aspectSubmodule).merge … // { __isWrappedFn; … }`
-# functor byte-for-byte (isAttrs + callable via __functor, tagged __isWrappedFn/name/meta).
-# The pipeline resolves them when context is available — they are NOT evaluated by
-# the type system.
-#
-# Defunctionalized guard records (guard.nix, __guard) are passed through as first-order
-# data by the __guard branch below — THAT path IS the Reynolds §6 transform (closed
-# predicate vocabulary + one applyGuard); the functor wrap is the non-defunctionalized
-# escape hatch for raw closures.
+# Guard records (guard.nix, __guard) are first-order data, checked here against their cnf
+# (lib/guard-term.nix) — the Reynolds §6 transform (closed condition vocabulary + one applyGuard). A
+# context closure handed to gen-aspects is refused by name, naming the gen-rules door
+# (den-hoag-lwbb1 stage 2b): gen-aspects holds terms only.
 {
   prelude,
   merge,
@@ -41,7 +31,6 @@ let
     extendCnf
     checkedEntry
     mergedKeys
-    entityKindsOf
     ;
   cnfConstruction = (import ./cnf.nix).cnfConstruction schema.keySemanticsRecords;
 
@@ -60,7 +49,6 @@ let
       c = cnfConstruction cnf;
     in
     schema.constructionRelation name (c // { minted = c.minted // minted; }) self;
-  doors = import ./require-wrapped-closure.nix;
   t = merge.types;
 
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
@@ -77,191 +65,12 @@ let
       ;
   };
 
-  # The `__isWrappedFn` functor record — ONE construction site for the inspectable raw-closure wrap
-  # (Reynolds 1972 by analogy, per the header: the closure is preserved inside `__functor`, not
-  # eliminated). Both callers below build THIS record; they differ only in the APPLICATOR (how the
-  # context args become a merged aspect) and in the formals/name/meta sources. Keeping the shape in
-  # one place is the R11 no-drift argument: constructor and readers (flatten/identity/guard,
-  # resolved-aspects) live in one lib, so the tag's shape can never skew across callers.
-  # `receives` is `__receives` (0cmbt spec §2.4): a context ↦ the keys the wrap's definitions are
-  # handed by the context door at it, unioned over the definitions, which an instance's formals
-  # read (`instanceOf`).
-  mkWrapped =
-    {
-      apply,
-      receives,
-      functionArgs,
-      name,
-      meta,
-    }:
-    {
-      __functor = _: fnArgs: apply fnArgs;
-      __receives = receives;
-      # nixpkgs `functionTo` sets `__functionArgs` (via setFunctionArgs) so downstream
-      # `functionArgs`/`lib.isFunction` see the closure's arg shape; reproduced here.
-      __functionArgs = functionArgs;
-      __isWrappedFn = true;
-      inherit name meta;
-    };
-
-  # THE INTERIM DOOR's argument (den-hoag-n6dh7 OQ10: "retire the hatch, iii target with i
-  # interim"). The two raw-closure wraps below merge at APPLY time, outside any evaluation's fold: no
-  # evaluation accessor exists there, and `d.value fnArgs` is an application, not an address. So
-  # each application is ONE explicit root evaluation of the one engine, through its published door
-  # `evalModuleTree`, over the aspect submodule's nested tree stated as data (`nests`): its module
-  # set, one entry per applied definition, the fold's `loc` as the prefix, and its arguments with
-  # `name` injected as the submodule's own evaluation injects it. That is the call the submodule's
-  # fold makes, field for field, so the value and the cost (one evaluation per application) are
-  # today's. Never `.merge`: a nesting type's exported fold is the bridge, and calling it would make
-  # the same evaluation silently. Private to this file; it publishes nothing. RETIRED by
-  # `den-hoag-lwbb1` (first-order guard bodies), with ADR-0013's closure hatch, `wrapFn`,
-  # `wrapGatedFn` and `deferIncludeResolution`.
-  doorArgs =
-    sub: loc: defs:
-    let
-      n = sub.nests;
-    in
-    {
-      modules = n.modules ++ map n.entry defs;
-      prefix = loc;
-      specialArgs = n.specialArgs // {
-        name = if loc == [ ] then "" else prelude.last loc;
-      };
-      inherit (n) check;
-    };
-
-  # Raw-closure guard wrap — a hand-built functor reproducing nixpkgs `functionTo`'s merge result
-  # tagged as a wrapped fn. The DEF-LIST caller: invoked by the aspect TYPE's merge, so it wraps the
-  # module system's def-list (a guard fn defined possibly across several files). When the pipeline
-  # applies it to a context, each def's guard closure is applied and the results merge through the
-  # aspectSubmodule (deferred resolution).
-  wrapGuardFn =
-    sub: cnf: loc: defs:
-    let
-      at = "aspect `${prelude.concatStringsSep "." loc}`";
-      contextOf = doors.requireContextOf (entityKindsOf cnf);
-      # Each definition's context door, classified once here, never per application.
-      doored = map (d: {
-        inherit (d) file value;
-        door = contextOf "aspectType" at d.value;
-      }) defs;
-    in
-    mkWrapped {
-      # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
-      apply =
-        fnArgs:
-        (merge.evalModuleTree (
-          doorArgs sub (loc ++ [ "<function body>" ]) (
-            map (d: {
-              inherit (d) file;
-              value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (d.value (d.door fnArgs));
-            }) doored
-          )
-        )).config;
-      receives = fnArgs: builtins.attrNames (prelude.foldl' (acc: d: acc // d.door fnArgs) { } doored);
-      functionArgs = prelude.foldl' (acc: d: acc // builtins.functionArgs d.value) { } defs;
-      name = prelude.last loc;
-      meta = {
-        inherit loc;
-        file = (builtins.head defs).file or "<unknown>";
-      };
-    };
-
-  # PUBLIC: wrap a SINGLE raw closure `ctx: <aspect>` as an inspectable aspect include — the
-  # single-closure sibling of `wrapGuardFn`. A NATIVE author never needs it: a bare guard fn written
-  # into an aspect rides the option-type merge (aspectType below), which applies `wrapGuardFn` for
-  # them. But a PROGRAMMATICALLY-GENERATED include (constructed off the option type, e.g. a bridge
-  # that raw-absorbs a foreign surface) bypasses that merge, so the wrap must be callable as API —
-  # the same rationale that makes a generated guard record a first-order value rather than a closure
-  # the type must intercept. The applied closure's result merges through the aspectSubmodule exactly
-  # as `wrapGuardFn`'s def-list path does, so a `wrapFn`'d include is byte-equivalent to a
-  # type-merge-wrapped bare fn (ci/tests/wrap-fn.nix). `name` sites the wrap for tracing (Palmer §5.1).
-  wrapFn =
-    cnf: name: fn:
-    let
-      at = "`${name}`";
-      door = doors.requireContextOf (entityKindsOf cnf) "wrapFn" at fn;
-    in
-    builtins.seq (doors.requireClosure "wrapFn" at fn) (mkWrapped {
-      # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
-      apply =
-        fnArgs:
-        (merge.evalModuleTree (
-          doorArgs (aspectSubmodule cnf)
-            [ name "<function body>" ]
-            [
-              {
-                file = "<wrapFn>";
-                value = doors.requireAspectContent "wrapFn" at (mkIsModuleFn cnf) (fn (door fnArgs));
-              }
-            ]
-        )).config;
-      receives = fnArgs: builtins.attrNames (door fnArgs);
-      functionArgs = builtins.functionArgs fn;
-      inherit name;
-      meta = {
-        loc = [ name ];
-        file = "<wrapFn>";
-      };
-    });
-
-  # PUBLIC (N-GATE): the OPT-IN self-gating wrapped fn. Distinct from `mkWrapped`/`wrapGuardFn` — the
-  # native guard path applies UNCONDITIONALLY and THROWS on a missing required coord (its contract, pinned
-  # by ci/tests/gated-wrap.nix test-native-guard-not-gated); `wrapGatedFn`'s applicator SELF-GATES:
-  # every required coord (a no-default formal — the same predicate `lib/can-take.nix`'s `canTake` builds
-  # as its `required` binding) present ⇒ `onResult (fn <ctx>)`, `<ctx>` narrowed to `functionArgs` by the
-  # shared context door (lib/require-wrapped-closure.nix), and `{ }` when `functionArgs` is empty (a
-  # closed `{ }:` pattern cannot take a wider context, and `functionArgs` cannot tell it from `ctx:`);
-  # a required coord MISSING ⇒ `{ }` (INERT, no
-  # throw — merges harmlessly through `aspectSubmodule`). Params: `functionArgs` — the EXPLICIT formals of the INNER fire fn (load-bearing: a
-  # consumer's fire path is a closure whose own `builtins.functionArgs` is `{ fnArgs = false; }`, so the
-  # gate must read the inner fn's real formals — the override); `onResult` — a result hook (DEFAULT
-  # identity) a consumer threads its post-fire processing through (den-hoag's class-key grounding rides
-  # here, keeping den vocab OUT of gen-aspects). SELF-CONTAINED — built directly (NOT via `mkWrapped`,
-  # whose required `name`/`meta` formals a param-less call would trip), mirroring `mkWrapped`'s tag field
-  # set EXACTLY — `__functor`, `__receives`, `__functionArgs`, `__isWrappedFn`, `name`, `meta` — so a
-  # `__isWrappedFn` reader cannot tell a gated record from a plain one.
-  # The spec record is MIXED (`functionArgs` required, the rest defaulted) and closed over the whole
-  # set, so it composes the two shared door checks: native formals refused a missing or an unknown
-  # field past `tryEval`.
-  wrapGatedFn =
-    spec:
-    let
-      s = prelude.checkOptions "gen-aspects.wrapGatedFn" [
-        "functionArgs"
-        "name"
-        "meta"
-        "onResult"
-      ] (prelude.checkRequired "gen-aspects.wrapGatedFn" [ "functionArgs" ] spec);
-      inherit (s) functionArgs;
-      name = s.name or "<gated>";
-      meta = s.meta or { };
-      onResult = s.onResult or (x: x);
-    in
-    # Forced at the spec's application, so the refusal meets the caller at the door it called.
-    builtins.seq s (
-      fn:
-      let
-        required = builtins.filter (n: !functionArgs.${n}) (builtins.attrNames functionArgs);
-        fires = fnArgs: builtins.all (a: fnArgs ? ${a}) required;
-        handed =
-          fnArgs:
-          if functionArgs == { } then
-            { }
-          else
-            doors.requireRequiredCoords "wrapGatedFn" "`${name}`" functionArgs fnArgs;
-      in
-      builtins.seq (doors.requireCallable "wrapGatedFn" "the value wrapped at `${name}`" fn) (
-        builtins.seq (doors.requireCallable "wrapGatedFn" "`onResult` at `${name}`" onResult) {
-          __functor = _: fnArgs: if fires fnArgs then onResult (fn (handed fnArgs)) else { };
-          # What an inert application is handed is nothing: `[ ]` when a required coord is missing.
-          __receives = fnArgs: if fires fnArgs then builtins.attrNames (handed fnArgs) else [ ];
-          __functionArgs = functionArgs;
-          __isWrappedFn = true;
-          inherit name meta;
-        }
-      )
-    );
+  # The retired closure wraps (den-hoag-lwbb1 stage 2b): refused-by-name aliases naming the door.
+  retiredWrap =
+    name:
+    throw "gen-aspects.${name} was RETIRED by den-hoag-lwbb1: gen-aspects holds first-order guards only, and a context closure crosses the gen-rules door. Declare the aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a guard term (`guard (pred.has <coordinate>) <body>`).";
+  wrapFn = _: retiredWrap "wrapFn";
+  wrapGatedFn = _: retiredWrap "wrapGatedFn";
 
   # ── THE PORTS: gen-native types, stated in gen's vocabulary (den-hoag-n6dh7 item 5; gate C4) ──
   # `aspectType`, `gatedFreeformElem`, `includesElemType` and `aspectsRootWith` are built through
@@ -487,12 +296,11 @@ let
       sub = builtins.elemAt alternatives 0;
       coerced = builtins.elemAt alternatives 1;
       isModuleFn = mkIsModuleFn cnf;
-      # Arm B (witness 2, den-hoag-sezf §2): a def at a multi-def key is guard-shaped either as
-      # a guard RECORD (guard.nix, `__guard`) or as a guard FUNCTION (a raw closure that is not
-      # a module fn — `wrapGuardFn`'s single-def sibling). Reused verbatim from the single-def
-      # dispatch below (`:207`/`:209`-equivalent), never duplicated, per F4(b)'s ruling.
+      # Arm B (witness 2, den-hoag-sezf §2): a def at a multi-def key is guard-shaped as a guard
+      # RECORD (guard.nix, `__guard`). A CONTEXT CLOSURE (a function that is not a module fn) is
+      # refused by name at any arity (`bareClosureRefusal`, below).
       isGuardRecordDef = d: builtins.isAttrs d.value && (d.value.__guard or false);
-      isGuardFnDef = d: builtins.isFunction d.value && !(isModuleFn d.value);
+      isClosureDef = d: builtins.isFunction d.value && !(isModuleFn d.value);
       # Every definition at a guard-bearing multi-def key becomes a FRAGMENT — nothing rejected,
       # nothing shredded (spec §2 Arm B, table). `__guard = true` here is a literal Boolean, not
       # the unresolved gen-merge marker witness 1 produces, so `walk.nix`'s `isGuardLeaf` already
@@ -512,22 +320,6 @@ let
               inherit (g) condition body __mint;
             }
           )
-        else if isGuardFnDef d then
-          # A function-bodied fragment is OPAQUE before discharge. Flatten and every projection
-          # over the aspect tree cannot read into it — not the keys it contributes, not its
-          # condition — until the guard stratum supplies the context that runs it. Derivation is
-          # impossible because the fragment's content is the return value of a closure whose
-          # argument does not exist yet: at merge there is nothing to inspect but the closure.
-          # This is the same seal `__isWrappedFn` already carries (`wrapGuardFn` above), not a
-          # new one. What would have to change for the fact to become derivable: the fragment
-          # would have to be defunctionalized — its body expressed as first-order data in the
-          # `guard.nix` vocabulary — at which point the content is readable and this limit
-          # retires for that fragment; it does not retire for the escape hatch, which exists
-          # precisely to admit closures the vocabulary cannot express (ADR-0013's form).
-          {
-            kind = "fn";
-            fn = d.value;
-          }
         else if builtins.isFunction d.value then
           # A module function among guard-shaped siblings keeps today's `includes` coercion
           # (F4(b): guard functions join the carrier, module functions do not) — riding beside
@@ -555,12 +347,29 @@ let
           file = (builtins.head defs).file or "<unknown>";
         };
       };
+      # Design Section 3: a context closure handed to gen-aspects is refused by name, naming the gen-rules
+      # door and the remedy (ADR-0025). gen-aspects holds terms only. The last sentence states what
+      # happened to a closure inside an aspect-position module function's result, which the lowering
+      # does not enter, so the first remedy does not reach it (alhfc gate X1); which route serves that
+      # shape is an open owner reading, and this text recommends none.
+      bareClosureRefusal =
+        loc:
+        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a context closure reached a gen-aspects-typed "
+        + "position. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the "
+        + "aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, "
+        + "or write it as a guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result "
+        + "of a module function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), "
+        + "the framework's surface does not reach it: the lowering does not enter a module function's result, so "
+        + "the closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
+        + "of the module function's arguments can be written beside the function instead of inside it.";
       dispatch =
         loc: defs:
-        if builtins.length defs != 1 then
+        if builtins.any isClosureDef defs then
+          { value = throw (bareClosureRefusal loc); }
+        else if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
             { value = orphanLeaf loc (merge.mergeDefaultOption loc defs); }
-          else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
+          else if builtins.any isGuardRecordDef defs then
             { value = mkGuardCarrier loc defs; }
           else
             { member = coerced; }
@@ -568,12 +377,10 @@ let
           let
             v = (builtins.head defs).value;
           in
-          if builtins.isAttrs v && (v.__isWrappedFn or false) then
-            { value = v; }
           # Single-def guard record: dispatched here directly (never reaches the multi-def
-          # branch above, whose `mkGuardCarrier` is what now supports a guard record — or guard
-          # function — defined more than once under one key; den-hoag-sezf Arm B).
-          else if builtins.isAttrs v && (v.__guard or false) then
+          # branch above, whose `mkGuardCarrier` is what supports a guard record defined more
+          # than once under one key; den-hoag-sezf Arm B).
+          if builtins.isAttrs v && (v.__guard or false) then
             # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
             # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
             # not hashed by guardKey).
@@ -586,13 +393,8 @@ let
                 };
               };
             }
-          else if builtins.isFunction v && isModuleFn v then
-            { member = sub; }
           else if builtins.isFunction v then
-            # Guard function — wrap as inspectable functor for pipeline resolution
-            # (analogy to Reynolds defunctionalization, not the literal transform).
-            # Palmer §5.1: name + meta from loc for tracing/diagramming.
-            { value = wrapGuardFn sub cnf loc defs; }
+            { member = sub; }
           else if builtins.isAttrs v then
             { member = sub; }
           else
@@ -607,12 +409,9 @@ let
         loc: v:
         let
           inherit (nesting) anchor;
-          # The undeclared keys between the declared aspect and the leaf: each one nested an aspect. A
-          # guard closure's body segment (`wrapGuardFn`) is a position, not a key.
-          run = builtins.filter (k: k != "<function body>") (
-            builtins.genList (i: builtins.elemAt loc (builtins.length anchor + i)) (
-              builtins.length loc - builtins.length anchor - 1
-            )
+          # The undeclared keys between the declared aspect and the leaf: each one nested an aspect.
+          run = builtins.genList (i: builtins.elemAt loc (builtins.length anchor + i)) (
+            builtins.length loc - builtins.length anchor - 1
           );
           # The declared class keys in full, rendered from `keySemantics` and never restated: no
           # edit-distance "did you mean" (`lib/cnf.nix` `cnfRefusal`, the same reasoning).
@@ -645,17 +444,16 @@ let
       rebuild = c: aspectTypeAt c nesting;
       # The sub-option protocol is answered by the branch that declares options: every attrset and
       # module-function aspect merges through `aspectSubmodule`, so its option set IS this type's.
-      # The guard and wrapped-fn branches declare none (a function-bodied fragment is opaque before
-      # discharge, above). Left on the protocol's `{ }` default this type would read as a leaf.
+      # The guard branch declares none. Left on the protocol's `{ }` default this type would read as a
+      # leaf.
       # A published channel for foreign tools only: gen introspects aspects by graph query
       # (`graphFacts`), never through this function (ADR-0012 clause 3).
       declares = prefix: sub.getSubOptions prefix;
     };
 
-  # THE canonical content-address for an aspect of ANY kind — plain, wrapped-fn (__isWrappedFn), or
-  # guard (__guard). Routed through the ecosystem's ONE hashIdentity formula (`gen-identity/lib/default.nix`,
+  # THE canonical content-address for an aspect of ANY kind — plain or guard (__guard). Routed through the ecosystem's ONE hashIdentity formula (`gen-identity/lib/default.nix`,
   # binding `hashIdentity`, injected above); origin is just another identity key (design §Identity).
-  # `key` = identity.key (the 3-way dispatch in `identity.nix`), so a wrapped-fn / guard record — NOT
+  # `key` = identity.key (the dispatch in `identity.nix`), so a guard record — NOT
   # a submodule instance, carries no `id_hash` option — gets the SAME id as a plain aspect via the
   # SAME formula, and it is an IDENTITY, not a vertex name: gen-link NAMES a federation node by its
   # origin-qualified `aspects.key`, never this. Consumers (the `id_hash` default; den-hoag, which retired
@@ -762,7 +560,7 @@ let
   # against the merged graph); everything else routes through aspectOrFn EXACTLY as before, so by-value
   # includes are byte-unchanged.
   # A union (above) over its two nesting-capable members: the element reading a bare module AS a
-  # module, and `aspectOrFn`. A keyRef and a deferred-resolution include pass through as themselves.
+  # module, and `aspectOrFn`. A keyRef passes through as itself.
   includesElemType =
     cnf:
     includesElemTypeOver cnf [
@@ -783,13 +581,6 @@ let
         loc: defs:
         let
           v = (builtins.head defs).value;
-          # A DEFERRED-RESOLUTION include element (opt-in `cnf.deferIncludeResolution`): a raw guard
-          # closure, or a defunctionalised gen-program policy record (`__isPolicy`, that library's stated
-          # contract). Like `__keyRef`, its resolution must NOT be forced by the type — the consumer
-          # wraps/dispatches it registry-aware (gen-dispatch `deriveGroup` for a policy record).
-          # First-Order Laziness (Lorenzen et al. 2025): a deferred-resolution include passes the type
-          # unforced. Default off ⇒ native guard-wrapping. Any other record is aspect content.
-          isDeferredInclude = builtins.isFunction v || (builtins.isAttrs v && (v.__isPolicy or false));
           # a bare MODULE at the include position — an attrset with a non-empty top-level `imports` list (the
           # deferredModule merge slot, UNIQUELY the class-content collapse artifact; `imports` is never a valid
           # aspect content key). This is a class-named node mis-included AS an aspect. Structural, not a heuristic.
@@ -797,8 +588,6 @@ let
             builtins.isAttrs v && (v ? imports) && builtins.isList v.imports && v.imports != [ ];
         in
         if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
-          { value = v; }
-        else if cnf.deferIncludeResolution && builtins.length defs == 1 && isDeferredInclude then
           { value = v; }
         else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
           {
@@ -1241,13 +1030,13 @@ in
   aspectsRoot = checkedEntry aspectsRoot;
   aspectOrFn = checkedEntry aspectOrFn;
   mkIsModuleFn = checkedEntry mkIsModuleFn;
-  wrapFn = checkedEntry wrapFn;
   keyCategory = checkedEntry keyCategory;
   # Not entry points, and the reason is structural rather than per-name: `canTake` carries no
-  # configuration at all, `wrapGatedFn`'s first argument is a `{ functionArgs; … }` spec, `aspectId`
-  # takes an origin path, `hasClassContent`'s is a class value, and `structuralKeys` is a value.
+  # configuration at all, `aspectId` takes an origin path, `hasClassContent`'s is a class value, and
+  # `structuralKeys` is a value. `wrapFn` and `wrapGatedFn` are retired aliases that refuse at once.
   inherit
     canTake
+    wrapFn
     wrapGatedFn
     aspectId
     hasClassContent

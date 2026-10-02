@@ -1,12 +1,25 @@
-# Test: module functions vs guard functions.
+# Test: module functions vs guards.
 # Module functions ({ config, ... }:) are evaluated by the submodule.
-# Guard functions ({ host, ... }:) are wrapped via functionTo for pipeline resolution.
+# A parametric aspect is a first-order guard (`guard (pred.has "who") { … readCtx … }`), fired by
+# `applyGuard` at a context; a context closure there is refused (`closure-door`).
 {
   genMerge,
-  lib,
+  aspects,
+  genAlgebra,
+  genIdentity,
   mkSchemaEval,
   ...
 }:
+let
+  t = (genAlgebra.term genIdentity.hashIdentity).term;
+  greeter = aspects.guard (aspects.pred.has "who") {
+    description = t.concat [
+      (t.lit "hello ")
+      (t.readCtx "who" [ ])
+    ];
+    classOne.message = "hi";
+  };
+in
 {
   flake.tests.parametric.test-module-function-aspect =
     let
@@ -55,53 +68,37 @@
   flake.tests.parametric.test-guard-function-is-callable =
     let
       eval = mkSchemaEval {
-        modules = [
-          {
-            config.aspects.parent.provides.greeter =
-              { who }:
-              {
-                classOne.message = "hello ${who}";
-              };
-          }
-        ];
+        modules = [ { config.aspects.parent.provides.greeter = greeter; } ];
       };
       provider = eval.config.aspects.parent.provides.greeter;
     in
     {
       expr = {
-        isCallable = lib.isFunction provider;
-        hasFunctionArgs = provider ? __functionArgs;
+        isGuard = provider.__guard or false;
+        fired = (aspects.applyGuard { who = "world"; } provider).description;
       };
       expected = {
-        isCallable = true;
-        hasFunctionArgs = true;
+        isGuard = true;
+        fired = "hello world";
       };
     };
 
   flake.tests.parametric.test-guard-function-result-has-aspect-structure =
     let
       eval = mkSchemaEval {
-        modules = [
-          {
-            config.aspects.parent.provides.greeter =
-              { who }:
-              {
-                classOne.message = "hello ${who}";
-              };
-          }
-        ];
+        modules = [ { config.aspects.parent.provides.greeter = greeter; } ];
       };
-      result = eval.config.aspects.parent.provides.greeter { who = "world"; };
+      result = aspects.applyGuard { who = "world"; } eval.config.aspects.parent.provides.greeter;
     in
     {
-      # functionTo(aspectSubmodule) wrapping gives the result full aspect structure
+      # the fired body is aspect content: its class key and its read coordinate
       expr = {
-        hasIncludes = result ? includes;
         hasClassOne = result ? classOne;
+        description = result.description;
       };
       expected = {
-        hasIncludes = true;
         hasClassOne = true;
+        description = "hello world";
       };
     };
 }

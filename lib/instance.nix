@@ -11,13 +11,10 @@
 # `formals` nests under its own label, so a formal named `aspect` does not clash with the relatum.
 # A `{ }:` aspect receives nothing: `formals = { }`, one id for every context.
 #
-# THE RECEIVED KEYS. A wrap record (`__isWrappedFn`) publishes them as `__receives context`, the union
-# over its definitions of what the context door hands each one (lib/types.nix `mkWrapped`), so the
-# wrap's own cnf decides them. A guard carrier (`__guard` with `fragments`: a guard function defined
-# more than once under one key, the K2 site) unions its `fn` fragments' door keys, read through the
-# SAME door `dischargeFragment` applies them through, at this cnf's entity kinds; an `unconditional`
-# fragment reads no context. `__receives` stays a closure, as spec §2.4 states it: it is a record
-# marker this library both writes and reads, never an interface a consumer resolves.
+# THE RECEIVED KEYS. A first-order guard receives the coordinates it READS, derived from its terms,
+# that the context supplies. A guard carrier (`__guard` with `fragments`: a guard defined more than
+# once under one key, the K2 site) unions its record fragments' reads; an `unconditional` fragment
+# reads no context.
 #
 # THE SOURCES (design K3). `sources` maps each context key to the identity of what supplied it, an
 # entity's identity or a K1 argument binding's (gen-scope `argumentBinding`), so the binding ids reach
@@ -27,7 +24,7 @@
 # THE DOORS, each a catchable `throw` naming this entry:
 # - the argument is not the closed record `{ aspect; value; context; sources; }`, or `aspect` is not a
 #   string, or `context` or `sources` is not an attrset;
-# - the value is not parametric (neither a wrap record nor a carrier);
+# - the value is not parametric (not a guard record or carrier);
 # - a received key has no source (design §3, "a formal with no known supplier refuses by name");
 # - a source is not identity-shaped (`<kind>:<64 hex>`): the honest mistake of handing the context
 #   VALUE where its supplier's identity belongs (ADR-0016 r7, "a relatum must already be a minted
@@ -37,19 +34,15 @@
 #   source (design §3), and an instance id as a source is a same-pass relatum, which r7 forbids.
 # ITS BOUND, enumerated (ADR-0025 item 1). A source that is the instance's OWN id is a let-bound
 # fixpoint: no door can read it before forcing it, so it aborts with `infinite recursion`,
-# uncatchably. And the received keys inherit the context door's bound (lib/require-wrapped-closure.nix):
-# a forwarding wrapper around `{ }:` classifies as a context shape, so its instance is keyed on the
-# context it is handed rather than on `{ }`.
+# uncatchably.
 # THE CALLER'S OBLIGATION. Each source must be the supplier of the value the context carries under its
 # key. The id reads only the sources, and the minter holds no registry to check them against the
 # context, so a mismatch is not refused: two contexts with one source and different values mint ONE id
 # carrying two different entries. `instancesFor` (below) cannot be handed that input: it derives each
 # context from its sources through one `suppliers` map (spec §2.6, gate C-1).
 #
-# COST: O(definitions × formals) for the received keys, one `hashIdentity` over O(formals) labelled
-# entries, and one application. A wrap record's doors are classified once per definition when it is
-# built; a carrier's `fn` fragments are classified at every call, as `dischargeFragment` classifies
-# them at every discharge. The guard vocabulary that discharges a carrier is built once per
+# COST: O(definitions × reads) for the received keys, one `hashIdentity` over O(formals) labelled
+# entries, and one firing. The guard vocabulary that discharges a carrier is built once per
 # `instanceOf cnf`. Nothing scans another instance.
 {
   prelude,
@@ -60,9 +53,8 @@
   aspectId,
 }:
 let
-  inherit (import ./cnf.nix) checkedEntry entityKindsOf;
+  inherit (import ./cnf.nix) checkedEntry;
   inherit (import ./walk.nix) isGuardLeaf;
-  doors = import ./require-wrapped-closure.nix;
   door = "gen-aspects.instanceOf";
   fields = [
     "aspect"
@@ -83,7 +75,6 @@ let
   mint =
     cnf:
     let
-      contextOf = doors.requireContextOf (entityKindsOf cnf);
       inherit (mkGuardVocab cnf) applyGuardWith;
     in
     args:
@@ -95,7 +86,6 @@ let
         context
         sources
         ;
-      wrapped = builtins.isAttrs value && (value.__isWrappedFn or false);
       guarded = builtins.isAttrs value && (value.__guard or false);
       carrier = guarded && value ? fragments;
       fragments = if carrier then value.fragments else [ ];
@@ -108,18 +98,13 @@ let
           GT.derivedReads cnf context (GT.checkGuard cnf at (g // { __guard = true; }))
         );
       received =
-        if wrapped then
-          value.__receives context
-        else if !carrier then
+        if !carrier then
           readsOf value
         else
           builtins.attrNames (
-            prelude.foldl' (acc: f: acc // contextOf "guard" at f.fn context) { } (
-              builtins.filter (f: f.kind == "fn") fragments
+            prelude.genAttrs (builtins.concatMap readsOf (builtins.filter (f: f.kind == "record") fragments)) (
+              _: null
             )
-            // prelude.genAttrs (builtins.concatMap readsOf (
-              builtins.filter (f: f.kind == "record") fragments
-            )) (_: null)
           );
       missing = builtins.filter (k: !(sources ? ${k})) received;
       notIdentity = builtins.filter (k: kindOf sources.${k} == null) received;
@@ -135,8 +120,8 @@ let
       refuse "was handed a context of type ${builtins.typeOf context}; a context is an attrset of coords."
     else if !(builtins.isAttrs sources) then
       refuse "was handed sources of type ${builtins.typeOf sources}; sources map each context key to the identity that supplied it."
-    else if !(wrapped || guarded) then
-      refuse "is not parametric: it is neither a wrap record (`__isWrappedFn`) nor a guard carrier, so it has no instances."
+    else if !guarded then
+      refuse "is not parametric: it is not a guard record or carrier, so it has no instances."
     else if missing != [ ] then
       refuse "reads formal(s) `${names missing}` with no known supplier; the sources map carries: ${names (builtins.attrNames sources)}."
     else if notIdentity != [ ] then
@@ -150,14 +135,10 @@ let
     else
       {
         id = hashIdentity "aspect-instance" [ "aspect" "formals" ] (l: { inherit aspect formals; }.${l});
-        entry =
-          if guarded then
-            applyGuardWith {
-              inherit context sources;
-              scope = { };
-            } value
-          else
-            value context;
+        entry = applyGuardWith {
+          inherit context sources;
+          scope = { };
+        } value;
         inherit formals;
       };
 in
@@ -186,16 +167,10 @@ in
   # value lives on the node its source names (ADR-0016 r6); how several emissions of one supplier
   # compose is its assembler's, under the minting phase spec R§4.4 (spec §4.1 O4), never this relation's.
   #
-  # FAN-OUT (design §3). Two key sets, each with one site:
-  # - `fanOutKeys` (O3, spec §4.1; defaulted, reversible: the REQUIRED formals) decides whether the
-  #   scope's own tuple mints, or each descendant tuple that carries them does;
-  # - `admits` (every required formal is supplied) decides whether a tuple can mint at all.
-  # At node scope: the scope's tuple when it carries `fanOutKeys` and `admits`; otherwise each
-  # descendant tuple that does; otherwise the scope's tuple when it `admits`; otherwise no edge, and the
-  # consumer's door names it. Every branch requires `admits`, so under any `fanOutKeys` an edge comes
-  # only from a tuple that can mint. A context shape requires nothing and never fans out. Under the
-  # default the third branch adds nothing; fanning out on defaulted formals too is the one edit
-  # `fanOutKeys = formalsWhere (_: true)`, and the third branch then keeps a host's defaulted edge.
+  # FAN-OUT (design §3). `admits` decides whether a tuple can mint at all: a first-order guard where
+  # its condition holds at the tuple's context (`GT.holds`), a carrier always. At node scope: the
+  # scope's tuple when it admits; otherwise each descendant tuple that does; otherwise no edge, and the
+  # consumer's door names it.
   #
   # THE PASSES (spec §2.5's depth passes). Pass d+1 reads only the CONTENT of pass-d vertices: each
   # vertex's applied body is classified by `includeSitesOfEntry`'s classification (the one `project`
@@ -347,48 +322,12 @@ in
       nodeNames = builtins.attrNames sc;
 
       # ── what a node is ──
-      # A wrap record, or a carrier of function fragments: the shapes `instanceOf` mints.
-      mintable = v: (v.__isWrappedFn or false) || (v.__guard or false);
+      # A guard record or carrier: the shapes `instanceOf` mints.
+      mintable = v: v.__guard or false;
       termGuard = v: (v.__guard or false) && v ? condition;
-      # Per node, the formals of its definitions (unioned over a carrier's `fn` fragments) whose
-      # `functionArgs` flag (true = defaulted) passes `keep`.
-      formalsWhere =
-        keep:
-        builtins.mapAttrs (
-          _: v:
-          let
-            fas =
-              if v ? fragments then
-                map (f: builtins.functionArgs f.fn) (builtins.filter (f: f.kind == "fn") v.fragments)
-              else
-                [ v.__functionArgs ];
-          in
-          if mintable v && !(termGuard v) then
-            unique (builtins.concatMap (fa: builtins.filter (k: keep fa.${k}) (builtins.attrNames fa)) fas)
-          else
-            [ ]
-        ) nodeData;
-      requiredOf = formalsWhere (defaulted: !defaulted);
-      # O3 (spec §4.1; defaulted, reversible), its ONE site: the formals whose absence from the scope's
-      # tuple sends the mint to the descendant tuples. Required only, since a default declares that the
-      # aspect runs without the formal; fanning out on defaulted formals too is
-      # `fanOutKeys = formalsWhere (_: true)`.
-      fanOutKeys = requiredOf;
-      carriesAll = ks: t: builtins.all (k: t.sources ? ${k}) ks;
-      # Whether a tuple can mint the aspect at all: it supplies every required formal.
-      # A first-order guard is admitted where its condition holds (lib/guard-term.nix `holds`).
-      admits =
-        t: a:
-        if termGuard nodeData.${a} then
-          GT.holds cnf t.context nodeData.${a}
-        else
-          carriesAll requiredOf.${a} t;
-      # Whether a tuple both carries `fanOutKeys` and admits: one test over the union, built once per
-      # aspect, so a tuple costs the single test the unsplit binding paid. It equals `fanOutKeys` under
-      # either O3 arm (both are supersets of the required formals); under any other `fanOutKeys` the union
-      # still holds the required formals, so no tuple that cannot mint gets an edge.
-      fansAndAdmits = builtins.mapAttrs (a: ks: unique (ks ++ requiredOf.${a})) fanOutKeys;
-      fans = a: t: if termGuard nodeData.${a} then admits t a else carriesAll fansAndAdmits.${a} t;
+      # Whether a tuple can mint the aspect at all: a first-order guard where its condition holds
+      # (lib/guard-term.nix `holds`); a carrier's fragments fire at the tuple and decide themselves.
+      admits = t: a: !(termGuard nodeData.${a}) || GT.holds cnf t.context nodeData.${a};
       aspectIdOf = builtins.mapAttrs (_: aspectId origin) nodeData;
 
       locals =
@@ -449,20 +388,7 @@ in
         let
           s = sc.${n};
         in
-        map (mintOne a) (
-          if fans a s then
-            [ s ]
-          else
-            let
-              ds = builtins.filter (fans a) s.descendants;
-            in
-            if ds != [ ] then
-              ds
-            else if admits s a then
-              [ s ]
-            else
-              [ ]
-        );
+        map (mintOne a) (if admits s a then [ s ] else builtins.filter (t: admits t a) s.descendants);
 
       # The canonical record per id: the least reaching identifier (`by`) wins, since `listToAttrs`
       # keeps a name's first occurrence.

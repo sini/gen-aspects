@@ -9,41 +9,9 @@
 let
   # WHNF only: each door forces its check at the call, so the refusal meets the caller there.
   caught = e: (builtins.tryEval e).success;
-  fn = { host }: { };
   schema = aspects.mkAspectSchema { };
 in
 {
-  # `wrapGatedFn`'s spec is MIXED: `functionArgs` required, the rest optional, the set closed.
-  flake.tests.doors.test-wrap-gated-fn = {
-    expr = {
-      valid = builtins.isAttrs (aspects.wrapGatedFn { functionArgs.host = false; } fn);
-      validWithOptions = builtins.isAttrs (
-        aspects.wrapGatedFn {
-          functionArgs.host = false;
-          name = "n";
-          meta = { };
-          onResult = x: x;
-        } fn
-      );
-      missingRequiredRefused = !(caught (aspects.wrapGatedFn { name = "n"; }));
-      unknownOptionRefused =
-        !(caught (
-          aspects.wrapGatedFn {
-            functionArgs.host = false;
-            notAnOption = 1;
-          }
-        ));
-      nonSetRefused = !(caught (aspects.wrapGatedFn 1));
-    };
-    expected = {
-      valid = true;
-      validWithOptions = true;
-      missingRequiredRefused = true;
-      unknownOptionRefused = true;
-      nonSetRefused = true;
-    };
-  };
-
   # The three options doors `mkAspectSchema` hands back, each set closed: every field optional except
   # `mkNamespaceType`'s `config` (den-hoag-nwshf G1: a namespace reads the enclosing kind).
   flake.tests.doors.test-schema-options-doors = {

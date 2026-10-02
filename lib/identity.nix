@@ -303,12 +303,5 @@ in
     guardChainMaxDepth
     guardChainDepthRefusal
     ;
-  key =
-    a:
-    if a.__guard or false then
-      guardKey a
-    else if a.__isWrappedFn or false then
-      pathKey (a.meta.loc or [ (a.name or "<anon>") ])
-    else
-      pathKey (aspectPath a);
+  key = a: if a.__guard or false then guardKey a else pathKey (aspectPath a);
 }

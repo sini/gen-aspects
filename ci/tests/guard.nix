@@ -3,6 +3,8 @@
 # as formalized by Danvy & Nielsen 2001 (O1-O7).
 {
   genMerge,
+  genAlgebra,
+  genIdentity,
   lib,
   aspects,
   mkSchemaEval,
@@ -23,30 +25,6 @@ let
   };
 in
 {
-  # P2-OQ15 arm (i): the escape hatch reads a caller's closure through the prelude's functor-aware
-  # PAIR. A wrap record (a functor) is applied as built, before the hatch, and a non-wrap functor
-  # stating its formals takes the context door exactly as a lambda does. Before the readers moved,
-  # the wrap record reached `builtins.functionArgs` only by luck of branch order, and the
-  # non-wrap functor was refused as not callable.
-  flake.tests.guard.test-hatch-reads-a-functor-by-its-published-formals = {
-    expr = [
-      (v.applyGuard ctxCortex (lib.setFunctionArgs (a: a.thimble.name) { thimble = false; }))
-      (v.applyGuard ctxCortex (aspects.wrapGatedFn { functionArgs.thimble = false; } (a: a.thimble.name)))
-      (v.applyGuard ctxCortex ({ thimble, ... }: thimble.name))
-    ];
-    expected = [
-      "cortex"
-      "cortex"
-      "cortex"
-    ];
-  };
-  flake.tests.guard.test-hatch-refuses-a-functor-missing-a-required-coord = {
-    expr =
-      (builtins.tryEval (
-        builtins.deepSeq (v.applyGuard ctxCortex (lib.setFunctionArgs (a: a) { host = false; })) null
-      )).success;
-    expected = false;
-  };
   flake.tests.guard.test-applyguard-fires = {
     expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "thimble" "name" ] "cortex" { ok = true; });
     expected = {
@@ -85,18 +63,6 @@ in
       ok = true;
     };
   };
-  flake.tests.guard.test-escape-hatch = {
-    expr = v.applyGuard ctxCortex (
-      { thimble, ... }:
-      {
-        hn = thimble.name;
-      }
-    );
-    expected = {
-      hn = "cortex";
-    };
-  };
-
   # I1: per-form coverage (fires + not-fires) for whenEq on a second kind / whenTagEq / whenClass / always / all / any.
   flake.tests.guard.test-wheneq-second-kind-fires = {
     expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "spool" "name" ] "sini" { ok = true; });
@@ -607,104 +573,6 @@ in
       };
     };
 
-  # O10: multi-def guard FUNCTIONS. RED (measured this session by execution, pre-fix): attrNames
-  # gain the six aspect-option names, `includes` length 2, `__isWrappedFn` absent — a guard
-  # function collision was silently folded through `(aspectSubmodule cnf).merge` exactly as a
-  # module-function collision is, losing the distinction F4(b) rules must exist. GREEN, under
-  # F4(b)'s ruled arm (in): two fragments, neither wearing `includes`; arity and discharge only —
-  # a fragment's contributed content stays opaque pre-discharge (ADR-0013's declared limit), so
-  # this oracle does not read into one. Two controls, same run: a single-def guard function still
-  # yields `__isWrappedFn`; two MODULE functions at one key still coerce to `includes` length 2.
-  flake.tests.guard.test-guard-multidef-functions-carrier-not-submodule-shape =
-    let
-      eval = mkSchemaEval {
-        modules = [
-          {
-            config.aspects.provider =
-              { who }:
-              {
-                classOne.a = "hi ${who}";
-              };
-          }
-          {
-            config.aspects.provider =
-              { who }:
-              {
-                classTwo.b = "yo ${who}";
-              };
-          }
-        ];
-      };
-      node = eval.config.aspects.provider;
-    in
-    {
-      expr = {
-        isGuard = node.__guard or false;
-        fragmentCount = builtins.length node.fragments;
-        hasIncludes = node ? includes;
-        hasIsWrappedFn = node.__isWrappedFn or false;
-      };
-      expected = {
-        isGuard = true;
-        fragmentCount = 2;
-        hasIncludes = false;
-        hasIsWrappedFn = false;
-      };
-    };
-
-  flake.tests.guard.test-guard-multidef-functions-discharge-arity-only =
-    let
-      gv = aspects.mkGuardVocab { };
-      eval = mkSchemaEval {
-        modules = [
-          {
-            config.aspects.provider =
-              { who }:
-              {
-                classOne.a = "hi ${who}";
-              };
-          }
-          {
-            config.aspects.provider =
-              { who }:
-              {
-                classTwo.b = "yo ${who}";
-              };
-          }
-        ];
-      };
-      node = eval.config.aspects.provider;
-    in
-    {
-      # arity + discharge only — both closures apply without an arity error, both survivors reach
-      # the tree (different top-level keys, so this asserts nothing about mergeDefaultOption's own
-      # interim shallow-attrset fold, out of scope per ADR-0031 / den-hoag-z5rvp).
-      expr = gv.applyGuard { who = "world"; } node;
-      expected = {
-        classOne.a = "hi world";
-        classTwo.b = "yo world";
-      };
-    };
-
-  flake.tests.guard.test-guard-singledef-function-control-still-wrapped =
-    let
-      eval = mkSchemaEval {
-        modules = [
-          {
-            config.aspects.soloFn =
-              { who }:
-              {
-                classOne.a = "hi ${who}";
-              };
-          }
-        ];
-      };
-    in
-    {
-      expr = eval.config.aspects.soloFn.__isWrappedFn or false;
-      expected = true;
-    };
-
   flake.tests.guard.test-guard-multidef-module-functions-still-coerce-to-includes =
     let
       eval = mkSchemaEval {
@@ -731,7 +599,7 @@ in
       expected = 2;
     };
 
-  # a defunctionalized guard record flattens as a LEAF (like __isWrappedFn), never recursed
+  # a defunctionalized guard record flattens as a LEAF, never recursed
   flake.tests.guard.test-guard-record-flattens-as-leaf =
     let
       gv = aspects.mkGuardVocab { };
@@ -796,75 +664,39 @@ in
       };
     };
 
-  # APPLYING A WRAPPED FN GROWS THE TREE BY EXACTLY ONE LEVEL. `applyGuard`'s callable arm is `g ctx`
-  # with no recursion, so depth is exactly the caller's application count and the termination bound
-  # belongs to whoever drives the channel — see AGENTS.md `## Not this library's job`.
-  #
-  # ★★ WHY THE THIRD FIXTURE: A SELF-REPRODUCING FIXTURE IS BLIND TO OFF-BY-k. `selfw` reproduces
-  # forever, so its `includes` head is a wrap after ANY number of applications; `leafw` bottoms out at
-  # level 1, so it reads `false` for every k >= 1. Between them they separate k=0 from k>=1 and nothing
-  # else — the identical two-fixture cell under a 1-, 2- and 7-level applier reads BYTE-IDENTICAL. Only
-  # a FINITE chain longer than one level can see k=2, and `chainw` is that fixture: one application
-  # leaves `leafw` itself unexpanded at the head, and `chainNextIsWrapped` is the conjunct that flips
-  # the moment the channel expands a second level.
+  # FIRING A GUARD GROWS THE TREE BY EXACTLY ONE LEVEL. A guard nested in a fired body stays a guard
+  # (it fires at its own firing), so depth is exactly the caller's firing count. The self-reference is
+  # the reference former (design Section 3's migration of `selfw`): firing hands back the reference,
+  # never its expansion. A FINITE two-level chain is the fixture that sees k = 2; `leafw` bottoms out
+  # and is the control that the predicate can say no.
   flake.tests.guard.test-application-is-one-level-per-application =
     let
-      cnf = {
-        keySemantics = {
-          classOne = {
-            category = "class";
-          };
-          classTwo = {
-            category = "class";
-          };
-        };
-      };
+      t = (genAlgebra.term genIdentity.hashIdentity).term;
       ctx = {
         host = "h1";
       };
-      selfw =
-        let
-          w = aspects.wrapFn cnf "selfw" (
-            { host, ... }:
-            {
-              includes = [ w ];
-            }
-          );
-        in
-        w;
-      leafw = aspects.wrapFn cnf "leafw" (
-        { host, ... }:
-        {
-          includes = [ { description = "leaf"; } ];
-        }
-      );
-      chainw = aspects.wrapFn cnf "chainw" (
-        { host, ... }:
-        {
-          includes = [ leafw ];
-        }
-      );
+      g = aspects.guard (aspects.pred.has "host");
+      leafw = g { includes = [ { description = "leaf"; } ]; };
+      chainw = g { includes = [ leafw ]; };
+      selfw = g { includes = [ (t.ref "selfw") ]; };
+      fire = name: x: v.applyGuard ctx (placed name x);
       nextOf = r: builtins.head (r.includes or [ ]);
-      isWrap = x: x.__isWrappedFn or false;
+      isGuard = x: builtins.isAttrs x && (x.__guard or false);
     in
     {
       expr = {
-        # The result is a merged aspect, not a wrap: the application happened.
-        appliedOnce = !(isWrap (aspects.applyGuard ctx selfw));
-        # Its `includes` head is STILL a wrap — the channel stopped at one level although the next
-        # level was available.
-        nextIsWrapped = isWrap (nextOf (aspects.applyGuard ctx selfw));
-        # CONTROL: the identical predicate over a fixture that bottoms out ⇒ `false`, which is what
-        # makes `nextIsWrapped` a result rather than an artefact of a predicate that cannot say no.
-        controlNextIsWrapped = isWrap (nextOf (aspects.applyGuard ctx leafw));
-        # The level counter: one application of a TWO-level chain leaves `leafw` unexpanded.
-        chainNextIsWrapped = isWrap (nextOf (aspects.applyGuard ctx chainw));
+        appliedOnce = !(isGuard (fire "chainw" chainw));
+        chainNextIsGuard = isGuard (nextOf (fire "chainw" chainw));
+        controlNextIsGuard = isGuard (nextOf (fire "leafw" leafw));
+        nextFiresAtItsOwnFiring = (nextOf (v.applyGuard ctx (nextOf (fire "chainw" chainw)))).description;
+        selfIsTheReference = nextOf (fire "selfw" selfw);
       };
       expected = {
         appliedOnce = true;
-        nextIsWrapped = true;
-        controlNextIsWrapped = false;
-        chainNextIsWrapped = true;
+        chainNextIsGuard = true;
+        controlNextIsGuard = false;
+        nextFiresAtItsOwnFiring = "leaf";
+        selfIsTheReference = "selfw";
       };
     };
 }

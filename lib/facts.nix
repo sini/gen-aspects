@@ -21,17 +21,12 @@
 # every shape. Deriving the parent from `meta` instead was measurably wrong on this library's own
 # public constructors, three ways in one run:
 #
-#   * `wrapFn cnf name fn` stamps `meta.loc = [ name ]` from the SITING NAME its caller passes, not
-#     from a tree position. Read as a position it is one segment long, so `top/wf` and
-#     `top/deeper/wf2` both reported parent `null` — a non-root node spelled as a ROOT, silently:
-#     the exact defect above, reproduced inside the fix for it.
-#   * `wrapGatedFn` defaults `meta ? { }`, so its record carries no `meta.loc` at all and the read
-#     THREW on the output of a shipped, tested public constructor.
+#   * A `meta.loc` stamped from a SITING NAME rather than a tree position reads as one segment, so
+#     `top/wf` and `top/deeper/wf2` both reported parent `null` — a non-root node spelled as a ROOT,
+#     silently: the exact defect above, reproduced inside the fix for it.
+#   * A record carrying no `meta.loc` at all made the read THROW.
 #   * A hand-set `meta.aspect-chain` (it is `mkDefault`) was honoured over the walk, yielding a node
 #     whose parent contradicts its own id.
-#
-# The control in the same run — a bare fn wrapped by the type-merge path, which does carry a real
-# `meta.loc` — answered correctly, so those were the shapes failing and not the instrument.
 #
 # ⇒ THE ID AND THE PARENT NOW COME FROM ONE SOURCE, and that is the property rather than an
 # optimisation: the id IS the origin-qualified walk key, so any second source for the parent makes
@@ -222,16 +217,13 @@ rec {
       # ── the INCLUDE edges ──────────────────────────────────────────────────────────────────────
       #
       # ★ THE DISPATCH IS ON WHETHER THE ELEMENT NAMES A NODE, NOT ON THE ELEMENT'S SHAPE. Reading
-      # the shape is what produces a refusal on three shapes this library ships and tests — a raw
-      # closure and an `__isPolicy` record under `cnf.deferIncludeResolution`, plus a bare closure
-      # wrapped by the DEFAULT path — and a fabricated id for the inline `{ … }` aspect literal
-      # (any record that is not a policy record is one), whose `.key` is its MERGE
-      # position under `includes` rather than a walk position. An `includes` list holds two
+      # the shape is what produces a refusal on shapes this library ships and tests — a guard
+      # record at an include position — and a fabricated id for the inline `{ … }` aspect literal,
+      # whose `.key` is its MERGE position under `includes` rather than a walk position. An `includes` list holds two
       # different kinds of thing and only one of them is an edge:
       #
       #   REFERENCE — a `keyRef`, or a by-value aspect whose key IS a node. It has a target.
-      #   INLINE    — content written AT the include position: a wrapped fn, a guard record, a
-      #               deferred closure or policy record, an aspect literal. The walk never descends
+      #   INLINE    — content written AT the include position: a guard record, an aspect literal. The walk never descends
       #               into `includes`, so no node exists for an edge to reach. This is not a broken
       #               reference; it is not a reference at all.
       #
@@ -239,9 +231,14 @@ rec {
       # `unresolvedIncludesOf`, so a consumer needing the element indexes back into
       # `nodeData.<id>.includes` and nothing about the declaration goes unsaid. Inline elements are
       # of two kinds, and `includeSitesOf` publishes which: CONTENT, a keyed aspect literal that
-      # passes `isIncludeContent` (static, so its own `includes` classify by this same rule), and
-      # SEALED, everything else (a wrapped or guard function, a guard record, a deferred closure, a
-      # policy record), whose content exists only once a context is supplied.
+      # passes `isIncludeContent` or a KEY-LESS attrset that is not a guard leaf (static, so its own
+      # `includes` classify by this same rule), and SEALED, everything else (a guard record, a
+      # function), whose content exists only once a context is supplied. A key-less attrset is
+      # content by meaning, not by provenance: it cannot be a reference (a reference is located by
+      # `key`, `__keyRef` or a string), and only a guard leaf still awaits a context. One rule for a
+      # node's value and an applied body alike (den-hoag-lwbb1 OQ-U2.9 arm (B), uniform): the fired
+      # body of a first-order guard is data the aspect type never merged, so its literals carry no
+      # stamp, and this is what classifies them.
       #
       # A keyRef carrying THIS tree's origin is checked here. A KEYED by-value element that is not
       # include content (below), and a bare identifier, are REFERENCES resolved by `prelude.resolve`
@@ -251,8 +248,8 @@ rec {
       # ★ ONE ADMISSION IS NOT A REFUSAL, and it is the identity law's: another tree's value with the
       # same origin and the same key carries the same stamp and resolves to the LOCAL node, whose
       # content is served and the foreign content dropped (README, "References resolve by identity").
-      # A KEY-LESS value is still read as content whatever it is: a guard-leaf or wrapped-fn node
-      # of another tree carries no `.key` to locate it by (open under den-hoag-lwbb1).
+      # A KEY-LESS attrset is content unless it is a guard leaf, which stays sealed: a guard-leaf
+      # node of another tree carries no `.key` to locate it by, and its content awaits a firing.
       resolve =
         id: i: elem:
         if builtins.isAttrs elem && (elem.__keyRef or false) then
@@ -286,6 +283,9 @@ rec {
           # origin is always its FIRST segment, so under most origins it would name a foreign node
           # nothing checks, instead of the local sibling the writer named.
           local (includesDoor id i) elem
+        else if builtins.isAttrs elem && !(isGuardLeaf elem) then
+          # Key-less inline content (above): an applied body's literal, or a raw tree's.
+          { kind = "content"; }
         else
           { kind = "sealed"; };
 

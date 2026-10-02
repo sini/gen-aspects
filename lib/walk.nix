@@ -8,8 +8,8 @@
 #
 # Detection is structural — no hardcoded key lists:
 # - Nested aspects have `name` (from aspectSubmodule), class content and primitives don't
-# - Guard leaves — wrapped guard functions (__isWrappedFn) AND defunctionalized guard
-#   records (__guard, guard.nix) — are included as leaf entries but never recursed into
+# - Guard leaves — guard records (__guard, guard.nix) — are included as leaf entries but never
+#   recursed into
 #
 # Each entry carries its walk position as a SEGMENT LIST, not a joined string. Joining is a
 # rendering, and a rendering belongs to the reader that wants it: `flatten` joins with "/",
@@ -40,9 +40,8 @@
 # fast and loud. See `reports/den-hoag-diwuf-vt1wn-cyclic-spec-v0.md` and AGENTS.md, "Measured
 # traps".
 let
-  # A guard leaf: a wrapped guard function (__isWrappedFn) OR a defunctionalized guard
-  # record (__guard, guard.nix). Both are included as leaf entries, never recursed into.
-  isGuardLeaf = v: builtins.isAttrs v && ((v.__isWrappedFn or false) || (v.__guard or false));
+  # A guard leaf: a guard record (__guard, guard.nix), included as a leaf entry, never recursed into.
+  isGuardLeaf = v: builtins.isAttrs v && (v.__guard or false);
   isNestedAspect = v: builtins.isAttrs v && v ? name && !(isGuardLeaf v);
 
   collectEntries =

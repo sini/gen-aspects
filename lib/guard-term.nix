@@ -218,7 +218,7 @@ let
     }"
     + (
       if l.code == "term-function" then
-        ". A guard body is data: module content belongs under a class key; a body that needs its context as a closure is written as a guard function (`{ <coordinate>, ... }: <aspect>`) at the aspect position."
+        ". A guard body is data: module content belongs under a class key. A context closure crosses the gen-rules door: declare the aspect through the framework's surface, or write the body as a guard term (`guard (pred.has <coordinate>) <body>`)."
       else
         ""
     );

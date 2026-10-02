@@ -169,7 +169,6 @@ in
       "lib/guard.nix"
       "lib/identity.nix"
       "lib/instance.nix"
-      "lib/require-wrapped-closure.nix"
       "lib/schema.nix"
       "lib/types.nix"
       "lib/walk.nix"

@@ -19,25 +19,7 @@
 }:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
-  # den-hoag-khnhi: the raw-closure applicators' doors (lib/require-wrapped-closure.nix).
   wcnf.keySemantics.classOne.category = "class";
-  wctx.host = "cortex";
-  selfF =
-    let
-      f = _: f;
-    in
-    f;
-  modSelf = { lib, ... }: modSelf;
-  native =
-    v:
-    (aspects.aspectType wcnf).merge
-      [ "n" ]
-      [
-        {
-          file = "<t>";
-          value = v;
-        }
-      ];
   gv = aspects.mkGuardVocab { };
   carrier =
     v:
@@ -53,40 +35,6 @@ let
           value = gv.vocab.whenEq [ "host" ] "nope" { description = "b"; };
         }
       ];
-  unreadable =
-    entry: at:
-    exactly (
-      "gen-aspects.${entry}: the function at ${at} declares no formals and its pattern cannot be read "
-      + "(a primop, or a functor whose __functor does not return a lambda); give it a pattern: `ctx:`, "
-      + "`{ ... }:` or a formal set."
-    );
-  d1 =
-    entry: at: detail:
-    exactly (
-      "gen-aspects.${entry}: the value wrapped at ${at} must be a raw closure `ctx: <aspect>`; ${detail}. "
-      + "Pass the closure itself: the wrap is what makes a closure inspectable, so a value that is "
-      + "already a wrap, or is not a closure at all, has nothing to wrap."
-    );
-  d2 =
-    entry: at: detail:
-    exactly (
-      "gen-aspects.${entry}: the closure at ${at} must return aspect content, an attrset or a module "
-      + "function of the declared `cnf.moduleArgs`; ${detail}. Return the aspect attrset itself. A closure "
-      + "returning another closure is under-applied: it is applied to ONE context and its result merged, "
-      + "so a second parameter is never supplied."
-    );
-  d3 =
-    entry: at: missing: carries:
-    exactly (
-      "gen-aspects.${entry}: the closure at ${at} requires context coord(s) `${missing}` that the applied "
-      + "context does not carry (context carries: ${carries}). Supply them, or give the formal a default "
-      + "so the closure can run without it."
-    );
-  fnRet =
-    formals:
-    "returned a function whose formals are not module args (`${formals}`; "
-    + "empty means a bare formal or an ellipsis-only pattern `{ ... }:`, which cannot be told apart; "
-    + "a module function names a module arg it reads, as in `{ config, ... }:`)";
   thrown = expr: msg: {
     expr = builtins.deepSeq expr null;
     expectedError = {
@@ -176,195 +124,15 @@ in
       };
     };
 
-  # den-hoag-khnhi: each mode of a caller-supplied closure at the raw-closure applicators is refused
-  # BY NAME at this library's door. Every RED here was an interpreter abort minted in gen-merge (or a
-  # silent success), named in the cell's comment.
-  flake.testsError.wrap-totality = {
-    # S4 (0cmbt spec §2.3): a function whose pattern `toXML` cannot render (a primop) refuses by name
-    # at the context door. RED: `wrapFn` and the merge refused later with the return door's
-    # `returned: list`, and `applyGuard` handed back the raw list.
-    test-primop-wrapfn = thrown ((aspects.wrapFn wcnf "n" builtins.attrNames) wctx) (
-      unreadable "wrapFn" "`n`"
-    );
-    test-primop-native = thrown ((native builtins.attrNames) wctx) (
-      unreadable "aspectType" "aspect `n`"
-    );
-    test-primop-applyguard = thrown (aspects.applyGuard wctx builtins.attrNames) (
-      unreadable "guard" "`applyGuard`"
-    );
-    # `cnf.entityKinds` (0cmbt spec §2.4) is checked at the public entry (`checkedEntry`), so an
-    # off-shape value refuses there by name, before anything reads a narrowed context. RED: `map` over
-    # a string, `expected a list but found a string`, an uncatchable type error inside the door.
-    test-entity-kinds-not-a-list =
-      thrown
-        (
-          (aspects.wrapFn (wcnf // { entityKinds = "host"; }) "n" (c: {
-            description = c.host;
-          }))
-            wctx
-        )
-        (
-          exactly "gen-aspects: cnf.entityKinds must be null, a list of coordinate names (strings), or an attrset marking each declared coordinate `true` when it is an entity kind; received: string."
-        );
-    # A non-string kind refuses at the entry, under a closure with formals that never reads a narrowed
-    # context. RED (the check only at the first read): `{ host = "cortex"; }` is returned.
-    test-entity-kinds-non-string =
-      thrown
-        (
-          (aspects.wrapFn
-            (
-              wcnf
-              // {
-                entityKinds = [
-                  "host"
-                  1
-                ];
-              }
-            )
-            "n"
-            (
-              { host, ... }: {
-                description = host;
-              }
-            )
-          )
-            wctx
-        )
-        (
-          exactly "gen-aspects: cnf.entityKinds must be null, a list of coordinate names (strings), or an attrset marking each declared coordinate `true` when it is an entity kind; received: a list holding a value of type int."
-        );
-    # RED: `expected a set but found a function` (TypeError, gen-merge `configOf`), uncatchable.
-    test-wrapfn-self-returning = thrown ((aspects.wrapFn wcnf "n" selfF) wctx) (
-      d2 "wrapFn" "`n`" (fnRet "")
-    );
-    # The same cell's catchability, evaluator-neutral (the runner cannot read `type`). RED: rc 1.
-    test-wrapfn-self-returning-caught = {
-      expr = (builtins.tryEval (builtins.deepSeq ((aspects.wrapFn wcnf "n" selfF) wctx) null)).success;
-      expected = false;
-    };
-    # RED ×4: gen-merge's own refusal, `option `n.<function body>' has definitions `submodule' cannot consume (<wrapFn>)`.
-    test-wrapfn-returns-int = thrown ((aspects.wrapFn wcnf "n" (_: 42)) wctx) (
-      d2 "wrapFn" "`n`" "returned: int"
-    );
-    test-wrapfn-returns-string = thrown ((aspects.wrapFn wcnf "n" (_: "s")) wctx) (
-      d2 "wrapFn" "`n`" "returned: string"
-    );
-    test-wrapfn-returns-list = thrown (
-      (aspects.wrapFn wcnf "n" (_: [
-        1
-        2
-      ]))
-        wctx
-    ) (d2 "wrapFn" "`n`" "returned: list");
-    test-wrapfn-returns-null = thrown ((aspects.wrapFn wcnf "n" (_: null)) wctx) (
-      d2 "wrapFn" "`n`" "returned: null"
-    );
-    # RED: no error; a well-formed aspect materialises, its residual handed the module args.
-    test-wrapfn-under-applied = thrown ((aspects.wrapFn wcnf "n" (p: q: { description = "x"; })) wctx) (
-      d2 "wrapFn" "`n`" (fnRet "")
-    );
-    # RED: no error at WHNF; the field is a poisoned thunk (`module argument `host' is not defined`).
-    test-wrapfn-under-applied-context-residual = thrown (
-      (aspects.wrapFn wcnf "n" (p: { host, ... }: { description = host; }))
-        wctx
-    ) (d2 "wrapFn" "`n`" (fnRet "host"));
-    # RED ×4: no error; `.name` answers "n" / "o" / "o" / "o" (a latent record).
-    test-wrapfn-input-int = thrown (aspects.wrapFn wcnf "n" 42).name (
-      d1 "wrapFn" "`n`" "received: int"
-    );
-    test-wrapfn-input-wrap-record =
-      thrown (aspects.wrapFn wcnf "o" (aspects.wrapFn wcnf "i" (_: { }))).name
-        (
-          d1 "wrapFn" "`o`"
-            "received a wrap record already built; pass it at the `includes` position rather than wrapping it again"
-        );
-    test-wrapfn-input-guard-record = thrown (aspects.wrapFn wcnf "o" (gv.vocab.always { })).name (
-      d1 "wrapFn" "`o`"
-        "received a defunctionalised guard record (`gen-aspects.guard`); it rides the `includes` position as first-order data and is never wrapped"
-    );
-    test-wrapfn-input-attrset = thrown (aspects.wrapFn wcnf "o" { some = "attrs"; }).name (
-      d1 "wrapFn" "`o`" "received an attrset no wrap constructor built"
-    );
-    # RED: `function 'anonymous lambda' called without required argument 'x'`, uncatchable.
-    test-wrapfn-missing-coord = thrown ((aspects.wrapFn wcnf "myFn" ({ x }: { description = x; }))
-      wctx
-    ) (d3 "wrapFn" "`myFn`" "x" "host");
-    # RED: `expected a set but found a string`, uncatchable (and the v0 door's own renderer aborted here).
-    test-wrapfn-context-not-attrset =
-      thrown ((aspects.wrapFn wcnf "n" ({ x }: { description = x; })) "s")
-        (
-          exactly "gen-aspects.wrapFn: the closure at `n` was applied to a value of type string, not a context; a context is an attrset of coords."
-        );
-    # THE NATIVE PATH (aspectType's merge → wrapGuardFn): the same doors, naming the aspect's loc.
-    # RED: the wrapFn headline's abort, uncatchable.
-    test-native-self-returning = thrown ((native selfF) wctx) (d2 "aspectType" "aspect `n`" (fnRet ""));
-    # RED: no error, "x".
-    test-native-under-applied = thrown ((native (p: q: { description = "x"; })) wctx) (
-      d2 "aspectType" "aspect `n`" (fnRet "")
-    );
-    # RED: `called without required argument 'x'`, uncatchable.
-    test-native-missing-coord = thrown ((native ({ x }: { description = x; })) wctx) (
-      d3 "aspectType" "aspect `n`" "x" "host"
-    );
-    # THE MULTI-DEF CARRIER's function fragment (guard.nix `dischargeFragment`): the context door.
-    # RED: `called without required argument 'x'`, uncatchable.
-    test-carrier-fn-missing-coord = thrown (aspects.applyGuard wctx (
-      carrier ({ x }: { description = x; })
-    )) (d3 "guard" "aspect `n`" "x" "host");
-    # `applyGuard`'s ESCAPE-HATCH arm (a raw closure, reached via `cnf.deferIncludeResolution`): the
-    # context door. RED: `called without required argument 'x'`, uncatchable.
-    test-hatch-missing-coord = thrown (aspects.applyGuard wctx ({ x }: { description = x; })) (
-      d3 "guard" "`applyGuard`" "x" "host"
-    );
-    # N3, a NAMED narrowing: an ellipsis-only module-function return `{ ... }:` has the same
-    # `functionArgs` as a bare formal, so admitting it would re-admit the headline. RED ×2: no error, "m".
-    test-wrapfn-ellipsis-only-return = thrown (
-      (aspects.wrapFn wcnf "n" (_: ({ ... }: { description = "m"; })))
-        wctx
-    ) (d2 "wrapFn" "`n`" (fnRet ""));
-    test-native-ellipsis-only-return = thrown ((native (_: ({ ... }: { description = "m"; }))) wctx) (
-      d2 "aspectType" "aspect `n`" (fnRet "")
-    );
-    # wrapGatedFn's two caller functions. RED ×2: `attempt to call something which is not a function but an integer: 42`.
-    test-gated-fn-not-callable = thrown ((aspects.wrapGatedFn { functionArgs.host = false; } 42) wctx) (
-      exactly "gen-aspects.wrapGatedFn: the value wrapped at `<gated>` must be callable (a function, or a record carrying `__functor`); received: int."
-    );
-    test-gated-onresult-not-callable =
-      thrown
-        (
-          (aspects.wrapGatedFn {
-            functionArgs.host = false;
-            onResult = 42;
-          } ({ host, ... }: { }))
-            wctx
-        )
-        (
-          exactly "gen-aspects.wrapGatedFn: `onResult` at `<gated>` must be callable (a function, or a record carrying `__functor`); received: int."
-        );
-    # The RETURN bound: a module-function return is admitted one level, and what IT returns is
-    # gen-merge's module reader's contract — now a catchable refusal (gen-merge 1420cb7's third
-    # `moduleSyntaxChecked` arm), not an abort, so the headline's own message still surfaces here.
-    test-refused-module-fn-self-returning = thrown ((aspects.wrapFn wcnf "n" (_: modSelf)) wctx) (
-      exactly "gen-merge: module `<wrapFn>' is a function whose result is lambda, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module."
-    );
-  };
   # den-hoag-7gp66 P1: the closed doors' shared checks, message pinned on the real path.
   flake.testsError.doors =
     let
-      gated = "gen-aspects.wrapGatedFn";
       schema = aspects.mkAspectSchema { };
       unknown =
         door: accepted:
         exactly "${door}: 'notAnOption' is not an option of this door; the options are closed (accepted: ${accepted}) (in prelude.checkOptions)";
     in
     {
-      test-wrap-gated-fn-missing = thrown (aspects.wrapGatedFn { name = "n"; }) (
-        exactly "${gated}: required field 'functionArgs' is missing (required: 'functionArgs') (in prelude.checkRequired)"
-      );
-      test-wrap-gated-fn-unknown = thrown (aspects.wrapGatedFn {
-        functionArgs = { };
-        notAnOption = 1;
-      }) (unknown gated "'functionArgs', 'name', 'meta', 'onResult'");
       test-mk-aspect-option-unknown = thrown (schema.mkAspectOption { notAnOption = 1; }) (
         unknown "gen-aspects.mkAspectSchema.mkAspectOption" "'providerPrefix'"
       );
@@ -733,10 +501,18 @@ in
     let
       entity = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
       aid = aspects.aspectId [ "probe" ] { name = "p"; };
-      p = aspects.wrapFn { } "p" ({ host, ... }: { description = "p-${host}"; });
-      bare = aspects.wrapFn { } "b" (c: {
-        description = "b";
-      });
+      t = (genAlgebra.term genIdentity.hashIdentity).term;
+      p = aspects.guard (aspects.pred.has "host") {
+        description = t.concat [
+          (t.lit "p-")
+          (t.readCtx "host" [ ])
+        ];
+      };
+      # reads `host` and `extra`, so `extra` with no source is the I-6 refusal
+      bare = aspects.guard (aspects.pred.all [
+        (aspects.pred.has "host")
+        (aspects.pred.has "extra")
+      ]) { description = t.readCtx "extra" [ ]; };
       mint =
         value: context: sources:
         aspects.instanceOf { } {
@@ -757,7 +533,7 @@ in
     {
       # RED (without the door): `attempt to call something which is not a function but a set`, uncatchable.
       test-not-parametric = thrown (mint { description = "s"; } { } { }) (
-        at "is not parametric: it is neither a wrap record (`__isWrappedFn`) nor a guard carrier, so it has no instances."
+        at "is not parametric: it is not a guard record or carrier, so it has no instances."
       );
       # A first-order guard, alone or as a carrier's fragment, receives the coordinates it READS
       # (den-hoag-lwbb1, design Section 3's instance rule, answering 0cmbt O1), so a read with no
@@ -766,9 +542,15 @@ in
       test-guard-record = thrown (mint (gv.vocab.whenEq [ "host" ] "h1" { }) { host = "h1"; } { }) (
         at "reads formal(s) `host` with no known supplier; the sources map carries: ."
       );
-      test-carrier-record-fragment = thrown (mint (carrier ({ host, ... }: { description = host; })) {
-        host = "h1";
-      } { }) (at "reads formal(s) `host` with no known supplier; the sources map carries: .");
+      test-carrier-record-fragment = thrown (mint
+        (carrier (
+          gv.vocab.whenEq [ "host" ] "h1" {
+            description = "a";
+          }
+        ))
+        { host = "h1"; }
+        { }
+      ) (at "reads formal(s) `host` with no known supplier; the sources map carries: .");
       # I-6. RED (without the door): `attribute 'extra' missing`, uncatchable.
       test-no-supplier = thrown (mint bare
         {
@@ -796,8 +578,8 @@ in
         )
       );
       # The argument record and its field types. RED (without the doors): the extra field and the
-      # non-string `aspect` are admitted silently and the cell's empty context refuses at `wrapFn`'s
-      # door instead; string `sources` aborts `expected a set but found a string`, uncatchably.
+      # non-string `aspect` are admitted silently and the cell's empty context refuses at the
+      # derived-reads door instead; string `sources` aborts `expected a set but found a string`, uncatchably.
       test-unknown-field =
         thrown
           (aspects.instanceOf { } {
@@ -832,7 +614,9 @@ in
     let
       entity = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
       tree = {
-        p = aspects.wrapFn { } "p" ({ host, ... }: { description = "p-${host}"; });
+        p = aspects.guard (aspects.pred.has "host") {
+          description = (genAlgebra.term genIdentity.hashIdentity).term.readCtx "host" [ ];
+        };
         w = {
           name = "w";
           includes = [ "p" ];
@@ -1079,13 +863,91 @@ in
       test-entity-kinds-attrset-witness = thrown (place { entityKinds.a = "yes"; } { }) (
         kinds "an attrset whose value at `a` is of type string"
       );
+      test-entity-kinds-string-witness = thrown (place { entityKinds = "host"; } { }) (kinds "string");
+      test-module-fn-self-returning-at-aspect =
+        thrown
+          (place { } {
+            n =
+              let
+                m = { lib, ... }: m;
+              in
+              m;
+          }).n.description
+          (
+            exactly "gen-merge: module `<gen-merge>' is a function whose result is lambda, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module."
+          );
       test-pred-custom-retired = thrown (aspects.pred.custom "x" { }) (
-        exactly "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is written as a guard function (`{ <coordinate>, ... }: <aspect>`) at the aspect position."
+        exactly "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is a context closure, which crosses the gen-rules door: declare the aspect through the framework's surface."
       );
       test-closure-body-remedy =
         thrown (place { } { g = aspects.guard aspects.pred.always (ctx: { }); }).g
           (
-            exactly "gen-aspects.guard: aspect `g`: term-function: {\"remedy\":\"a closure is not a term\"}. A guard body is data: module content belongs under a class key; a body that needs its context as a closure is written as a guard function (`{ <coordinate>, ... }: <aspect>`) at the aspect position."
+            exactly "gen-aspects.guard: aspect `g`: term-function: {\"remedy\":\"a closure is not a term\"}. A guard body is data: module content belongs under a class key. A context closure crosses the gen-rules door: declare the aspect through the framework's surface, or write the body as a guard term (`guard (pred.has <coordinate>) <body>`)."
           );
+    };
+
+  # Stage 2b, the message (spec §2.10 [v1 G-C4], §3a): every site that refuses a context closure names
+  # the gen-rules door and the guard-term remedy, and the retired forms refuse by name. The structure
+  # half (that each refusal is catchable, beside its admitted control) is `ci/tests` `closure-door`.
+  flake.testsError.closure-door =
+    let
+      place =
+        defsList:
+        (mkSchemaEval {
+          keySemantics.nixos.category = "class";
+          modules = map (d: { config.aspects = d; }) defsList;
+        }).config.aspects;
+      bare =
+        loc:
+        exactly (
+          "gen-aspects: aspect `${loc}`: a context closure reached a gen-aspects-typed position. gen-aspects "
+          + "holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the "
+          + "framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a "
+          + "guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result of a module "
+          + "function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), the "
+          + "framework's surface does not reach it: the lowering does not enter a module function's result, so the "
+          + "closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
+          + "of the module function's arguments can be written beside the function instead of inside it."
+        );
+      retired =
+        name:
+        exactly "gen-aspects.${name} was RETIRED by den-hoag-lwbb1: gen-aspects holds first-order guards only, and a context closure crosses the gen-rules door. Declare the aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a guard term (`guard (pred.has <coordinate>) <body>`).";
+    in
+    {
+      test-bare-closure-at-aspect = thrown (place [ { x = { thimble, ... }: { }; } ]).x (bare "x");
+      test-closure-in-includes =
+        thrown (place [ { x.includes = [ ({ host, ... }: { }) ]; } ]).x.includes
+          (bare "x.includes.[definition 1-entry 1]");
+      test-closure-multidef =
+        thrown
+          (place [
+            { x.description = "a"; }
+            { x = { thimble, ... }: { }; }
+          ]).x
+          (bare "x");
+      # alhfc gate X1: the closure inside an aspect-position module function's result. The message says
+      # what happened to it and recommends no route for that shape (an open owner reading).
+      test-closure-inside-module-fn-result =
+        thrown (place [ { x = { config, ... }: { includes = [ ({ host, ... }: { }) ]; }; } ]).x.includes
+          (bare "x.includes.[definition 1-entry 1]");
+      test-closure-guard-body =
+        thrown (place [ { g = aspects.guard aspects.pred.always ({ host, ... }: { }); } ]).g
+          (
+            exactly "gen-aspects.guard: aspect `g`: term-function: {\"remedy\":\"a closure is not a term\"}. A guard body is data: module content belongs under a class key. A context closure crosses the gen-rules door: declare the aspect through the framework's surface, or write the body as a guard term (`guard (pred.has <coordinate>) <body>`)."
+          );
+      test-wrapfn-retired = thrown (aspects.wrapFn { } "w" ({ host, ... }: { })) (retired "wrapFn");
+      test-wrapgatedfn-retired = thrown (aspects.wrapGatedFn { functionArgs.host = false; }) (
+        retired "wrapGatedFn"
+      );
+      test-applyguard-closure = thrown (aspects.applyGuard { host = "h"; } ({ host, ... }: { })) (
+        exactly "gen-aspects.guard: applyGuard: a context closure was handed where a guard record belongs. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the framework's surface, or write it as a guard term (`guard (pred.has <coordinate>) <body>`)."
+      );
+      test-defer-include-resolution-retired =
+        thrown
+          (mkSchemaEval {
+            deferIncludeResolution = true;
+            modules = [ ];
+          }).config.aspects
+          ("^" + lib.escapeRegex "gen-aspects: unrecognised cnf key 'deferIncludeResolution'.");
     };
 }

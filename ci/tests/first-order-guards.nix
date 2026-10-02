@@ -818,7 +818,88 @@ let
       };
     };
   };
+  # Stage 2b (spec §3a, structure): a context closure at a gen-aspects-typed position is refused,
+  # catchably, at every arity and position; a module function there is still a module. The message
+  # each refusal says is pinned on the error plane (`closure-door`).
+  placeMany =
+    defsList:
+    (mkSchemaEval {
+      keySemantics.nixos.category = "class";
+      modules = map (d: { config.aspects = d; }) defsList;
+    }).config.aspects;
+  stage2b = {
+    test-bare-closure-at-aspect = {
+      expr = {
+        refused = ok (place { } { x = { thimble, ... }: { description = thimble; }; }).x;
+        control = (place { } { x.description = "s"; }).x.description;
+      };
+      expected = {
+        refused = false;
+        control = "s";
+      };
+    };
+    test-closure-in-includes = {
+      expr = {
+        refused = ok (place { } { x.includes = [ ({ host, ... }: { }) ]; }).x.includes;
+        control =
+          map (i: i.description)
+            (place { } { x.includes = [ { description = "i"; } ]; }).x.includes;
+      };
+      expected = {
+        refused = false;
+        control = [ "i" ];
+      };
+    };
+    test-closure-multidef = {
+      expr = {
+        refused =
+          ok
+            (placeMany [
+              { x.description = "a"; }
+              { x = { thimble, ... }: { }; }
+            ]).x;
+        control =
+          (placeMany [
+            { x.description = "a"; }
+            { x.nixos.foo = 1; }
+          ]).x.description;
+      };
+      expected = {
+        refused = false;
+        control = "a";
+      };
+    };
+    test-module-fn-aspect-control = {
+      expr = (place { } { x = { config, ... }: { description = "m"; }; }).x.description;
+      expected = "m";
+    };
+    # alhfc gate X1: a closure inside an aspect-position module function's result is refused too (the
+    # lowering does not enter the result); its message is pinned on the error plane.
+    test-closure-inside-module-fn-result = {
+      expr = ok (place { } { x = { config, ... }: { includes = [ ({ host, ... }: { }) ]; }; }).x.includes;
+      expected = false;
+    };
+    # The retired forms (spec §2.10), each refused catchably at its first application; their text is
+    # pinned on the error plane.
+    test-retired-forms-refuse = {
+      expr = {
+        wrapFn = ok (a.wrapFn { } "w" ({ host, ... }: { }));
+        wrapGatedFn = ok (a.wrapGatedFn { functionArgs.host = false; });
+        applyGuardClosure = ok (a.applyGuard { host = "h"; } ({ host, ... }: { }));
+        deferIncludeResolution = ok (place { deferIncludeResolution = true; } { x.description = "d"; }).x;
+        applyGuardControl = (a.applyGuard { } (a.guard a.pred.always { description = "g"; })).description;
+      };
+      expected = {
+        wrapFn = false;
+        wrapGatedFn = false;
+        applyGuardClosure = false;
+        deferIncludeResolution = false;
+        applyGuardControl = "g";
+      };
+    };
+  };
 in
 {
   flake.tests.first-order-guards = cells;
+  flake.tests.closure-door = stage2b;
 }

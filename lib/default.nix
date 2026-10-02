@@ -79,17 +79,14 @@ in
     mkIsModuleFn
     canTake
     ;
-  # `wrapFn cnf name fn` — wrap a single raw closure as an inspectable `__isWrappedFn` aspect include
-  # (the API sibling of the type-merge's `wrapGuardFn`, for programmatically-generated includes that
-  # bypass the option-type merge). See lib/types.nix.
-  # `wrapGatedFn { functionArgs; onResult ? id; … } fn` — the OPT-IN self-gating sibling: its applicator
-  # gates on required coords (inert `{ }` on missing, no throw) + threads `onResult` (N-GATE). See types.nix.
+  # `wrapFn` and `wrapGatedFn` are RETIRED (den-hoag-lwbb1 stage 2b): refused-by-name aliases naming
+  # the gen-rules door, which a context closure crosses. See lib/types.nix.
   inherit (types) wrapFn wrapGatedFn;
   # THE canonical, uniform aspect content-address (all three kinds). den-hoag retired its
   # `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`. See lib/types.nix.
   inherit (types) aspectId;
   # `instanceOf cnf { aspect; value; context; sources; }` → `{ id; entry; formals; }` — the instance
-  # mint: a wrap record or a guard carrier applied to a context is a node of its own, identified by
+  # mint: a guard record or carrier applied to a context is a node of its own, identified by
   # its aspect and by the sources of the keys it receives there (0cmbt spec §2.5). See lib/instance.nix.
   inherit (instanceModule) instanceOf;
   # `instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; reaches; nested; }` — the instance relation: one
@@ -107,8 +104,7 @@ in
   # a directly-supplied registry can — and it answers "was this key given a defining module", never
   # "does that module carry non-vacuous fields", which would force the deferred body. See lib/types.nix.
   inherit (types) structuralKeys keyCategory hasClassContent;
-  # `isGuardLeaf v` — whether an aspect value is a guard leaf (a `__isWrappedFn` wrap or a `__guard`
-  # record): a node whose content exists only once a context is supplied. It is the membership
+  # `isGuardLeaf v` — whether an aspect value is a guard leaf (a `__guard` record): a node whose content exists only once a context is supplied. It is the membership
   # predicate `flatten` and `graphFacts` already stop at (`lib/walk.nix`), named here so a consumer
   # reading `graphFacts`' `nodeData` asks this library rather than re-deriving the shape test.
   inherit (import ./walk.nix) isGuardLeaf;

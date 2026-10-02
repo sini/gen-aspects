@@ -2,7 +2,7 @@
 # Theory: Reynolds 1972 "Elimination of Higher-Order Functions" (md:718; FUNVAL->ENV->CONT at
 # md:874/1318) as formalized by Danvy & Nielsen 2001 (obligations O1-O7). A guard = predicate +
 # body; the predicate is pure first-order data, so identity (identity.nix guardKey) never hashes a
-# closure. Raw closures remain the non-defunctionalized escape hatch (functionTo, see types.nix).
+# closure. A context closure crosses the gen-rules door, never this one (den-hoag-lwbb1 stage 2b).
 {
   prelude,
   merge,
@@ -10,8 +10,7 @@
   GT,
 }:
 let
-  inherit (import ./cnf.nix) checkedEntry entityKindsOf;
-  doors = import ./require-wrapped-closure.nix;
+  inherit (import ./cnf.nix) checkedEntry;
   tm = T.term;
 
   # The condition vocabulary (design Section 3): constructors emitting terms of the one algebra.
@@ -29,7 +28,7 @@ let
       ;
     custom =
       _: _:
-      throw "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is written as a guard function (`{ <coordinate>, ... }: <aspect>`) at the aspect position.";
+      throw "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is a context closure, which crosses the gen-rules door: declare the aspect through the framework's surface.";
   };
 
   # A guard is a condition term and a body (design Section 3). The body is a term or first-order data,
@@ -45,10 +44,6 @@ in
   mkGuardVocab = checkedEntry (
     cnf:
     let
-      # The context door at this vocabulary's entity kinds, for the closure arms that remain until the
-      # gen-rules door lands (the carrier's function fragment and the escape hatch; design Section 5
-      # build order: retirements last).
-      contextOf = doors.requireContextOf (entityKindsOf cnf);
       at = loc: "aspect `${prelude.concatStringsSep "." loc}`";
       checked = loc: GT.checkGuard cnf (at loc);
       fireAt =
@@ -56,16 +51,10 @@ in
         GT.fire cnf (at loc) args (checked loc g);
       fires = ctx: g: GT.holds cnf ctx (checked (g.meta.loc or [ "<guard>" ]) g);
       # Multi-def guard carrier discharge (den-hoag-sezf Arm B): one fragment per definition. A record
-      # fragment is a first-order guard, fired as one; a function fragment applies its closure (retired
-      # with the hatch); an unconditional fragment always survives.
+      # fragment is a first-order guard, fired as one; an unconditional fragment always survives.
       dischargeFragment =
         args: loc: f:
-        if f.kind == "record" then
-          fireAt args loc f.guard
-        else if f.kind == "fn" then
-          f.fn (contextOf "guard" (at loc) f.fn args.context)
-        else
-          f.body;
+        if f.kind == "record" then fireAt args loc f.guard else f.body;
       applyGuardWith =
         args: g:
         if g ? fragments then
@@ -84,14 +73,11 @@ in
             )
         else if g.__guard or false then
           fireAt args (g.meta.loc or [ "<guard>" ]) g
-        # A wrap record carries its own doors; the escape hatch applies a caller-supplied closure through
-        # the context door. Both retire with the hatch (den-hoag-lwbb1).
-        else if g.__isWrappedFn or false then
-          g args.context
+        # A context closure has no arm here (den-hoag-lwbb1 stage 2b): it crosses the gen-rules door.
         else if prelude.isFunction g then
-          g (contextOf "guard" "`applyGuard`" g args.context)
+          throw "gen-aspects.guard: applyGuard: a context closure was handed where a guard record belongs. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the framework's surface, or write it as a guard term (`guard (pred.has <coordinate>) <body>`)."
         else
-          throw "gen-aspects.guard: applyGuard: not a guard record or callable";
+          throw "gen-aspects.guard: applyGuard: not a guard record";
     in
     {
       inherit

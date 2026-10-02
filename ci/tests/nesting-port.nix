@@ -7,6 +7,8 @@
   lib,
   aspects,
   genMerge,
+  genAlgebra,
+  genIdentity,
   ...
 }:
 let
@@ -251,30 +253,38 @@ in
       };
   };
 
-  # U2-m: the raw-closure applicators' value through the interim door, `name` from the door's own
-  # `loc` (the `<function body>` segment), for `wrapFn` and for a type-merge-wrapped guard fn.
+  # U2-m: a parametric value through the type merge keeps its value. A context closure crosses the
+  # gen-rules door, so the value is a DOOR NODE (a guard whose body is the door's registration
+  # reference), placed by the ported type's merge and applied through `instanceOf` and `cnf.ref`.
   flake.tests.nesting-port.test-the-interim-door-keeps-the-value = {
     expr =
       let
-        fn = ctx: { description = "d-${ctx.d}"; };
-        read = a: { inherit (a) description name; };
-        viaType = ported.aspectType.mergeDefs [ "n" ] (def ({ d, ... }: fn { inherit d; }));
+        T = genAlgebra.term genIdentity.hashIdentity;
+        rid =
+          (T.refId {
+            declared = {
+              site = "n";
+              reads = [ "d" ];
+            };
+          }).right;
+        door =
+          { context, ... }:
+          {
+            right = {
+              output.description = "d-${context.d}";
+              scope = { };
+            };
+          };
+        placed = ported.aspectType.mergeDefs [ "n" ] (
+          def (aspects.guard (aspects.pred.has "d") (T.term.ref rid))
+        );
       in
-      {
-        wrapFn = read ((aspects.wrapFn cnf "n" fn) { d = "x"; });
-        typeMerge = read (viaType {
-          d = "x";
-        });
-      };
-    expected = {
-      wrapFn = {
-        description = "d-x";
-        name = "<function body>";
-      };
-      typeMerge = {
-        description = "d-x";
-        name = "<function body>";
-      };
-    };
+      (aspects.instanceOf (cnf // { ref = door; }) {
+        aspect = "n";
+        value = placed;
+        context.d = "x";
+        sources.d = genIdentity.hashIdentity "entity" [ "name" ] (_: "x");
+      }).entry;
+    expected.description = "d-x";
   };
 }

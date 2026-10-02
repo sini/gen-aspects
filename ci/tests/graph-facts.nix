@@ -5,8 +5,9 @@
 #
 #   * the bare `meta.aspect-chain or [ ]` join a framework would otherwise write, which answers ROOT
 #     for a nested guard leaf, and
-#   * the `meta`-dispatch that answer was first built as, which answers ROOT for a `wrapFn` node and
-#     THROWS on a `wrapGatedFn` one.
+#   * the `meta`-dispatch that answer was first built as, which THROWS on a guard leaf no aspect type
+#     stamped (built by the public `guard` in a raw tree) and answers the WRONG parent for a guard
+#     carried by value from another tree (its `meta.loc` is where it was placed there).
 #
 # The second is the one an earlier revision of this suite could not see: every assertion in it passed
 # under BOTH the dispatch and the walk, so the oracle that "decides the design" did not decide
@@ -28,13 +29,12 @@
 }:
 let
   gv = aspects.mkGuardVocab { };
+  hostGuard = aspects.guard (aspects.pred.has "host") { nixos.networking.hostName = "h"; };
 
-  # ONE fixture, five node shapes. Three record a position under `meta` in three different ways —
-  # a plain aspect under `meta.aspect-chain`, a guard record and a type-merge-wrapped bare fn under
-  # `meta.loc` — and TWO record none that can be read as a position at all: `wrapFn` stamps
-  # `meta.loc` from its SITING NAME, and `wrapGatedFn` defaults `meta` to `{ }`. Those last two are
-  # the fixture's point: they are public constructors, and any construction that reads a position
-  # out of `meta` gets them wrong.
+  # ONE placed fixture: a plain aspect under `meta.aspect-chain` and guard records under `meta.loc`,
+  # each stamped by the aspect type with its own position. The shapes whose `meta` CANNOT be read as
+  # a position live in the raw fixture (`rawFacts`, below): a guard no aspect type stamped, and a
+  # guard carried by value from another tree.
   mkFixture =
     providerPrefix:
     mkSchemaEval {
@@ -52,36 +52,10 @@ let
             config.aspects.top.g = gv.vocab.whenEq [ "thimble" "name" ] "cortex" {
               nixos.networking.domain = "x";
             };
-            config.aspects.top.w =
-              { host }:
-              {
-                nixos.networking.hostName = host.name;
-              };
-            config.aspects.top.wf = aspects.wrapFn { } "wf" (
-              { host }:
-              {
-                nixos.networking.hostName = host.name;
-              }
-            );
-            config.aspects.top.deeper.wf2 = aspects.wrapFn { } "wf2" (
-              { host }:
-              {
-                nixos.networking.hostName = host.name;
-              }
-            );
-            config.aspects.top.gf =
-              aspects.wrapGatedFn
-                {
-                  functionArgs = {
-                    host = false;
-                  };
-                }
-                (
-                  { host }:
-                  {
-                    nixos.networking.hostName = host.name;
-                  }
-                );
+            config.aspects.top.w = hostGuard;
+            config.aspects.top.wf = hostGuard;
+            config.aspects.top.deeper.wf2 = hostGuard;
+            config.aspects.top.gf = hostGuard;
             config.aspects.app.includes = [ config.aspects.infra.networking.dns ];
           }
         )
@@ -113,11 +87,11 @@ let
     if chain == [ ] then null else lib.concatStringsSep "/" chain;
   # (2) the `meta`-shape dispatch this construction replaced: `meta.loc` for a leaf shape, the
   # chain for a plain aspect. Reproduced faithfully, including its `parent = init position` step.
-  metaDispatchParent =
-    id:
+  metaDispatchParentIn =
+    fl: id:
     let
-      v = flat.${id};
-      isLeaf = (v.__guard or false) || (v.__isWrappedFn or false);
+      v = fl.${id};
+      isLeaf = v.__guard or false;
       position =
         if isLeaf then (v.meta or { }).loc or null else ((v.meta or { }).aspect-chain or [ ]) ++ [ v.name ];
     in
@@ -127,6 +101,28 @@ let
       null
     else
       lib.concatStringsSep "/" (lib.init position);
+  metaDispatchParent = metaDispatchParentIn flat;
+
+  # A tree handed to `graphFacts` as a value, not through the aspect type: nothing stamps `meta`, so a
+  # guard built by the public constructor records no position, and a guard carried in by value from
+  # another tree records THAT tree's position. These are the shapes on which a `meta` read is wrong.
+  carriedEval = mkSchemaEval {
+    fixtureKeySemantics.nixos.category = "class";
+    modules = [ { config.aspects.elsewhere.deep.g = hostGuard; } ];
+  };
+  rawTree = {
+    top = {
+      name = "top";
+      g = hostGuard;
+      carried = carriedEval.config.aspects.elsewhere.deep.g;
+      deeper = {
+        name = "deeper";
+        g2 = hostGuard;
+      };
+    };
+  };
+  rawFacts = aspects.graphFacts { } rawTree;
+  rawFlat = aspects.flatten rawTree;
 
   # A node whose HELD chain contradicts its walk position. `meta.aspect-chain` is `mkDefault`, so a
   # hand-set chain wins in the substrate — and an earlier construction honoured it, producing a node
@@ -153,13 +149,12 @@ let
   mkIncludes =
     {
       providerPrefix ? [ ],
-      deferIncludeResolution ? false,
       ...
     }@args:
     mkSchemaEval (
       (removeAttrs args [ "elems" ])
       // {
-        inherit providerPrefix deferIncludeResolution;
+        inherit providerPrefix;
         fixtureKeySemantics = {
           nixos = {
             category = "class";
@@ -180,43 +175,27 @@ let
   # The deferred shapes (a raw closure, a policy record), two inline aspect literals (one carrying a
   # closure-valued field) and a guard record, all in one tree.
   inlineEval = mkIncludes {
-    deferIncludeResolution = true;
     elems = _: [
       (
-        { host, ... }:
+        { config, ... }:
         {
-          nixos.networking.hostName = host.name;
+          nixos.networking.hostName = "m";
         }
-      ) # raw closure
+      ) # module function
       {
-        batteryFn =
-          { host, ... }:
-          {
-            nixos.networking.hostName = host.name;
-          };
         name = "batt";
+        nixos.networking.hostName = "b";
       }
-      {
-        __isPolicy = true;
-        name = "pol";
-        fn = { host, ... }: [ ];
-      }
+      hostGuard
       { nixos.networking.domain = "inline"; } # inline aspect literal
       (gv.vocab.whenEq [ "thimble" "name" ] "cortex" { nixos.networking.domain = "g"; }) # inline guard record
     ];
   };
   inlineFacts = aspects.graphFacts { } inlineEval.config.aspects;
 
-  # The DEFAULT path: a bare closure with the opt-in OFF is wrapped as `__isWrappedFn` by the type.
+  # A parametric include: a first-order guard at the include position (inline content, no edge).
   wrappedIncludeEval = mkIncludes {
-    elems = _: [
-      (
-        { host, ... }:
-        {
-          nixos.networking.hostName = host.name;
-        }
-      )
-    ];
+    elems = _: [ hostGuard ];
   };
   wrappedIncludeFacts = aspects.graphFacts { } wrappedIncludeEval.config.aspects;
 
@@ -387,11 +366,10 @@ let
   declEval =
     {
       providerPrefix ? [ ],
-      deferIncludeResolution ? false,
     }:
     modules:
     mkSchemaEval {
-      inherit providerPrefix deferIncludeResolution modules;
+      inherit providerPrefix modules;
       fixtureKeySemantics = {
         nixos = {
           category = "class";
@@ -408,11 +386,10 @@ let
     {
       id ? "app",
       providerPrefix ? [ ],
-      deferIncludeResolution ? false,
     }:
     modules:
     let
-      ev = declEval { inherit providerPrefix deferIncludeResolution; } modules;
+      ev = declEval { inherit providerPrefix; } modules;
       f = aspects.graphFacts { inherit providerPrefix; } ev.config.aspects;
     in
     {
@@ -439,27 +416,19 @@ let
   # The suite's inline shapes, split over two definitions.
   shapesA = [
     (
-      { host, ... }:
+      { config, ... }:
       {
-        nixos.networking.hostName = host.name;
+        nixos.networking.hostName = "m";
       }
     )
     {
-      batteryFn =
-        { host, ... }:
-        {
-          nixos.networking.hostName = host.name;
-        };
       name = "batt";
+      nixos.networking.hostName = "b";
     }
     (lit "inline")
   ];
   shapesB = [
-    {
-      __isPolicy = true;
-      name = "pol";
-      fn = { host, ... }: [ ];
-    }
+    hostGuard
     (lit "inline2")
     (gv.vocab.whenEq [ "thimble" "name" ] "cortex" (lit "g"))
   ];
@@ -475,11 +444,7 @@ let
       };
       modules = mods;
     }).config.aspects;
-  hostFn =
-    { host, ... }:
-    {
-      nixos.marks = [ host.name ];
-    };
+  hostFn = aspects.guard (aspects.pred.has "host") { nixos.marks = [ "h" ]; };
 
   # x7: inline content in one definition, another tree's node in a second.
   otherSecondDefFacts =
@@ -493,22 +458,24 @@ in
 {
   # ── THE DECIDING ORACLE · the parent is the WALK, not any read of `meta` ─────────────────────────
   # Subject and both counterfactual readings in ONE record, so the assertion fails if either reading
-  # is substituted for the construction. The `wrapFn` and `wrapGatedFn` entries are what make the
-  # `meta` dispatch distinguishable at all: under it, `top/wf` reads ROOT and `top/gf` throws.
+  # is substituted for the construction. The raw-tree and carried guards are what make the `meta`
+  # dispatch distinguishable at all: under it, `top/g` and `top/deeper/g2` throw and `top/carried`
+  # reads the parent of the tree it was placed in.
   flake.tests.graph-facts.test-parent-is-the-walk-not-a-meta-read = {
     expr = {
-      # SUBJECTS — public constructors whose `meta` cannot be read as a position.
-      wrapFnParent = facts.parentOf."top/wf";
-      wrapFnNestedParent = facts.parentOf."top/deeper/wf2";
-      wrapGatedFnParent = facts.parentOf."top/gf";
-      # …and what the `meta` dispatch answers for the same three, same fixture, same run.
-      wrapFnUnderMetaDispatch = metaDispatchParent "top/wf";
-      wrapFnNestedUnderMetaDispatch = metaDispatchParent "top/deeper/wf2";
-      wrapGatedFnUnderMetaDispatch = metaDispatchParent "top/gf";
-      # CONTROL: a type-merge-wrapped bare fn DOES carry a real `meta.loc`, so the dispatch agrees
-      # with the walk on it. The predicate discriminates rather than disagreeing with everything.
-      typeMergedFnParent = facts.parentOf."top/w";
-      typeMergedFnUnderMetaDispatch = metaDispatchParent "top/w";
+      # SUBJECTS — guard leaves whose `meta` cannot be read as a position: built by the public
+      # constructor in a tree no aspect type stamped, and carried by value from another tree.
+      rawGuardParent = rawFacts.parentOf."top/g";
+      rawGuardNestedParent = rawFacts.parentOf."top/deeper/g2";
+      carriedGuardParent = rawFacts.parentOf."top/carried";
+      # …and what the `meta` dispatch answers for the same three, same run.
+      rawGuardUnderMetaDispatch = metaDispatchParentIn rawFlat "top/g";
+      rawGuardNestedUnderMetaDispatch = metaDispatchParentIn rawFlat "top/deeper/g2";
+      carriedGuardUnderMetaDispatch = metaDispatchParentIn rawFlat "top/carried";
+      # CONTROL: a guard placed through the aspect type carries its real `meta.loc`, so the dispatch
+      # agrees with the walk on it. The predicate discriminates rather than disagreeing with everything.
+      typeMergedGuardParent = facts.parentOf."top/deeper/wf2";
+      typeMergedGuardUnderMetaDispatch = metaDispatchParent "top/deeper/wf2";
       # …and the guard leaf, where the BARE-CHAIN reader is the one that goes wrong.
       guardLeafParent = facts.parentOf."top/g";
       guardLeafUnderBareChain = bareChainParent "top/g";
@@ -518,14 +485,14 @@ in
       plainUnderMetaDispatch = metaDispatchParent "infra/networking/dns";
     };
     expected = {
-      wrapFnParent = "top";
-      wrapFnNestedParent = "top/deeper";
-      wrapGatedFnParent = "top";
-      wrapFnUnderMetaDispatch = null;
-      wrapFnNestedUnderMetaDispatch = null;
-      wrapGatedFnUnderMetaDispatch = "<THREW: no position recorded>";
-      typeMergedFnParent = "top";
-      typeMergedFnUnderMetaDispatch = "top";
+      rawGuardParent = "top";
+      rawGuardNestedParent = "top/deeper";
+      carriedGuardParent = "top";
+      rawGuardUnderMetaDispatch = "<THREW: no position recorded>";
+      rawGuardNestedUnderMetaDispatch = "<THREW: no position recorded>";
+      carriedGuardUnderMetaDispatch = "elsewhere/deep";
+      typeMergedGuardParent = "top/deeper";
+      typeMergedGuardUnderMetaDispatch = "top/deeper";
       guardLeafParent = "top";
       guardLeafUnderBareChain = null;
       plainParent = "infra/networking";
@@ -1190,7 +1157,7 @@ in
       copiedOtherTree = declRead { } [ (one oa.elsewhere.box.includes) ];
       nestedLiteral = declRead { } [ (one [ { includes = [ (lit "inner") ]; } ]) ];
       guardDefault = declRead { } [ (one [ (gv.vocab.whenEq [ "thimble" "name" ] "cortex" (lit "g")) ]) ];
-      shapesTwoDefs = declRead { deferIncludeResolution = true; } [
+      shapesTwoDefs = declRead { } [
         (one shapesA)
         (one shapesB)
       ];
@@ -1198,7 +1165,6 @@ in
         declRead
           {
             id = "top/deeper";
-            deferIncludeResolution = true;
           }
           [
             (at [ "top" "deeper" ] shapesA)

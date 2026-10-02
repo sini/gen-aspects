@@ -1,6 +1,6 @@
 # Partition-identity through the exported `aspects.aspectId` — THE canonical, uniform aspect content-
-# address for ALL three kinds (plain / wrapped-fn / guard — identity.nix `key`, whose three-way
-# dispatch IS that enumeration). `aspectId origin aspect` = gen-schema hashIdentity over
+# address for every kind (plain / parametric guard / guard — identity.nix `key`, whose dispatch IS
+# that enumeration). `aspectId origin aspect` = gen-schema hashIdentity over
 # [origin, key], key = identity.key aspect (NOT mkIdentityModule
 # reflection — that would fold `description` in and break the `.key` partition, design §Identity note).
 # With origin = []: aspectId [] a == aspectId [] b ⟺ key(a) == key(b), over all three kinds + a custom-
@@ -16,7 +16,7 @@
   ...
 }:
 let
-  inherit (aspects) aspectId; # THE canonical id — works for plain, wrapped-fn, and guard alike.
+  inherit (aspects) aspectId; # THE canonical id — works for plain and guard alike.
 
   # plain
   plainFoo =
@@ -57,20 +57,14 @@ let
       ];
     }).config.aspects.svc;
 
-  # wrapped-fn (__isWrappedFn), a BARE functor record (no id_hash option): key = pathKey meta.loc. `host`
-  # is not a module arg → guard closure → wrap.
-  wf =
-    (mkSchemaEval {
-      modules = [
-        {
-          config.aspects.wf =
-            { host, ... }:
-            {
-              classOne.networking.hostName = host.name or "x";
-            };
-        }
-      ];
-    }).config.aspects.wf;
+  # the parametric kind: a first-order guard over `host` (a context closure is refused), a BARE record
+  # (no id_hash option): key = the mint over (condition, body), site-independent. `wfElsewhere` is the
+  # same guard placed at another path.
+  wfGuard = aspects.guard (aspects.pred.has "host") { classOne.networking.hostName = "x"; };
+  wf = (mkSchemaEval { modules = [ { config.aspects.wf = wfGuard; } ]; }).config.aspects.wf;
+  wfElsewhere =
+    (mkSchemaEval { modules = [ { config.aspects.deeper.wf2 = wfGuard; } ]; })
+    .config.aspects.deeper.wf2;
   plainWf = (mkSchemaEval { modules = [ { config.aspects.wf.classOne = { }; } ]; }).config.aspects.wf;
 
   # guard (__guard), a BARE record (no id_hash option): key = guardKey — site-independent for a first-
@@ -169,14 +163,21 @@ in
     };
   };
 
-  # wrapped-fn kind: uniform id via aspectId (bare record, no option); same-key cross-kind ⟹ same id.
+  # parametric kind: uniform id via aspectId (bare record, no option), keyed by the mint and not by
+  # the path, so the same guard at two paths shares its id and a plain aspect at its path does not.
   flake.tests.aspect-id-hash.test-wrapped-fn-key = {
-    expr = aspects.key wf;
-    expected = "wf";
+    expr = builtins.substring 0 6 (aspects.key wf);
+    expected = "guard:";
   };
   flake.tests.aspect-id-hash.test-wrapped-fn-uniform = {
-    expr = aspectId [ ] wf == aspectId [ ] plainWf;
-    expected = true;
+    expr = {
+      sameGuardTwoPaths = aspectId [ ] wf == aspectId [ ] wfElsewhere;
+      plainAtItsPath = aspectId [ ] wf == aspectId [ ] plainWf;
+    };
+    expected = {
+      sameGuardTwoPaths = true;
+      plainAtItsPath = false;
+    };
   };
 
   # guard kind: uniform id; identical guards share id; guard ≠ plain "foo".

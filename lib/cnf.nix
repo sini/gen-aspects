@@ -67,14 +67,8 @@ let
       default = { };
       regime = "compared";
     };
-    deferIncludeResolution = {
-      default = false;
-      regime = "minted";
-    };
     # The framework's entity kinds, as the context keys that carry them (ADR-0027: entity kinds are
-    # the framework's to declare). At an instance-producing applicator, a context shape is handed the
-    # context narrowed to them; `null` hands it whole (lib/require-wrapped-closure.nix
-    # `requireContextOf`). A guard predicate's evaluation is never narrowed.
+    # the framework's to declare).
     # The DECLARED COORDINATE SET, with the entity kinds a marked subset (design Q5 (A): one set,
     # widening `entityKinds`). `null` is the open world. A list declares its names as coordinates that
     # are all entity kinds; an attrset `{ <name> = <bool>; }` declares its names, marking an entity kind
@@ -283,7 +277,6 @@ let
       door;
 
   # `kinds` itself when it is `null` or a non-empty list of strings, a refusal by name otherwise.
-  # Also read by `requireContextOf`, for a record extended past `checkedEntry` (`extendCnf`).
   checkEntityKinds =
     kinds:
     if

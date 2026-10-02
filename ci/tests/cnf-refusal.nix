@@ -48,7 +48,7 @@ let
 
   refuses = e: !(builtins.tryEval (builtins.seq e null)).success;
 
-  # The ten public entry points — every export whose first argument is a `cnf`.
+  # The nine public entry points — every export whose first argument is a `cnf`.
   entryPoints = {
     inherit (aspects)
       aspectType
@@ -57,7 +57,6 @@ let
       aspectsRoot
       aspectOrFn
       mkIsModuleFn
-      wrapFn
       keyCategory
       mkAspectSchema
       mkGuardVocab
@@ -154,7 +153,7 @@ in
     expected = true;
   };
 
-  # ── the reach: ALL ten entry points, and the same ten still accept a recognised record ──────
+  # ── the reach: ALL nine entry points, and the same nine still accept a recognised record ──────
   flake.tests.cnf-refusal.test-every-entry-point-refuses = {
     expr = builtins.mapAttrs (
       _: f:
@@ -255,7 +254,6 @@ in
       "aspectModules"
       "closedKeys"
       "collections"
-      "deferIncludeResolution"
       "entityKinds"
       "freeformKeys"
       "keySemantics"

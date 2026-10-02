@@ -37,7 +37,7 @@ let
   flat = flatten eval.config.aspects;
   facts = graphFacts { } eval.config.aspects;
 
-  # Test with guard function
+  # Test with a guard leaf (a first-order guard)
   guardEval = mkSchemaEval {
     fixtureKeySemantics = {
       nixos = {
@@ -46,11 +46,9 @@ let
     };
     modules = [
       {
-        config.aspects.conditional =
-          { host }:
-          {
-            nixos.networking.hostName = host.name;
-          };
+        config.aspects.conditional = aspects.guard (aspects.pred.has "host") {
+          nixos.networking.hostName = "h";
+        };
       }
     ];
   };
@@ -76,10 +74,11 @@ let
   deepFlat = flatten deepEval.config.aspects;
   deepFacts = graphFacts { } deepEval.config.aspects;
 
-  # THE MIXED FIXTURE: all three node shapes under a NON-EMPTY ORIGIN. Every element of it is
+  # THE MIXED FIXTURE: both node shapes under a NON-EMPTY ORIGIN. Every element of it is
   # load-bearing. The origin is what makes the id-vs-`.key` comparison a real comparison instead of
-  # one over an empty qualifier; the guard record and the wrapped fn are the shapes the retired
-  # `? key` domain filter silently dropped, so they are here to be WITNESSED rather than assumed.
+  # one over an empty qualifier; the guard records (a vocabulary guard and a parametric one) are the
+  # shape the retired `? key` domain filter silently dropped, so they are here to be WITNESSED
+  # rather than assumed.
   origin = [ "acme" ];
   mixedEval = mkSchemaEval {
     providerPrefix = origin;
@@ -96,11 +95,9 @@ let
           g = (aspects.mkGuardVocab { }).vocab.whenEq [ "thimble" "name" ] "cortex" {
             nixos.networking.hostName = "c";
           };
-          w =
-            { host }:
-            {
-              nixos.networking.hostName = host.name;
-            };
+          w = aspects.guard (aspects.pred.has "host") {
+            nixos.networking.hostName = "w";
+          };
         };
       }
     ];
@@ -110,11 +107,10 @@ let
   mixedData = mixedFacts.nodeData;
   stripOrigin = lib.removePrefix "acme/";
 
-  # The two shapes the walk-key ≡ `.key` claim is scoped AWAY from, named rather than filtered out
-  # by a `? key` test that happens to exclude them.
+  # The shape the walk-key ≡ `.key` claim is scoped AWAY from, named rather than filtered out by a
+  # `? key` test that happens to exclude it.
   isGuardRecord = id: mixedData.${id}.__guard or false;
-  isWrappedFn = id: mixedData.${id}.__isWrappedFn or false;
-  comparable = builtins.filter (id: !(isGuardRecord id || isWrappedFn id)) mixedFacts.nodes;
+  comparable = builtins.filter (id: !(isGuardRecord id)) mixedFacts.nodes;
 
   sorted = lib.sort (a: b: a < b);
 in
@@ -212,7 +208,7 @@ in
   # A-IDENT, RE-SCOPED ON THE AXIS THAT ACTUALLY MOVES IT. The retired claim was that the walk key
   # and `.key` are "one identity, two exactly-agreeing views" for every node. Two things falsify it
   # as stated: an origin-qualified node id takes a qualifier `identity.key` never sees, and a guard
-  # record or wrapped fn carries no `key` option at all. The old assertion could observe neither —
+  # record carries no `key` option at all. The old assertion could observe neither —
   # its `? key` domain filter dropped those shapes before the comparison, and its fixture's origin
   # was empty — so it passed while measuring nothing, and adding a guard to its fixture produced no
   # counterexample. What replaces it compares MODULO THE ORIGIN over a domain enumerated from
@@ -227,23 +223,21 @@ in
       rawIdsDisagree = !(builtins.all (id: id == aspects.key mixedData.${id}) comparable);
       # (2) Each named exclusion is WITNESSED. An exclusion the fixture never carried is
       # indistinguishable from a scope that excludes nothing.
-      guardRecordWitnessed = builtins.any isGuardRecord mixedFacts.nodes;
-      wrappedFnWitnessed = builtins.any isWrappedFn mixedFacts.nodes;
+      guardRecordsWitnessed = builtins.length (builtins.filter isGuardRecord mixedFacts.nodes);
       # …and the compared domain is stated exactly, so it cannot shrink to nothing unnoticed.
       comparedCount = builtins.length comparable;
       # (3) The excluded shapes' own positions, answered through the dispatch. What replaces the
       # retired claim is not silence about guards — it is the relation that does answer for them.
       guardParent = mixedFacts.parentOf."acme/infra/g";
-      wrappedFnParent = mixedFacts.parentOf."acme/infra/w";
+      parametricGuardParent = mixedFacts.parentOf."acme/infra/w";
     };
     expected = {
       agreesModuloOrigin = true;
       rawIdsDisagree = true;
-      guardRecordWitnessed = true;
-      wrappedFnWitnessed = true;
+      guardRecordsWitnessed = 2;
       comparedCount = 3;
       guardParent = "acme/infra";
-      wrappedFnParent = "acme/infra";
+      parametricGuardParent = "acme/infra";
     };
   };
 

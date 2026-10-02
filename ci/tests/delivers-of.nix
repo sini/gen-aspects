@@ -47,7 +47,7 @@ in
         stitch.trim.includes = [ "other" ];
         other.nixos.x = { };
       };
-      guardChild = dead { stitch.trim.g = { host }: { nixos.x = { }; }; };
+      guardChild = dead { stitch.trim.g = aspects.guard (aspects.pred.has "host") { nixos.x = { }; }; };
       topLevel = dead { lonely = { }; };
     };
     expected = {
