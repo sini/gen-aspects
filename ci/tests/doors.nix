@@ -44,7 +44,8 @@ in
     };
   };
 
-  # The three options doors `mkAspectSchema` hands back: every field optional, the set closed.
+  # The three options doors `mkAspectSchema` hands back, each set closed: every field optional except
+  # `mkNamespaceType`'s `config` (den-hoag-nwshf G1: a namespace reads the enclosing kind).
   flake.tests.doors.test-schema-options-doors = {
     expr = {
       optionValid = caught (schema.mkAspectOption { });
@@ -52,8 +53,15 @@ in
       optionUnknownRefused = !(caught (schema.mkAspectOption { notAnOption = 1; }));
       moduleValid = builtins.isFunction (schema.mkAspectModule { });
       moduleUnknownRefused = !(caught (schema.mkAspectModule { notAnOption = 1; }));
-      namespaceValid = caught (schema.mkNamespaceType { });
-      namespaceUnknownRefused = !(caught (schema.mkNamespaceType { notAnOption = 1; }));
+      namespaceValid = caught (schema.mkNamespaceType { config = { }; });
+      namespaceConfigRequired = !(caught (schema.mkNamespaceType { }));
+      namespaceUnknownRefused =
+        !(caught (
+          schema.mkNamespaceType {
+            config = { };
+            notAnOption = 1;
+          }
+        ));
     };
     expected = {
       optionValid = true;
@@ -62,6 +70,7 @@ in
       moduleValid = true;
       moduleUnknownRefused = true;
       namespaceValid = true;
+      namespaceConfigRequired = true;
       namespaceUnknownRefused = true;
     };
   };

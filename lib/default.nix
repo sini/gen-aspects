@@ -28,7 +28,7 @@ let
   flatten = import ./flatten.nix; # dep-free bare value
   factsModule = import ./facts.nix {
     inherit prelude;
-    inherit (types) includesDefault;
+    inherit (types) includesDefault keyCategory hasClassContent;
   };
   guardModule = import ./guard.nix { inherit prelude merge; };
   instanceModule = import ./instance.nix {

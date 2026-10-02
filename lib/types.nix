@@ -46,9 +46,14 @@ let
   # (ADR-0034; ADR-0025 item 1). gen-schema's `constructionRelation` decides that, per component,
   # over the cnf's construction (lib/cnf.nix `cnfConstruction`): the one implementation gen-schema's
   # own per-construction types use.
+  # `minted` adds components beside the cnf's: a freeform position's `nesting` (below), which a type
+  # at a declaration site does not state, so that type's construction is the cnf's alone.
   cnfFunctor =
-    name: cnf: self:
-    schema.constructionRelation name (cnfConstruction cnf) self;
+    name: cnf: minted: self:
+    let
+      c = cnfConstruction cnf;
+    in
+    schema.constructionRelation name (c // { minted = c.minted // minted; }) self;
   doors = import ./require-wrapped-closure.nix;
   t = merge.types;
 
@@ -95,9 +100,9 @@ let
   # `den-hoag-lwbb1` (first-order guard bodies), with ADR-0013's closure hatch, `wrapFn`,
   # `wrapGatedFn` and `deferIncludeResolution`.
   doorArgs =
-    cnf: loc: defs:
+    sub: loc: defs:
     let
-      n = (aspectSubmodule cnf).nests;
+      n = sub.nests;
     in
     {
       modules = n.modules ++ map n.entry defs;
@@ -114,7 +119,7 @@ let
   # applies it to a context, each def's guard closure is applied and the results merge through the
   # aspectSubmodule (deferred resolution).
   wrapGuardFn =
-    cnf: loc: defs:
+    sub: cnf: loc: defs:
     let
       at = "aspect `${prelude.concatStringsSep "." loc}`";
       contextOf = doors.requireContextOf cnf.entityKinds;
@@ -129,7 +134,7 @@ let
       apply =
         fnArgs:
         (merge.evalModuleTree (
-          doorArgs cnf (loc ++ [ "<function body>" ]) (
+          doorArgs sub (loc ++ [ "<function body>" ]) (
             map (d: {
               inherit (d) file;
               value = doors.requireAspectContent "aspectType" at (mkIsModuleFn cnf) (d.value (d.door fnArgs));
@@ -165,7 +170,7 @@ let
       apply =
         fnArgs:
         (merge.evalModuleTree (
-          doorArgs cnf
+          doorArgs (aspectSubmodule cnf)
             [ name "<function body>" ]
             [
               {
@@ -263,12 +268,28 @@ let
       other:
       let
         merged = if builtins.isAttrs other then typeMerge (other.functor or null) else null;
+        # A per-cnf type at a freeform position states it in its payload (`cnfRelation`); two operands
+        # of one name that differ only there are told apart by it.
+        positionOf =
+          f:
+          if builtins.isAttrs f && builtins.isAttrs (f.payload or null) then
+            f.payload.position or null
+          else
+            null;
+        mine = positionOf functor;
+        theirs = if builtins.isAttrs other then positionOf (other.functor or null) else null;
+        at =
+          p:
+          if mine == null && theirs == null then
+            ""
+          else
+            " at ${if p == null then "a declared position" else p}";
       in
       if merged == null then
         {
-          refused = "`${name}' and `${
+          refused = "`${name}'${at mine} and `${
             if builtins.isAttrs other then other.name or "<unnamed>" else builtins.typeOf other
-          }', which the first type's own `functor' does not reconcile";
+          }'${at theirs}, which the first type's own `functor' does not reconcile";
         }
       else
         { inherit merged; };
@@ -281,12 +302,19 @@ let
   # telling an empty partner list apart would force it, and a list read from `config` may not be
   # forced while declarations fold (ADR-0033).
   cnfRelation =
-    name: cnf: rebuild: self:
+    name: cnf: minted: rebuild: self:
     let
-      construction = cnfFunctor name cnf self;
+      construction = cnfFunctor name cnf minted self;
       functor = construction // {
         payload = construction.payload // {
           modules = prelude.genAttrs mergedKeys (k: cnf.${k});
+          position =
+            if minted ? nesting then
+              "the freeform slot ${
+                if minted.nesting.deep then "nested below" else "of"
+              } `${merge.showOption minted.nesting.anchor}`"
+            else
+              null;
         };
         binOp =
           a: b:
@@ -331,9 +359,10 @@ let
       rebuild,
       dispatch,
       declares ? _prefix: { },
+      minted ? { },
     }:
     let
-      rel = cnfRelation name cnf rebuild self;
+      rel = cnfRelation name cnf minted rebuild self;
       choose = loc: defs: (dispatch loc defs).member or null;
       foldWith =
         foldMember: loc: defs:
@@ -405,12 +434,22 @@ let
   # Palmer's flat type. One type, dispatch in merge, no recursive type construction.
   # A union (above) over its two nesting members: the plain aspect submodule, and the element that
   # coerces a function definition among several to `{ includes = [ f ]; }`.
-  aspectType =
-    cnf:
+  #
+  # `nesting` is the position's relation to its nearest DECLARATION SITE, carried by the type rather
+  # than read off the path (den-hoag-nwshf). `null`: the position is itself declared, which is every
+  # aspect-typed position a caller writes (the container root, an `includes` element, an option or
+  # facet typed `aspectType`). `{ anchor; deep; }`: the position is an element of an aspect
+  # submodule's FREEFORM slot, the one place an undeclared key nests (`aspectSubmoduleAt`), where
+  # `anchor` is the declared aspect's own loc and `deep` says the enclosing aspect was itself reached
+  # through the freeform slot. A scalar or list at a `deep` position is the orphan leaf `orphanLeaf`
+  # refuses; how the key is spelled plays no part.
+  aspectType = cnf: aspectTypeAt cnf null;
+  aspectTypeAt =
+    cnf: nesting:
     let
-      sub = aspectSubmodule cnf;
+      sub = aspectSubmoduleAt cnf nesting;
     in
-    aspectTypeOver cnf [
+    aspectTypeOver cnf nesting [
       sub
       (entryCoerced sub (
         d:
@@ -426,7 +465,7 @@ let
       ))
     ];
   aspectTypeOver =
-    cnf: alternatives:
+    cnf: nesting: alternatives:
     let
       sub = builtins.elemAt alternatives 0;
       coerced = builtins.elemAt alternatives 1;
@@ -495,7 +534,7 @@ let
         loc: defs:
         if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
-            { value = merge.mergeDefaultOption loc defs; }
+            { value = orphanLeaf loc (merge.mergeDefaultOption loc defs); }
           else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
             { value = mkGuardCarrier loc defs; }
           else
@@ -528,16 +567,57 @@ let
             # Guard function — wrap as inspectable functor for pipeline resolution
             # (analogy to Reynolds defunctionalization, not the literal transform).
             # Palmer §5.1: name + meta from loc for tracing/diagramming.
-            { value = wrapGuardFn cnf loc defs; }
+            { value = wrapGuardFn sub cnf loc defs; }
           else if builtins.isAttrs v then
             { member = sub; }
           else
-            { value = (prelude.last defs).value; };
+            { value = orphanLeaf loc (prelude.last defs).value; };
+      # A scalar or list at a `deep` freeform position (above) is neither class content (no class key
+      # declared it) nor an aspect (it has no body), and nothing gave it a meaning: refused by name,
+      # catchably (ADR-0025 item 1). `null` passes: it is this library's representation of absence.
+      orphanLeaf =
+        loc: v:
+        if nesting == null || !nesting.deep || v == null then v else throw (orphanLeafRefusal loc v);
+      orphanLeafRefusal =
+        loc: v:
+        let
+          inherit (nesting) anchor;
+          # The undeclared keys between the declared aspect and the leaf: each one nested an aspect. A
+          # guard closure's body segment (`wrapGuardFn`) is a position, not a key.
+          run = builtins.filter (k: k != "<function body>") (
+            builtins.genList (i: builtins.elemAt loc (builtins.length anchor + i)) (
+              builtins.length loc - builtins.length anchor - 1
+            )
+          );
+          # The declared class keys in full, rendered from `keySemantics` and never restated: no
+          # edit-distance "did you mean" (`lib/cnf.nix` `cnfRefusal`, the same reasoning).
+          classKeys = builtins.attrNames (
+            prelude.filterAttrs (_: e: builtins.isAttrs e && (e.category or null) == "class") cnf.keySemantics
+          );
+          # The extension route is named only where this type reads extensions (`cnf.schemaDefs`).
+          remedy =
+            if cnf.schemaDefs != null then
+              "Declare the key — a keySemantics class/channel/facet, or a schema extension "
+              + "`schema.aspect.options.<key>` — or correct its spelling."
+            else
+              "Declare the key as a keySemantics class/channel/facet (this aspect type reads no schema "
+              + "extension; `mkAspectModule` threads them), or correct its spelling.";
+        in
+        "gen-aspects: aspect `${merge.showOption anchor}`: orphan leaf at `${merge.showOption loc}` "
+        + "(a value of type ${builtins.typeOf v} below the undeclared key path `${merge.showOption run}` "
+        + "is neither class content nor an aspect). "
+        + remedy
+        + " Declared class keys: ${
+           if classKeys == [ ] then "none" else builtins.concatStringsSep ", " classKeys
+         }.";
     in
     mkUnion "aspect" cnf {
       inherit alternatives dispatch;
-      recarry = c: aspectTypeOver cnf c.alternatives;
-      rebuild = aspectType;
+      # A freeform position's nesting is distinguishing content (it decides `orphanLeaf`), so it
+      # enters the construction; a declared position states none, and its construction is the cnf's.
+      minted = if nesting == null then { } else { inherit nesting; };
+      recarry = c: aspectTypeOver cnf nesting c.alternatives;
+      rebuild = c: aspectTypeAt c nesting;
       # The sub-option protocol is answered by the branch that declares options: every attrset and
       # module-function aspect merges through `aspectSubmodule`, so its option set IS this type's.
       # The guard and wrapped-fn branches declare none (a function-bodied fragment is opaque before
@@ -579,18 +659,20 @@ let
   # A union (above) over the two aspect types it can pick: this cnf's on the recursive-closed arm, and
   # the ungated one on a listed freeform key. The pick reads `loc`, so the same definitions give
   # different members by key.
+  # Always a freeform position, so it carries its members' `nesting` (`aspectType`, above).
   gatedFreeformElem =
-    cnf:
-    gatedFreeformElemOver cnf [
-      (aspectType cnf)
-      (aspectType (extendCnf cnf { closedKeys = false; }))
+    cnf: nesting:
+    gatedFreeformElemOver cnf nesting [
+      (aspectTypeAt cnf nesting)
+      (aspectTypeAt (extendCnf cnf { closedKeys = false; }) nesting)
     ];
   gatedFreeformElemOver =
-    cnf: alternatives:
+    cnf: nesting: alternatives:
     mkUnion "gatedFreeformKey" cnf {
       inherit alternatives;
-      recarry = c: gatedFreeformElemOver cnf c.alternatives;
-      rebuild = gatedFreeformElem;
+      minted = { inherit nesting; };
+      recarry = c: gatedFreeformElemOver cnf nesting c.alternatives;
+      rebuild = c: gatedFreeformElem c nesting;
       dispatch =
         loc: defs:
         let
@@ -789,8 +871,11 @@ let
   # cnf.aspectModules still extends with pipeline-specific options AND carries gen-schema's
   # __defsModule seam (schema.nix injects config.schema.aspect.__defsModule into it), so it MUST
   # stay live in `imports` even though per-key channels no longer ride it.
-  aspectSubmodule =
-    cnf:
+  # `nesting` is the aspect's own position (`aspectType`, above): its freeform slot's elements are
+  # anchored at this aspect's loc when it is declared, and inherit its anchor, `deep`, when it is not.
+  aspectSubmodule = cnf: aspectSubmoduleAt cnf null;
+  aspectSubmoduleAt =
+    cnf: nesting:
     let
       ks = cnf.keySemantics;
       # categoryOf e : "class" | "channel" | "facet" | null — the TOTAL classifier the option
@@ -857,7 +942,21 @@ let
         ...
       }:
       {
-        freeformType = t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem cnf else aspectType cnf);
+        freeformType =
+          let
+            below =
+              if nesting == null then
+                {
+                  anchor = prefix;
+                  deep = false;
+                }
+              else
+                {
+                  inherit (nesting) anchor;
+                  deep = true;
+                };
+          in
+          t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem cnf below else aspectTypeAt cnf below);
         config._module.args.aspect = config;
         # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
         # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks

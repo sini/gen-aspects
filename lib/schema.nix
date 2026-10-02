@@ -120,6 +120,17 @@ in
             inherit mkType;
           };
     in
+    let
+      # ONE builder for the `schemaDefs` term, read by both module doors (den-hoag-nwshf G1).
+      schemaDefsOf = config: {
+        term = "config.schema.aspect.__defsModule";
+        module = {
+          imports = prelude.optional (
+            config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
+          ) config.schema.aspect.__defsModule;
+        };
+      };
+    in
     {
       schemaOption = schemaOpt;
 
@@ -167,23 +178,25 @@ in
                   # from caller defs on the schema kind entry (e.g. options.priority).
                   # Stated as a term, not appended to `aspectModules`: the type relation must
                   # not read `config` (lib/cnf.nix `schemaDefs`).
-                  schemaDefs = {
-                    term = "config.schema.aspect.__defsModule";
-                    module = {
-                      imports = prelude.optional (
-                        config ? schema && config.schema ? aspect && config.schema.aspect ? __defsModule
-                      ) config.schema.aspect.__defsModule;
-                    };
-                  };
+                  schemaDefs = schemaDefsOf config;
                 }
               );
             };
           }
         );
 
+      # `config` (required) is the enclosing evaluation's config: a namespace's aspects are of the one
+      # `aspect` kind, so they read that evaluation's kind extensions, the same `schemaDefs` term
+      # `mkAspectModule` threads (ADR-0012 clause 1: a kind is one declared datum).
       mkNamespaceType =
         opts:
-        builtins.seq (checkedOpts "mkNamespaceType" [ ] opts) merge.submodule (
+        let
+          checked = checkedOpts "mkNamespaceType" [ "config" ] (
+            prelude.checkRequired "gen-aspects.mkAspectSchema.mkNamespaceType" [ "config" ] opts
+          );
+          defs.schemaDefs = schemaDefsOf checked.config;
+        in
+        builtins.seq checked merge.submodule (
           { name, ... }:
           {
             options.schema = merge.mkOption {
@@ -199,7 +212,7 @@ in
               type = t.lazyAttrsOf t.raw;
             };
             # aspectsRoot (re-rooting) → aspect identity is relative to the namespace's aspect root (A-IDENT 2b).
-            freeformType = aspectsRoot (extendCnf cnf { providerPrefix = [ name ]; });
+            freeformType = aspectsRoot (extendCnf cnf ({ providerPrefix = [ name ]; } // defs));
           }
         );
 

@@ -44,12 +44,20 @@
 # by construction, and the query libraries are needed to QUERY the graph, never to STATE it. Routing
 # one through gen-aspects would additionally hand the substrate a second route to the evaluator,
 # which is the engine drift one gen-scope exists to prevent (ADR-0006, ADR-0008).
-{ prelude, includesDefault }:
+{
+  prelude,
+  includesDefault,
+  keyCategory,
+  hasClassContent,
+}:
 let
   inherit (import ./cnf.nix) checkedEntry;
   inherit (import ./walk.nix) walk isGuardLeaf;
 
   render = prelude.concatStringsSep "/";
+  # `builtins.warn` where the evaluator has it (it honours `abort-on-warn`), a trace otherwise
+  # (gen-schema `lib/entry-type.nix`, the same binding).
+  warn = builtins.warn or (msg: v: builtins.trace "evaluation warning: ${msg}" v);
 
   # The refusal renders from a NAMED binding rather than being spelled at its `throw`. Nix cannot
   # recover a thrown message through `tryEval`, so the CI asserts catchability on the real path and
@@ -397,6 +405,27 @@ rec {
       # spells) to its origin-qualified node id. A consumer resolving a member by name reads it here
       # instead of re-rendering `origin ++ [ key ]`, which would be a second source for the id.
       nodeIdOf = builtins.mapAttrs (k: _: qualify k) localNodes;
+
+      # THE DELIVERY RELATION (den-hoag-ouuwg): does a node's SUBTREE deliver? A node delivers when it
+      # carries content on a DECLARED class key (`keyCategory` + `hasClassContent`, ADR-0028's Rider:
+      # declared content, never shape), a non-empty `includes`, or a guard leaf (opaque until
+      # discharged, so it may deliver), or when a child delivers. Total over `nodes`. `graphFacts`
+      # forces `deadNested`, and through it the entry of every nested node, when its record is forced
+      # (below); `graphCore`'s other reader, `instancesFor`, never reads either and pays nothing.
+      childrenOf = builtins.groupBy (id: parentOf.${id}) (
+        builtins.filter (id: parentOf.${id} != null) nodes
+      );
+      ownDelivers =
+        v:
+        isGuardLeaf v
+        || (v.includes or includesDefault) != [ ]
+        || builtins.any (k: keyCategory cnf k == "class" && hasClassContent v.${k}) (builtins.attrNames v);
+      deliversOf = builtins.mapAttrs (
+        id: v: ownDelivers v || builtins.any (c: deliversOf.${c}) (childrenOf.${id} or [ ])
+      ) nodeData;
+      # The dead-nested view (ADR-0012 clause 2: a view has a name and a defining query): the nested
+      # aspects whose subtree delivers nothing.
+      deadNested = builtins.filter (id: parentOf.${id} != null && !deliversOf.${id}) nodes;
     in
     {
       facts = {
@@ -409,12 +438,33 @@ rec {
           unresolvedIncludesOf
           nodeIdOf
           nodeData
+          deliversOf
+          deadNested
           ;
       };
       inherit sitesOfEntry;
     };
 
-  graphFacts = checkedEntry (cnf: aspects: (graphCore cnf aspects).facts);
+  # A non-empty dead-nested view is SAID, not only published (ADR-0025 item 1): the record warns once
+  # each time it is forced, so every reader of `graphFacts` sees it. `flatten` and `instancesFor` do
+  # not read this record and do not warn.
+  graphFacts = checkedEntry (
+    cnf: aspects:
+    let
+      inherit (graphCore cnf aspects) facts;
+    in
+    if facts.deadNested == [ ] then
+      facts
+    else
+      warn (
+        "gen-aspects: nested aspect(s) ${
+          prelude.concatStringsSep ", " (map (id: "`${id}`") facts.deadNested)
+        } deliver nothing (no declared class content, no includes, no delivering child). A misspelt "
+        + "class key is corrected at its spelling. Intended placeholder taxonomy has no silencing "
+        + "remedy, and the warning is expected for it: declaring the key would make it an option, "
+        + "not a node."
+      ) facts
+  );
 
   # `includeSitesOfEntry cnf aspects entry` → the include sites of any aspect value against this
   # tree, by the classification `graphFacts` publishes as `includeSitesOf` (one function, two

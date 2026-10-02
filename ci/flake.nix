@@ -110,6 +110,9 @@
           # Unread here: the suite takes only the refusal renderer, and the published surface (pinned in
           # AGENTS.md) does not carry the default. `graphFacts` itself reads `types.includesDefault`.
           includesDefault = [ ];
+          # Unread here too: only `graphFacts`' `deliversOf` reads them.
+          keyCategory = _: _: null;
+          hasClassContent = _: false;
         };
         # The identity module, for the guarded function-scan behind `guardKey`. That scan is reachable
         # from the public surface only through a key, and a key is a string: out there, a body whose

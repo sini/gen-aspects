@@ -375,8 +375,12 @@ in
       test-mk-aspect-module-unknown = thrown (schema.mkAspectModule { notAnOption = 1; }) (
         unknown "gen-aspects.mkAspectSchema.mkAspectModule" "'providerPrefix'"
       );
-      test-mk-namespace-type-unknown = thrown (schema.mkNamespaceType { notAnOption = 1; }) (
-        unknown "gen-aspects.mkAspectSchema.mkNamespaceType" ""
+      test-mk-namespace-type-unknown = thrown (schema.mkNamespaceType {
+        config = { };
+        notAnOption = 1;
+      }) (unknown "gen-aspects.mkAspectSchema.mkNamespaceType" "'config'");
+      test-mk-namespace-type-config-required = thrown (schema.mkNamespaceType { }) (
+        exactly "gen-aspects.mkAspectSchema.mkNamespaceType: required field 'config' is missing (required: 'config') (in prelude.checkRequired)"
       );
     };
 
@@ -567,6 +571,85 @@ in
               + "content key."
             )
           );
+    };
+
+  # den-hoag-nwshf: a scalar or list at a freeform position whose enclosing aspect was itself reached
+  # through the freeform slot is an orphan leaf, refused by name with its full key path, the declared
+  # aspect it hangs below, and the declared class keys in full (no edit-distance suggestion). The
+  # remedy names the extension route only where the type reads extensions.
+  flake.testsError.orphan-leaf-names-path =
+    let
+      cnf.keySemantics.nixos.category = "class";
+      at =
+        body:
+        (mkSchemaEval (
+          cnf
+          // {
+            modules = [ { config.aspects.hem = body; } ];
+          }
+        )).config.aspects.hem;
+      # The fixture's two classes (`mkSchemaEval`) and this cnf's: the declared class keys in full.
+      declare =
+        "Declare the key — a keySemantics class/channel/facet, or a schema extension "
+        + "`schema.aspect.options.<key>` — or correct its spelling. Declared class keys: classOne, classTwo, nixos.";
+      # The include element's own segment, read from the library rather than restated, so the pin
+      # cannot drift with gen-merge's naming of a list element (den-hoag-26thl).
+      seg = (builtins.head (at { includes = [ { } ]; }).includes).name;
+      show = genMerge.showOption;
+      viaOption =
+        (genMerge.evalModuleTree {
+          modules = [
+            { options.aspects = (aspects.mkAspectSchema cnf).mkAspectOption { }; }
+            { config.aspects.hem.trim.x = 1; }
+          ];
+        }).config.aspects.hem;
+    in
+    {
+      test-names-the-class-keys = thrown (at { nixso.boot.enable = true; }).nixso.boot.enable (
+        exactly (
+          "gen-aspects: aspect `hem`: orphan leaf at `hem.nixso.boot.enable` (a value of type bool below "
+          + "the undeclared key path `nixso.boot` is neither class content nor an aspect). "
+          + declare
+        )
+      );
+      test-list-leaf = thrown (at { trim.x = [ "a" ]; }).trim.x (
+        exactly (
+          "gen-aspects: aspect `hem`: orphan leaf at `hem.trim.x` (a value of type list below the "
+          + "undeclared key path `trim` is neither class content nor an aspect). "
+          + declare
+        )
+      );
+      test-include-element-anchors =
+        thrown (builtins.head (at { includes = [ { sub.x = 1; } ]; }).includes).sub.x
+          (
+            exactly (
+              "gen-aspects: aspect `${
+                show [
+                  "hem"
+                  "includes"
+                  seg
+                ]
+              }`: orphan leaf at `${
+                show [
+                  "hem"
+                  "includes"
+                  seg
+                  "sub"
+                  "x"
+                ]
+              }` (a value of type int below the undeclared key path `sub` is neither class content "
+              + "nor an aspect). "
+              + declare
+            )
+          );
+      test-option-door-names-keysemantics = thrown viaOption.trim.x (
+        exactly (
+          "gen-aspects: aspect `hem`: orphan leaf at `hem.trim.x` (a value of type int below the "
+          + "undeclared key path `trim` is neither class content nor an aspect). Declare the key as a "
+          + "keySemantics class/channel/facet (this aspect type reads no schema extension; "
+          + "`mkAspectModule` threads them), or correct its spelling. Declared class keys: nixos."
+        )
+      );
     };
 
   # den-hoag-q17cc · a construction formal written at the kind entry's top level. Before the door each

@@ -33,6 +33,13 @@ in
       default = 50;
       description = "Aspect priority for ordering.";
     };
+    # Per-aspect `tags` declared as a schema EXTENSION, so it is a typed instance option, never the
+    # body grammar's freeform. `cnf.collections.tags` is the KIND-level plane.
+    options.tags = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Aspect tags.";
+    };
     options.tier = lib.mkOption {
       type = lib.types.str;
       default = "unspecified";
