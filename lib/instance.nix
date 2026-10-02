@@ -365,8 +365,8 @@ in
       admits = t: a: carriesAll requiredOf.${a} t;
       # Whether a tuple both carries `fanOutKeys` and admits: one test over the union, built once per
       # aspect, so a tuple costs the single test the unsplit binding paid. It equals `fanOutKeys` under
-      # either O3 arm (both are supersets of the required formals); under any other `fanOutKeys` it still
-      # keeps an edge from a tuple that cannot mint.
+      # either O3 arm (both are supersets of the required formals); under any other `fanOutKeys` the union
+      # still holds the required formals, so no tuple that cannot mint gets an edge.
       fansAndAdmits = builtins.mapAttrs (a: ks: unique (ks ++ requiredOf.${a})) fanOutKeys;
       aspectIdOf = builtins.mapAttrs (_: aspectId origin) nodeData;
 
