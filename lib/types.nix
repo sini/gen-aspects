@@ -555,9 +555,19 @@ let
           file = (builtins.head defs).file or "<unknown>";
         };
       };
+      # Design Section 3: a context closure handed to gen-aspects is refused by name, naming the gen-rules
+      # door and the remedy (ADR-0025). gen-aspects holds terms only.
+      bareClosureRefusal =
+        loc:
+        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a context closure reached a gen-aspects-typed "
+        + "position. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the "
+        + "aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, "
+        + "or write it as a guard term (`guard (pred.has <coordinate>) <body>`).";
       dispatch =
         loc: defs:
-        if builtins.length defs != 1 then
+        if builtins.any isGuardFnDef defs then
+          { value = throw (bareClosureRefusal loc); }
+        else if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
             { value = orphanLeaf loc (merge.mergeDefaultOption loc defs); }
           else if builtins.any (d: isGuardRecordDef d || isGuardFnDef d) defs then
@@ -589,10 +599,7 @@ let
           else if builtins.isFunction v && isModuleFn v then
             { member = sub; }
           else if builtins.isFunction v then
-            # Guard function — wrap as inspectable functor for pipeline resolution
-            # (analogy to Reynolds defunctionalization, not the literal transform).
-            # Palmer §5.1: name + meta from loc for tracing/diagramming.
-            { value = wrapGuardFn sub cnf loc defs; }
+            { value = throw (bareClosureRefusal loc); }
           else if builtins.isAttrs v then
             { member = sub; }
           else
