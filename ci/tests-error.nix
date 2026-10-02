@@ -536,11 +536,12 @@ in
       test-open-gate = thrown (gated { } { nixso.boot = { }; }).nixso (
         exactly "gen-aspects: aspect `hem`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
       );
-      # An inline `includes` element is gated by the same submodule, and is named by its position.
+      # An inline `includes` element is gated by the same submodule, and is named by its position:
+      # nixpkgs `listOf`'s segment, `[definition n-entry m]`, which gen-merge's `listOf` folds it at.
       test-open-gate-include =
         thrown (builtins.head (gated { } { includes = [ { nixso.x = 1; } ]; }).includes).nixso
           (
-            exactly "gen-aspects: aspect `hem.includes.0`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
+            exactly "gen-aspects: aspect `hem.includes.[definition 1-entry 1]`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
           );
       test-recursive-gate = thrown (gated { recursiveClosed = true; } { ns.nixso = "x"; }).ns.nixso (
         exactly (
