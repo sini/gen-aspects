@@ -24,6 +24,7 @@
   genMemoSrc,
   genScopeSrc,
   genAlgebraSrc,
+  genAspectsAlgebraSrc,
   # A trace label generated fresh per run by the runner, which counts its lines on stderr.
   label ? "",
 }:
@@ -73,6 +74,7 @@ let
   # merge instance and the gen-schema instance above.
   ga = import libSrc {
     inherit prelude identity;
+    algebra = import "${genAspectsAlgebraSrc}/lib";
     merge = spiedDoored;
     schema = gs;
   };

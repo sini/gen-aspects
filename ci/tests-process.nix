@@ -33,6 +33,9 @@
           export genTypesSrc=${inputs.gen-merge.inputs.gen-types} genMemoSrc=${inputs.gen-merge.inputs.gen-memo}
           export genScopeSrc=${inputs.gen-merge.inputs.gen-scope}
           export genGraphSrc=${inputs.gen-schema.inputs.gen-graph} genAlgebraSrc=${inputs.gen-schema.inputs.gen-algebra}
+          # This library's OWN gen-algebra (its guard terms, den-hoag-lwbb1), which gen-schema's pin need
+          # not carry: the same input `ci/flake.nix` builds `aspects` with.
+          export genAspectsAlgebraSrc=${inputs.gen-algebra}
           # A fresh working directory per run, as gen-scope's runner needs (den-hoag-jutgv).
           TMPDIR=$(mktemp -d) out=$(mktemp)
           export TMPDIR out
@@ -71,6 +74,7 @@
               --argstr genMemoSrc "$genMemoSrc" \
               --argstr genScopeSrc "$genScopeSrc" \
               --argstr genAlgebraSrc "$genAlgebraSrc" \
+              --argstr genAspectsAlgebraSrc "$genAspectsAlgebraSrc" \
               --argstr label "$label" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
