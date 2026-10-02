@@ -562,7 +562,10 @@ let
         "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a context closure reached a gen-aspects-typed "
         + "position. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the "
         + "aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, "
-        + "or write it as a guard term (`guard (pred.has <coordinate>) <body>`).";
+        + "or write it as a guard term (`guard (pred.has <coordinate>) <body>`). A closure inside a module "
+        + "function's result at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`) is "
+        + "past the framework's surface already, and no first-order route reaches it there (owner reading S1, "
+        + "pending): write the closure outside the module function.";
       dispatch =
         loc: defs:
         if builtins.any isGuardFnDef defs then
