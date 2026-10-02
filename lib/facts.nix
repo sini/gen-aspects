@@ -139,8 +139,8 @@ rec {
       # container-relative half is the walk position the registry already keys on.
       #
       # ★ THE ID IS DELIBERATELY NOT `identity.key`, AND THE DIFFERENCE IS NOT COSMETIC. That
-      # function's `__guard` arm returns `guardKey`, which prefixes a located guard
-      # (`"guard-loc:" + …`) or CONTENT-ADDRESSES a bodied one (`"guard:<pred>:<hash>"`) — so a
+      # function's `__guard` arm returns `guardKey`, which CONTENT-ADDRESSES a guard (`"guard:<hash>"`,
+      # the mint over its condition and body; a carrier's function fragment `"guard-loc:" + …`) — so a
       # guard record's minted key is not its position at all, and building the id from it would
       # move every guard node's name off its walk position. ADR-0016 ruling 5 rules the separation
       # directly: an identifier is not an identity, and `id_hash` — which for this library IS

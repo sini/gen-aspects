@@ -32,11 +32,17 @@
   merge,
   schema,
   hashIdentity,
+  T,
 }:
 let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
-  inherit (import ./cnf.nix) extendCnf checkedEntry mergedKeys;
+  inherit (import ./cnf.nix)
+    extendCnf
+    checkedEntry
+    mergedKeys
+    entityKindsOf
+    ;
   cnfConstruction = (import ./cnf.nix).cnfConstruction schema.keySemanticsRecords;
 
   # The merge relation of a type built per `cnf` (`aspectType`, `gatedFreeformElem`,
@@ -59,6 +65,17 @@ let
 
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
   mkIsModuleFn = cnf: canTake.upTo cnf.moduleArgs;
+
+  # gen-aspects' instance of the one term algebra (lib/guard-term.nix), over this file's own
+  # classification surface, so a guard's module slots are exactly the keys `keyCategory` calls classes.
+  GT = import ./guard-term.nix {
+    inherit
+      T
+      hashIdentity
+      keyCategory
+      mkIsModuleFn
+      ;
+  };
 
   # The `__isWrappedFn` functor record — ONE construction site for the inspectable raw-closure wrap
   # (Reynolds 1972 by analogy, per the header: the closure is preserved inside `__functor`, not
@@ -122,7 +139,7 @@ let
     sub: cnf: loc: defs:
     let
       at = "aspect `${prelude.concatStringsSep "." loc}`";
-      contextOf = doors.requireContextOf cnf.entityKinds;
+      contextOf = doors.requireContextOf (entityKindsOf cnf);
       # Each definition's context door, classified once here, never per application.
       doored = map (d: {
         inherit (d) file value;
@@ -163,7 +180,7 @@ let
     cnf: name: fn:
     let
       at = "`${name}`";
-      door = doors.requireContextOf cnf.entityKinds "wrapFn" at fn;
+      door = doors.requireContextOf (entityKindsOf cnf) "wrapFn" at fn;
     in
     builtins.seq (doors.requireClosure "wrapFn" at fn) (mkWrapped {
       # INTERIM door (den-hoag-n6dh7 OQ10 (i)); retired by den-hoag-lwbb1. See `doorArgs`.
@@ -483,10 +500,18 @@ let
       toFragment =
         d:
         if isGuardRecordDef d then
-          {
-            kind = "record";
-            inherit (d.value) pred body;
-          }
+          (
+            let
+              g = GT.checkGuard cnf "aspect `${
+                prelude.concatStringsSep "." (d.loc or [ "<guard-carrier>" ])
+              }`" d.value;
+            in
+            {
+              kind = "record";
+              guard = g;
+              inherit (g) condition body __mint;
+            }
+          )
         else if isGuardFnDef d then
           # A function-bodied fragment is OPAQUE before discharge. Flatten and every projection
           # over the aspect tree cannot read into it — not the keys it contributes, not its
@@ -553,7 +578,7 @@ let
             # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
             # not hashed by guardKey).
             {
-              value = v // {
+              value = GT.checkGuard cnf "aspect `${prelude.concatStringsSep "." loc}`" v // {
                 name = prelude.last loc;
                 meta = (v.meta or { }) // {
                   inherit loc;
@@ -1227,6 +1252,7 @@ in
     aspectId
     hasClassContent
     includesDefault
+    GT
     ;
   structuralKeys = nativeStructuralKeys;
 }

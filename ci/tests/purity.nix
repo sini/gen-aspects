@@ -165,6 +165,7 @@ in
       "lib/default.nix"
       "lib/facts.nix"
       "lib/flatten.nix"
+      "lib/guard-term.nix"
       "lib/guard.nix"
       "lib/identity.nix"
       "lib/instance.nix"

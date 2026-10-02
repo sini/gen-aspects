@@ -5,6 +5,7 @@
     gen-merge.url = "github:sini/gen-merge";
     gen-schema.url = "github:sini/gen-schema";
     gen-identity.url = "github:sini/gen-identity";
+    gen-algebra.url = "github:sini/gen-algebra";
     # nixpkgs is the CI runner's dependency (nix-unit harness, treefmt) and supplies the `lib` the
     # test modules use for assertions. The library itself (../lib) is nixpkgs-lib-free
     # (ci/tests/purity.nix enforces this); it is driven via gen-merge's evalModuleTree, not evalModules.
@@ -18,6 +19,7 @@
       gen-merge,
       gen-schema,
       gen-identity,
+      gen-algebra,
       nixpkgs,
       ...
     }:
@@ -25,11 +27,13 @@
       genMerge = gen-merge.lib;
       genSchema = gen-schema.lib;
       genIdentity = gen-identity.lib;
+      genAlgebra = gen-algebra.lib;
       aspects = import ../lib {
         prelude = gen-prelude.lib;
         merge = genMerge;
         schema = gen-schema.lib;
         identity = gen-identity.lib;
+        algebra = genAlgebra;
       };
       # The class fixture, written in the library's own keySemantics shape. The harness used to take a
       # `classes` knob and lower it, which is how a spelling the published API had RETIRED stayed
@@ -92,6 +96,7 @@
           genMerge
           genSchema
           genIdentity
+          genAlgebra
           ;
         # `prelude` reaches the suite because `tests/entry.nix` applies the STANDALONE root entry
         # with explicit arguments — which is what keeps that cell pure, since supplying every
@@ -120,6 +125,19 @@
         # answer with the same source-position fallback. The cells that must tell those apart take the
         # scan itself through this channel, and its refusal renderer with it.
         identityInternals = import ../lib/identity.nix { prelude = gen-prelude.lib; };
+        # The guard-term instance's depth budget, so the cells straddling it read the bound rather than
+        # restate it. Only the constant is read; the instance's own inputs are never forced.
+        guardTermInternals = {
+          inherit
+            (import ../lib/guard-term.nix {
+              T = null;
+              hashIdentity = null;
+              keyCategory = null;
+              mkIsModuleFn = null;
+            })
+            maxLiftDepth
+            ;
+        };
       };
       # Cells whose subject is an error MESSAGE: outside `testModules`, read by
       # `nix-unit --flake ./ci#testsError` (see the file's header). `tests-process.nix` is a PROCESS

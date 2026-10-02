@@ -1,6 +1,8 @@
 # The structural function-scan behind `guardKey` REFUSES a body it cannot finish walking, instead of
 # aborting inside it (lib/identity.nix, `hasFn`) — and so does the guard/body CHASE one level up, for
 # a guard record whose body recurses back to a guard already on the chain (`guardChainMaxDepth`).
+# A placed guard's own identity is the term mint (den-hoag-lwbb1): its lift refuses a cyclic or
+# over-deep body by name (`guard-depth`, `maxLiftDepth`), and the cells on that path say so.
 #
 # Measured on the shipped definition before the guard existed, each arm its own `nix eval` with the
 # exit read unpiped: a cyclic attrset, a list containing itself, and a derivation value ALL reached
@@ -22,6 +24,8 @@
 {
   aspects,
   identityInternals,
+  guardTermInternals,
+  mkSchemaEval,
   lib,
   ...
 }:
@@ -30,10 +34,12 @@ let
     hasFn
     hasFnMaxDepth
     hasFnDepthRefusal
-    bodyKey
     guardChainMaxDepth
     guardChainDepthRefusal
     ;
+  inherit (guardTermInternals) maxLiftDepth;
+  # A guard placed at an aspect position, where it meets its cnf and is checked.
+  placed = g: (mkSchemaEval { modules = [ { config.aspects.g = g; } ]; }).config.aspects.g;
 
   # REFUSED = forcing it fails CATCHABLY. The distinction this whole file exists for is invisible to a
   # cell that only reads a value: an abort takes the runner with it, a refusal returns `false` here.
@@ -90,13 +96,13 @@ let
   };
 
   # `chainOfGuards leaf n` = n guards nested around `leaf`, each wrapping the next — the GUARD-CHAIN
-  # analogue of `chainTo` above, whose depth is exactly known for straddling `guardChainMaxDepth`.
+  # analogue of `chainTo` above, whose depth is exactly known for straddling `maxLiftDepth`.
   chainOfGuards =
     leaf: n:
     builtins.foldl' (acc: _: aspects.guard aspects.pred.always acc) leaf (builtins.genList (i: i) n);
 
-  # A guard record whose body IS itself: the guardKey -> bodyKey -> guardKey chase this guard exists
-  # to catch, in its most direct shape (a length-1 cycle, not merely a deep finite chain).
+  # A guard record whose body IS itself: a cyclic body in its most direct shape (a length-1 cycle,
+  # not merely a deep finite chain).
   selfLoopGuard = aspects.guard aspects.pred.always selfLoopGuard;
 in
 {
@@ -203,69 +209,63 @@ in
     };
   };
 
+  # den-hoag-lwbb1: a guard's identity is the mint over (condition, body), defined once the guard is
+  # checked against its cnf, and the lift that builds its body term spends ONE depth budget
+  # (`maxLiftDepth`) across attrsets, lists and nested guards. A cyclic body is unbounded depth by
+  # construction, so it is REFUSED by name (`guard-depth`), catchably, where base keyed it by source
+  # position (the `guard-loc:` fallback, retired). THE CONSUMER-VISIBLE PROPERTY, on the public path
+  # the defect was found through, with the bodies it CAN answer for beside it.
   flake.tests.has-fn-guard.test-guard-key-survives-a-cyclic-body = {
-    # THE CONSUMER-VISIBLE PROPERTY, on the public path the defect was found through. Minting a key
-    # for a guard whose body is cyclic used to abort the evaluator uncatchably; it now takes the
-    # opaque-body branch — the same answer that path already gives any body it cannot content-address
-    # — and the two bodies it CAN answer for are unchanged beside it.
     expr = {
-      cyclicKey = aspects.guardKey (aspects.guard aspects.pred.always cyclic);
-      cyclicKeyDoesNotAbort = refuses (aspects.guardKey (aspects.guard aspects.pred.always cyclic));
-      inertIsStillContentAddressed = lib.hasPrefix "guard:always:" (
-        aspects.guardKey (aspects.guard aspects.pred.always inertPayload)
+      cyclicRefused = refuses (aspects.guardKey (placed (aspects.guard aspects.pred.always cyclic)));
+      inertIsStillContentAddressed = lib.hasPrefix "guard:" (
+        aspects.guardKey (placed (aspects.guard aspects.pred.always inertPayload))
       );
-      lambdaBodyStillFallsBack = lib.hasPrefix "guard-loc:" (
-        aspects.guardKey (aspects.guard aspects.pred.always lambdaPayload)
+      # A function outside a module slot is refused by name (`term-function`), never keyed by site.
+      lambdaBodyRefused = refuses (
+        aspects.guardKey (placed (aspects.guard aspects.pred.always lambdaPayload))
       );
-      # The derivation arm end to end: it used to abort here, and now content-addresses.
-      drvBodyIsContentAddressed = lib.hasPrefix "guard:always:" (
-        aspects.guardKey (aspects.guard aspects.pred.always drv)
-      );
+      # A derivation outside a class key is refused by name (`lit-payload-derivation`), catchably:
+      # the lift hands it to `lit` before any descent into its self-referential `out`.
+      drvBodyRefused = refuses (aspects.guardKey (placed (aspects.guard aspects.pred.always drv)));
     };
     expected = {
-      cyclicKey = "guard-loc:<anon>";
-      cyclicKeyDoesNotAbort = false;
+      cyclicRefused = true;
       inertIsStillContentAddressed = true;
-      lambdaBodyStillFallsBack = true;
-      drvBodyIsContentAddressed = true;
+      lambdaBodyRefused = true;
+      drvBodyRefused = true;
     };
   };
 
-  # The unguarded-walk class one level up: bodyKey's nested-guard arm dispatches straight back into
-  # guardKey with no depth accounting at all, so a self-referential guard record (body IS itself)
-  # never reaches hasFn's own budget and stack-overflows the evaluator uncatchably — measured on the
-  # shipped definition before this guard existed. THE REAL PATH: `bodyKey` never catches its own
-  # guard-chain throw (that is `guardKey`'s job, tested below), so forcing it directly is where
-  # catchability is asserted, exactly as `hasFn` is asserted directly above.
+  # The cycle one level up: a guard whose body IS itself. Refused by the same budget, catchably,
+  # beside a finite chain of the SAME shape (nested guards) that keys, so the refusal is the cycle's
+  # and not guard records' as such.
   flake.tests.has-fn-guard.test-guard-chain-cycle-refused-with-live-controls = {
     expr = {
-      selfLoopRefused = refuses (bodyKey selfLoopGuard);
-      # Control of the SAME shape — nested guards, not a bare value — so the refusal above is
-      # attributable to the cycle and not to guard records as such.
-      finiteChainWalksClean = bodyKey (chainOfGuards inertPayload 10) != null;
+      selfLoopRefused = refuses (aspects.guardKey (placed selfLoopGuard));
+      finiteChainKeys = lib.hasPrefix "guard:" (
+        aspects.guardKey (placed (chainOfGuards inertPayload 10))
+      );
     };
     expected = {
       selfLoopRefused = true;
-      finiteChainWalksClean = true;
+      finiteChainKeys = true;
     };
   };
 
+  # The SAME chain shape on both sides of `maxLiftDepth`, read from the library rather than restated.
+  # Each guard in the chain spends one level, and so does each attrset level of the leaf, so the
+  # within-budget chain carries a flat leaf.
   flake.tests.has-fn-guard.test-guard-chain-depth-budget-refuses-at-its-bound = {
-    # Same shape as `test-depth-budget-refuses-at-its-bound` above, one level up: the SAME chain
-    # shape on both sides of `guardChainMaxDepth`, read from the library rather than restated.
     expr = {
-      overBudget = refuses (bodyKey (chainOfGuards inertPayload (guardChainMaxDepth + 8)));
-      withinBudget = bodyKey (chainOfGuards inertPayload (guardChainMaxDepth - 8)) != null;
-      # …and the chain genuinely reaches the bottom of one rather than refusing early: a within-budget
-      # chain still content-addresses all the way down to the leaf.
-      withinBudgetReachesTheBottom = lib.hasPrefix "guard:always:" (
-        bodyKey (chainOfGuards inertPayload (guardChainMaxDepth - 8))
+      overBudget = refuses (aspects.guardKey (placed (chainOfGuards "leaf" (maxLiftDepth + 8))));
+      withinBudget = lib.hasPrefix "guard:" (
+        aspects.guardKey (placed (chainOfGuards "leaf" (maxLiftDepth - 8)))
       );
     };
     expected = {
       overBudget = true;
       withinBudget = true;
-      withinBudgetReachesTheBottom = true;
     };
   };
 
@@ -289,20 +289,17 @@ in
   };
 
   flake.tests.has-fn-guard.test-guard-key-survives-a-self-referential-guard = {
-    # THE CONSUMER-VISIBLE PROPERTY, on the public path the defect was found through — the RED/GREEN
-    # oracle in the same run: a guard whose body IS itself used to abort the evaluator uncatchably;
-    # it now takes the SAME opaque-body branch a lambda body already takes (RED), beside a deep-but-
-    # finite guard chain that still mints a real content hash (GREEN).
+    # THE CONSUMER-VISIBLE PROPERTY in the same run: a guard whose body IS itself is refused by name,
+    # catchably (it used to abort, then to fall back to a source position), beside a deep-but-finite
+    # guard chain that still mints a real content hash.
     expr = {
-      selfLoopKey = aspects.guardKey selfLoopGuard;
-      selfLoopKeyDoesNotAbort = !(refuses (aspects.guardKey selfLoopGuard));
-      deepFiniteChainIsContentAddressed = lib.hasPrefix "guard:always:" (
-        aspects.guardKey (chainOfGuards inertPayload (guardChainMaxDepth - 8))
+      selfLoopRefused = refuses (aspects.guardKey (placed selfLoopGuard));
+      deepFiniteChainIsContentAddressed = lib.hasPrefix "guard:" (
+        aspects.guardKey (placed (chainOfGuards "leaf" (maxLiftDepth - 8)))
       );
     };
     expected = {
-      selfLoopKey = "guard-loc:<anon>";
-      selfLoopKeyDoesNotAbort = true;
+      selfLoopRefused = true;
       deepFiniteChainIsContentAddressed = true;
     };
   };

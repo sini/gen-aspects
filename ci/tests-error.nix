@@ -14,6 +14,7 @@
   mkSchemaEval,
   genMerge,
   genIdentity,
+  genAlgebra,
   ...
 }:
 let
@@ -203,13 +204,8 @@ in
             wctx
         )
         (
-          exactly "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: string."
+          exactly "gen-aspects: cnf.entityKinds must be null, a list of coordinate names (strings), or an attrset marking each declared coordinate `true` when it is an entity kind; received: string."
         );
-    # `[ ]` would hand every context shape `{ }`; it refuses at the entry even though this vocabulary
-    # has no closure that reads a narrowed context. RED (the check only at the first read): no throw.
-    test-entity-kinds-empty = thrown (aspects.mkGuardVocab { entityKinds = [ ]; }) (
-      exactly "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: [ ]."
-    );
     # A non-string kind refuses at the entry, under a closure with formals that never reads a narrowed
     # context. RED (the check only at the first read): `{ host = "cortex"; }` is returned.
     test-entity-kinds-non-string =
@@ -235,7 +231,7 @@ in
             wctx
         )
         (
-          exactly "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: a list holding a value of type int."
+          exactly "gen-aspects: cnf.entityKinds must be null, a list of coordinate names (strings), or an attrset marking each declared coordinate `true` when it is an entity kind; received: a list holding a value of type int."
         );
     # RED: `expected a set but found a function` (TypeError, gen-merge `configOf`), uncatchable.
     test-wrapfn-self-returning = thrown ((aspects.wrapFn wcnf "n" selfF) wctx) (
@@ -431,58 +427,6 @@ in
       test-key-naming-no-node = thrown (read (_: [ { key = "no/such"; } ])) (notMember "no/such");
       test-bare-string-naming-nothing = thrown (read (_: [ "lib/bsae" ])) (
         exactly "${door}reference 'lib/bsae' names no entry of the registry (in prelude.resolve)"
-      );
-    };
-
-  # Each failure mode of a custom guard form's caller-supplied `eval` is refused BY NAME at the
-  # dispatch arm (lib/guard.nix `evalPred`). Every RED was an uncatchable interpreter abort, named in
-  # the cell's comment.
-  flake.testsError.custom-form-totality =
-    let
-      form =
-        eval: ctx:
-        let
-          gv = aspects.mkGuardVocab {
-            guardForms.f = {
-              inherit eval;
-              reads = [ ];
-            };
-          };
-        in
-        gv.applyGuard ctx (gv.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; });
-      wide = {
-        host = "h";
-        extra = 1;
-      };
-      at = "gen-aspects.guard: custom form `f`'s `eval`";
-      notCallable =
-        got:
-        exactly "${at} must be callable (a function, or a record whose `__functor` yields a function); received: ${got}.";
-      notBool =
-        got:
-        exactly "${at} must return a bool; returned ${got}. `eval` takes the context and the predicate's arguments, `ctx: argData: bool`.";
-    in
-    {
-      # RED: `called without required argument 'host'`.
-      test-missing-required-coord = thrown (form ({ host }: a: host == a.name.v) { extra = 1; }) (
-        d3 "guard" "custom form `f`" "host" "extra"
-      );
-      # RED: `attempt to call something which is not a function but an integer`.
-      test-not-callable = thrown (form 5 wide) (notCallable "int");
-      # RED: `attempt to call something which is not a function but an integer`.
-      test-functor-not-callable = thrown (form { __functor = 5; } wide) (notCallable "set");
-      # RED: `attempt to call something which is not a function but a Boolean`.
-      test-functor-one-argument = thrown (form { __functor = _: true; } wide) (notCallable "set");
-      # RED: `expected a Boolean but found a string`.
-      test-returns-non-bool = thrown (form (_: _: "yes") wide) (notBool "string");
-      # RED: `expected a Boolean but found a function`.
-      test-under-applied = thrown (form (
-        _: _: _:
-        true
-      ) wide) (notBool "lambda");
-      # RED: `attempt to call something which is not a function but a Boolean`.
-      test-one-argument = thrown (form (_: true) wide) (
-        exactly "${at} applied to a context returned bool, not a function of the predicate's arguments; `eval` is `ctx: argData: bool`."
       );
     };
 
@@ -815,17 +759,16 @@ in
       test-not-parametric = thrown (mint { description = "s"; } { } { }) (
         at "is not parametric: it is neither a wrap record (`__isWrappedFn`) nor a guard carrier, so it has no instances."
       );
-      # A guard record, alone or as a carrier's fragment, reads context through its predicate (O1). RED
-      # (without the door): the lone record aborts as above, uncatchably; the carrier refuses for the
-      # wrong reason (no supplier for `host`).
+      # A first-order guard, alone or as a carrier's fragment, receives the coordinates it READS
+      # (den-hoag-lwbb1, design Section 3's instance rule, answering 0cmbt O1), so a read with no
+      # source is refused by the I-6 door. RED (without the derived reads): the lone record aborts as
+      # above, uncatchably.
       test-guard-record = thrown (mint (gv.vocab.whenEq [ "host" ] "h1" { }) { host = "h1"; } { }) (
-        at "carries a guard record, whose instance identity is not defined yet: a first-order guard reads its context through its predicate (den-hoag-0cmbt spec §4.1 O1)."
+        at "reads formal(s) `host` with no known supplier; the sources map carries: ."
       );
-      test-carrier-record-fragment =
-        thrown (mint (carrier ({ host, ... }: { description = host; })) { host = "h1"; } { })
-          (
-            at "carries a guard record, whose instance identity is not defined yet: a first-order guard reads its context through its predicate (den-hoag-0cmbt spec §4.1 O1)."
-          );
+      test-carrier-record-fragment = thrown (mint (carrier ({ host, ... }: { description = host; })) {
+        host = "h1";
+      } { }) (at "reads formal(s) `host` with no known supplier; the sources map carries: .");
       # I-6. RED (without the door): `attribute 'extra' missing`, uncatchable.
       test-no-supplier = thrown (mint bare
         {
@@ -1007,6 +950,142 @@ in
         thrown (rel (ok // { descendants = [ { sources = "u1"; } ]; }))
           (
             atD "`sources` must be an attrset mapping each context key to its supplier's identity, not a string."
+          );
+    };
+
+  # First-order guards (den-hoag-lwbb1 unit 2, specs/2026-10-02-gen-aspects-first-order-guards-spec-v1.md
+  # §3a's message parity): each refusal of the declaration check, of the door's totality and of the
+  # declared set, by its whole text. The value plane's `first-order-guards` cells assert that each is
+  # CATCHABLE; these assert what it SAYS.
+  flake.testsError.first-order-guards =
+    let
+      T = genAlgebra.term genIdentity.hashIdentity;
+      t = T.term;
+      src = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
+      place =
+        cnf: defs:
+        (mkSchemaEval (
+          cnf
+          // {
+            keySemantics.nixos.category = "class";
+            modules = [ { config.aspects = defs; } ];
+          }
+        )).config.aspects;
+      rid =
+        (T.refId {
+          declared = {
+            site = "outer";
+            reads = [ "thimble" ];
+          };
+        }).right;
+      nid =
+        (T.refId {
+          nested = {
+            outer = rid;
+            sources.thimble = src "p";
+            position = [
+              "includes"
+              0
+            ];
+            reads = [ ];
+          };
+        }).right;
+      dn = aspects.guard (aspects.pred.has "thimble") (t.ref rid);
+      go =
+        door:
+        (aspects.instanceOf { ref = door; } {
+          aspect = "x";
+          value = dn;
+          context.thimble = "p";
+          sources.thimble = src "p";
+        }).entry;
+      self = aspects.guard aspects.pred.always { sub = self; };
+      door =
+        msg:
+        exactly "gen-aspects: cnf.ref must be null or the framework's door, a function of `{ id; context; sources; captured; }`; ${msg}.";
+      shape =
+        msg:
+        exactly "gen-aspects.guard: aspect `<guard>`: door-result-shape: the door (`cnf.ref`) answered ${rid} with ${msg}; a door answers `{ right = { output; scope; }; }`, its scope keyed by nested registration identifiers (gen-algebra `refId`) each naming the position of a guard in `output`.";
+      kinds =
+        got:
+        exactly "gen-aspects: cnf.entityKinds must be null, a list of coordinate names (strings), or an attrset marking each declared coordinate `true` when it is an entity kind; received: ${got}.";
+    in
+    {
+      test-guard-depth = thrown (aspects.key (place { } { s = self; }).s) (
+        exactly "gen-aspects.guard: aspect `s`, the guard nested 256 deep at `sub`: guard-depth: the guard body nests deeper than 256 levels at `sub`; a body that deep is almost always CYCLIC (a guard whose body holds itself, or an attrset containing itself). Pass a finite, acyclic body."
+      );
+      test-door-not-a-function = thrown (go "x") (door "received: string");
+      test-door-functor-not-a-function = thrown (go { __functor = 5; }) (
+        door "received: a set whose `__functor` is of type int, not a function"
+      );
+      test-door-functor-forgot-its-argument =
+        thrown
+          (go {
+            __functor = self: {
+              right = {
+                output = { };
+                scope = { };
+              };
+            };
+          })
+          (
+            door "received: a functor whose `__functor` returns a value of type set, not a function; a functor door is `self: { id, context, sources, captured, ... }: …`"
+          );
+      test-door-formals-omit = thrown (go ({ id }: { })) (
+        door "its formals omit `context`, `sources`, `captured` and take no `...`, so the call would be refused"
+      );
+      test-door-formals-foreign = thrown (go (
+        {
+          id,
+          context,
+          sources,
+          captured,
+          extra,
+        }:
+        { }
+      )) (door "it requires `extra`, which the call never supplies");
+      test-door-right-int = thrown (go (_: {
+        right = 5;
+      })) (shape "a `right` that is not { output; scope; } (got int)");
+      test-door-scope-key = thrown (go (_: {
+        right = {
+          output = { };
+          scope.nope = null;
+        };
+      })) (shape "a scope key that is not a nested registration identifier: nope");
+      test-door-scope-position-absent = thrown (go (_: {
+        right = {
+          output = { };
+          scope.${nid} = null;
+        };
+      })) (shape "a scope position [\"includes\",0] that `output` does not hold");
+      test-door-scope-position-not-a-guard = thrown (go (_: {
+        right = {
+          output.includes = [ "plain" ];
+          scope.${nid} = null;
+        };
+      })) (shape "a scope position [\"includes\",0] that holds a string, not a guard");
+      test-ref-id-domain =
+        thrown (place { } { d = aspects.guard aspects.pred.always (t.ref "{\"declared\":{\"site\":"); }).d
+          (
+            exactly "gen-aspects.guard: aspect `d`: ref-id-domain: a door registration reference's identifier is outside refId's grammar (or longer than 8192 characters), so it cannot be read back: {\"declared\":{\"site\":; build it with gen-algebra's `refId`."
+          );
+      test-entity-kinds-list-witness = thrown (place {
+        entityKinds = [
+          "a"
+          1
+        ];
+      } { }) (kinds "a list holding a value of type int");
+      test-entity-kinds-attrset-witness = thrown (place { entityKinds.a = "yes"; } { }) (
+        kinds "an attrset whose value at `a` is of type string"
+      );
+      test-pred-custom-retired = thrown (aspects.pred.custom "x" { }) (
+        exactly "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is written as a guard function (`{ <coordinate>, ... }: <aspect>`) at the aspect position."
+      );
+      test-closure-body-remedy =
+        thrown (place { } { g = aspects.guard aspects.pred.always (ctx: { }); }).g
+          (
+            exactly "gen-aspects.guard: aspect `g`: term-function: {\"remedy\":\"a closure is not a term\"}. A guard body is data: module content belongs under a class key; a body that needs its context as a closure is written as a guard function (`{ <coordinate>, ... }: <aspect>`) at the aspect position."
           );
     };
 }

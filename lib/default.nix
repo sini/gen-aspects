@@ -10,10 +10,18 @@
   merge,
   schema,
   identity,
+  algebra,
 }:
 let
+  # The one first-order term algebra, minted by the ecosystem's one formula (den-hoag-lwbb1).
+  T = algebra.term identity.hashIdentity;
   types = import ./types.nix {
-    inherit prelude merge schema;
+    inherit
+      prelude
+      merge
+      schema
+      T
+      ;
     inherit (identity) hashIdentity;
   };
   # ★ RENAMED FROM `identity` TO AVOID SHADOWING THE INJECTED MINT. gen-identity arrives as
@@ -30,11 +38,15 @@ let
     inherit prelude;
     inherit (types) includesDefault keyCategory hasClassContent;
   };
-  guardModule = import ./guard.nix { inherit prelude merge; };
+  guardModule = import ./guard.nix {
+    inherit prelude merge T;
+    inherit (types) GT;
+  };
   instanceModule = import ./instance.nix {
     inherit prelude;
     inherit (identity) hashIdentity;
     inherit (guardModule) mkGuardVocab;
+    inherit (types) GT;
     inherit (factsModule) graphCore;
     inherit (types) aspectId;
   };
@@ -126,11 +138,11 @@ in
   inherit (factsModule) includeSitesOfEntry;
   inherit (guardModule)
     mkGuardVocab
-    toArgData
     pred
     guard
     ;
-  # base (form-less) vocab; consumers with cnf.guardForms use (mkGuardVocab cnf).applyGuard
+  # the base vocab (open world, no door); a consumer with a declared set or a door uses
+  # (mkGuardVocab cnf).applyGuard
   applyGuard = (guardModule.mkGuardVocab { }).applyGuard;
   # The recognised `cnf` key set as data. Every entry point above whose first argument is a `cnf`
   # constructs it through this vocabulary and refuses an off-domain key by name; `cnfKeys` is the set

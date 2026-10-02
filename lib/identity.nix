@@ -239,19 +239,13 @@ let
     f:
     if f.kind == "fn" then
       null
+    else if f.kind == "record" then
+      { guard = termGuardId f; }
     else
       let
         probe = builtins.tryEval (bodyKey f.body);
       in
-      if !(probe.success && probe.value != null) then
-        null
-      else if f.kind == "record" then
-        {
-          pred = f.pred;
-          body = probe.value;
-        }
-      else
-        { body = probe.value; };
+      if !(probe.success && probe.value != null) then null else { body = probe.value; };
 
   carrierKey =
     g:
@@ -263,9 +257,21 @@ let
     else
       "guard:carrier:" + builtins.hashString "sha256" (builtins.toJSON { fragments = toks; });
 
+  # A first-order guard's identity is its mint over (condition, body), attached where it was checked
+  # against its `cnf` (lib/guard-term.nix): defined for a checked guard only, and refused by name when
+  # the mint cannot take it (ADR-0034, REFUSED). No source-position fallback.
+  termGuardId =
+    g:
+    if !(g ? __mint) then
+      throw "gen-aspects: identity: a first-order guard has an identity once it is checked against its cnf (placed at an aspect position, or fired through a vocabulary); this one is unchecked."
+    else
+      g.__mint.minted or (throw g.__mint.unmintable);
+
   guardKey =
     g:
-    if g ? fragments then
+    if g ? condition then
+      termGuardId g
+    else if g ? fragments then
       carrierKey g
     else
       let

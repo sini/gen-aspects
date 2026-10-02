@@ -258,12 +258,12 @@ in
       "deferIncludeResolution"
       "entityKinds"
       "freeformKeys"
-      "guardForms"
       "keySemantics"
       "metaModules"
       "moduleArgs"
       "providerPrefix"
       "recursiveClosed"
+      "ref"
       "rejectBareModuleInclude"
       "schemaDefs"
     ];

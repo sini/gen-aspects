@@ -12,6 +12,8 @@
     # through gen-schema: a mint reached through a second library is a mint whose identity
     # depends on that library's pin.
     gen-identity.url = "github:sini/gen-identity";
+    # The one first-order term algebra (den-hoag-lwbb1): guard conditions and bodies are its terms.
+    gen-algebra.url = "github:sini/gen-algebra";
   };
 
   outputs =
@@ -20,6 +22,7 @@
       gen-merge,
       gen-schema,
       gen-identity,
+      gen-algebra,
       ...
     }:
     {
@@ -28,6 +31,7 @@
         merge = gen-merge.lib;
         schema = gen-schema.lib;
         identity = gen-identity.lib;
+        algebra = gen-algebra.lib;
       };
     };
 }

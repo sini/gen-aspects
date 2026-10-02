@@ -10,6 +10,9 @@
 }:
 let
   v = aspects.mkGuardVocab { };
+  # A guard placed at aspect `name`, where it meets its cnf and is checked.
+  placed =
+    name: g: (mkSchemaEval { modules = [ { config.aspects.${name} = g; } ]; }).config.aspects.${name};
   ctxCortex = {
     thimble.name = "cortex";
     class = "nixos";
@@ -20,27 +23,6 @@ let
   };
 in
 {
-  flake.tests.guard.test-toargdata-type-tags = {
-    expr = aspects.toArgData {
-      host = "cortex";
-      n = 5;
-    };
-    expected = {
-      host = {
-        __t = "string";
-        v = "cortex";
-      };
-      n = {
-        __t = "int";
-        v = 5;
-      };
-    };
-  };
-  # toArgData is LAZY (mapAttrs) — deepSeq to force the throw so tryEval can catch it.
-  flake.tests.guard.test-toargdata-throws-on-function = {
-    expr = (builtins.tryEval (builtins.deepSeq (aspects.toArgData { f = x: x; }) true)).success;
-    expected = false;
-  };
   # P2-OQ15 arm (i): the escape hatch reads a caller's closure through the prelude's functor-aware
   # PAIR. A wrap record (a functor) is applied as built, before the hatch, and a non-wrap functor
   # stating its formals takes the context door exactly as a lambda does. Before the readers moved,
@@ -171,84 +153,10 @@ in
     expected = null;
   };
 
-  # M4: type tags keep "5" (string) and 5 (int) distinct — spec 5f.
-  flake.tests.guard.test-toargdata-all-types = {
-    expr = aspects.toArgData {
-      s = "5";
-      i = 5;
-      b = true;
-      l = [ "a" ];
-    };
-    expected = {
-      s = {
-        __t = "string";
-        v = "5";
-      };
-      i = {
-        __t = "int";
-        v = 5;
-      };
-      b = {
-        __t = "bool";
-        v = true;
-      };
-      l = {
-        __t = "list";
-        v = [
-          {
-            __t = "string";
-            v = "a";
-          }
-        ];
-      };
-    };
-  };
-  flake.tests.guard.test-toargdata-no-collision = {
-    expr = (aspects.toArgData { x = "5"; }).x == (aspects.toArgData { x = 5; }).x;
-    expected = false;
-  };
-
-  # I2: custom cnf.guardForms seam — dispatches by form name; may not shadow a core form.
-  flake.tests.guard.test-custom-form =
-    let
-      gv = aspects.mkGuardVocab {
-        guardForms = {
-          region = {
-            eval = ctx: a: (ctx.region or null) == a.region.v;
-            reads = [ [ "region" ] ];
-          };
-        };
-      };
-      g = gv.guard (aspects.pred.custom "region" { region = "us"; }) { ok = true; };
-    in
-    {
-      expr = gv.applyGuard { region = "us"; } g;
-      expected = {
-        ok = true;
-      };
-    };
-
-  flake.tests.guard.test-custom-form-collision =
-    let
-      gv = aspects.mkGuardVocab {
-        guardForms = {
-          eq = {
-            eval = _: _: true;
-            reads = [ ];
-          };
-        };
-      };
-      g = gv.guard (aspects.pred.custom "eq" { eq = "x"; }) { ok = true; };
-    in
-    {
-      expr = (builtins.tryEval (gv.applyGuard { thimble.name = "y"; } g)).success;
-      expected = false;
-    };
-
   # ADR-0035: the published predicate surface names no domain entity. A context path is the
   # caller's (`eq`), and a framework's named entity predicate is the framework's own declaration.
   # These two cells pin the surface EXACTLY, so re-adding an entity-named constructor or its
-  # `when…` sugar reds them.
+  # `when…` sugar reds them. `custom` is the retired form's refused-by-name alias (den-hoag-lwbb1).
   flake.tests.guard.test-pred-surface-names-no-entity = {
     expr = builtins.attrNames aspects.pred;
     expected = [
@@ -258,6 +166,8 @@ in
       "class"
       "custom"
       "eq"
+      "has"
+      "not"
       "tagEq"
     ];
   };
@@ -273,210 +183,31 @@ in
     ];
   };
 
-  # ADR-0027 as amended: the framework owns its vocabulary, so gen reserves no entity name. A
-  # framework form named `host` (an example a framework might declare) is accepted and dispatches
-  # to the framework's own `eval`. Re-reserving the name in `coreFormNames` reds this cell; its
-  # control is `test-custom-form-collision` above, where a name that IS still core (`eq`) refuses.
-  flake.tests.guard.test-custom-form-named-for-a-kind-dispatches =
-    let
-      gv = aspects.mkGuardVocab {
-        guardForms.host = {
-          eval = ctx: a: (ctx.host.name or null) == a.name.v;
-          reads = [
-            [
-              "host"
-              "name"
-            ]
-          ];
-        };
-      };
-      g = gv.guard (aspects.pred.custom "host" { name = "pewter"; }) { ok = true; };
-    in
-    {
-      expr = {
-        fires = gv.applyGuard { host.name = "pewter"; } g;
-        notFires = gv.applyGuard { host.name = "damask"; } g;
-      };
-      expected = {
-        fires = {
-          ok = true;
-        };
-        notFires = null;
-      };
-    };
-
-  # A custom form's `eval` takes the context door (lib/require-wrapped-closure.nix): a pattern of
-  # formals is handed exactly those coords, and the argument record exactly the fields its pattern
-  # names. Every closed-pattern row aborted uncatchably before the door (`called with unexpected
-  # argument 'extra'`); the bare, ellipsis and stated-formals functor rows are the shapes the door
-  # must leave firing. `selfReading` is an `eval` whose value reads the vocab's own guard results: a
-  # callable check forced at the vocab's first use cycles on it (`infinite recursion`, uncatchable).
-  flake.tests.guard.test-custom-form-narrowed-to-formals =
-    let
-      wide = {
-        host = "h";
-        extra = 1;
-      };
-      body = {
-        description = "fired";
-      };
-      closed = { host }: a: host == a.name.v;
-      form =
-        eval: ctx: args:
-        let
-          gv = aspects.mkGuardVocab {
-            guardForms.f = {
-              inherit eval;
-              reads = [ [ "host" ] ];
-            };
-          };
-        in
-        gv.applyGuard ctx (gv.guard (aspects.pred.custom "f" args) body);
-      selfReading =
-        let
-          gv = aspects.mkGuardVocab {
-            guardForms.f = {
-              eval = builtins.seq (gv.applyGuard wide (gv.vocab.always body)) closed;
-              reads = [ ];
-            };
-          };
-        in
-        gv.applyGuard wide (gv.vocab.always body);
-    in
-    {
-      expr = {
-        closedWide = form closed wide { name = "h"; };
-        closedWideNoFire = form closed (wide // { host = "z"; }) { name = "h"; };
-        defaultedLacking = form (
-          {
-            host ? null,
-          }:
-          a: host == a.name.v
-        ) { extra = 1; } { name = "h"; };
-        argPatternWide = form ({ host }: { name }: host == name.v) { host = "h"; } {
-          name = "h";
-          extra = 1;
-        };
-        bareWide = form (ctx: a: (ctx.host or null) == a.name.v) wide { name = "h"; };
-        ellipsisWide = form ({ ... }: _: true) wide { name = "h"; };
-        functorWide = form {
-          __functor = _: closed;
-          __functionArgs = {
-            host = false;
-          };
-        } wide { name = "h"; };
-        inherit selfReading;
-      };
-      expected = {
-        closedWide = body;
-        closedWideNoFire = null;
-        defaultedLacking = null;
-        argPatternWide = body;
-        bareWide = body;
-        ellipsisWide = body;
-        functorWide = body;
-        selfReading = body;
-      };
-    };
-
-  # den-hoag-cr72: custom-form validation is EAGER at `applyGuard`, not lazy at dispatch-by-name.
-  # The cell above only reaches the refusal because it dispatches the offending form BY NAME; the
-  # defect at full strength is a vocabulary whose malformed entry is NEVER named by any dispatch —
-  # which refused nothing at all, so `guard.nix`'s own "MUST be { eval; reads; }" / "may NOT shadow a
-  # core form" held for exactly the forms a given run happened to look up.
-  #
-  # BOTH POLARITIES ARE ASSERTED IN THIS ONE CELL, which is what makes it discriminate without a
-  # separate harness control: a dead `ok` that always answered `true` fails the two refusal rows, and
-  # one that always answered `false` fails the three total rows.
-  #
-  # The two `construct…StaysTotal` rows are the PERMANENT FENCE against this fix's own rejected first
-  # draft. Forcing `checkedCustomForms` from `mkGuardVocab`'s RETURNED RECORD instead of from
-  # `applyGuard`'s body makes that return's WHNF depend on `guardForms`' full key set, and a caller
-  # whose key is derived from a sibling option inside its own config fixpoint then cycles with an
-  # `infinite recursion` that escapes `tryEval` entirely. Any future change that moves the check back
-  # onto the return path flips these two rows to `false` first.
-  flake.tests.guard.test-custom-form-eager-validation =
-    let
-      okForm = {
-        eval = _ctx: _a: true;
-        reads = [ ];
-      };
-      mk = forms: aspects.mkGuardVocab { guardForms = forms; };
-      malformed = mk {
-        brokenForm = {
-          eval = _ctx: _a: true;
-        }; # no `reads`
-        inherit okForm;
-      };
-      colliding = mk {
-        eq = okForm; # shadows a core predicate form
-        inherit okForm;
-      };
-      control = mk { inherit okForm; };
-      # deepSeq, not WHNF: a refusal living in a lazy attribute value is invisible to a bare tryEval.
-      ok = e: (builtins.tryEval (builtins.deepSeq e true)).success;
-      # A dispatch through an unrelated CORE predicate — it names no declared custom form at all.
-      unrelatedCore = gv: gv.applyGuard { thimble.name = "cortex"; } (gv.vocab.always { fired = true; });
-      # A dispatch through the RAW-CLOSURE escape hatch, which evaluates no predicate whatsoever.
-      rawClosure =
-        gv:
-        gv.applyGuard { thimble.name = "cortex"; } (_ctx: {
-          fired = true;
-        });
-    in
-    {
-      expr = {
-        unrelatedCoreRefusesMalformed = ok (unrelatedCore malformed);
-        unrelatedCoreRefusesColliding = ok (unrelatedCore colliding);
-        # LIVE CONTROL, same predicate, same run: a vocabulary of sound forms still dispatches
-        # through that same unrelated predicate, so the refusals above are the check discriminating
-        # rather than `applyGuard` refusing unconditionally on every call.
-        unrelatedCoreControl = ok (unrelatedCore control);
-        # THE TWO HALVES OF THE FIX ARE SEPARABLE AND BOTH ARE PINNED. `evalPred` builds its case
-        # table as `{ core… } // mapAttrs … checkedCustomForms`, and `//` forces its operand to WHNF —
-        # so the `deepSeq` alone already answers every PREDICATE dispatch, and the row above stays
-        # green if the `builtins.seq checkedCustomForms` wrap on `applyGuard` is deleted (measured, all
-        # three arms, one run). The raw-closure arm forces no predicate at all, so it is reached by
-        # that wrap and by nothing else — delete the wrap and this row is the one that goes red.
-        rawClosureRefusesMalformed = ok (rawClosure malformed);
-        rawClosureControl = ok (rawClosure control);
-        constructMalformedStaysTotal = ok malformed;
-        constructCollidingStaysTotal = ok colliding;
-      };
-      expected = {
-        unrelatedCoreRefusesMalformed = false;
-        unrelatedCoreRefusesColliding = false;
-        unrelatedCoreControl = true;
-        rawClosureRefusesMalformed = false;
-        rawClosureControl = true;
-        constructMalformedStaysTotal = true;
-        constructCollidingStaysTotal = true;
-      };
-    };
-
-  # site-independence: same predicate + first-order body at two "sites" -> equal key
+  # A guard's identity is the mint over (condition, body), defined once the guard is checked against
+  # its cnf: here, placed at an aspect position (den-hoag-lwbb1, lib/guard-term.nix `checkGuard`).
+  # site-independence: same condition + first-order body at two "sites" -> equal key
   flake.tests.guard.test-guardkey-site-independent =
     let
       g1 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 1; };
       g2 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 1; };
     in
     {
-      expr = aspects.guardKey g1 == aspects.guardKey g2;
+      expr = aspects.guardKey (placed "aaa" g1) == aspects.guardKey (placed "bbb" g2);
       expected = true;
     };
 
-  # bodyKey discriminates differing first-order bodies
+  # the mint discriminates differing first-order bodies
   flake.tests.guard.test-guardkey-body-discriminates =
     let
       g1 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 1; };
       g2 = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") { a = 2; };
     in
     {
-      expr = aspects.guardKey g1 == aspects.guardKey g2;
+      expr = aspects.guardKey (placed "g" g1) == aspects.guardKey (placed "g" g2);
       expected = false;
     };
 
-  # structural key flows THROUGH a nested first-order guard body (bodyKey -> guardKey -> "guard:…")
+  # a guard nested as the body stays a guard, and its identity enters the outer's ("guard:…")
   flake.tests.guard.test-guardkey-nested-body-structural =
     let
       mk =
@@ -487,9 +218,9 @@ in
     in
     {
       expr = {
-        siteIndep = aspects.guardKey (mk 1) == aspects.guardKey (mk 1);
-        discriminates = aspects.guardKey (mk 1) == aspects.guardKey (mk 2);
-        structural = lib.hasPrefix "guard:" (aspects.guardKey (mk 1));
+        siteIndep = aspects.guardKey (placed "aaa" (mk 1)) == aspects.guardKey (placed "bbb" (mk 1));
+        discriminates = aspects.guardKey (placed "g" (mk 1)) == aspects.guardKey (placed "g" (mk 2));
+        structural = lib.hasPrefix "guard:" (aspects.guardKey (placed "g" (mk 1)));
       };
       expected = {
         siteIndep = true;
@@ -498,22 +229,32 @@ in
       };
     };
 
-  # nested all/any with a FUNCTION body must not throw when keyed (predicate/body split) AND
-  # must take the source-position (opaque) branch — hasPrefix still fails if guardKey throws.
+  # a module function as the whole body is a declared module slot: keyed by its position, never its
+  # payload, so the key is a mint, site-independent (no source-position fallback).
   flake.tests.guard.test-guardkey-nested-no-throw =
     let
-      g = aspects.guard (aspects.pred.all [
-        (aspects.pred.eq [ "thimble" "name" ] "cortex")
-        (aspects.pred.class "nixos")
-      ]) ({ config, ... }: { });
+      g =
+        body:
+        aspects.guard (aspects.pred.all [
+          (aspects.pred.eq [ "thimble" "name" ] "cortex")
+          (aspects.pred.class "nixos")
+        ]) body;
     in
     {
-      expr = lib.hasPrefix "guard-loc:" (aspects.guardKey g);
-      expected = true;
+      expr = {
+        minted = lib.hasPrefix "guard:" (aspects.guardKey (placed "g" (g ({ config, ... }: { }))));
+        payloadOutside =
+          aspects.guardKey (placed "aaa" (g ({ config, ... }: { })))
+          == aspects.guardKey (placed "bbb" (g ({ pkgs, ... }: { a = 1; })));
+      };
+      expected = {
+        minted = true;
+        payloadOutside = true;
+      };
     };
 
-  # a first-order body CONTAINING a nested guard whose body is a function must go opaque
-  # (no toJSON crash, source-position branch) — hasFn recurses into nested guards.
+  # a first-order body CONTAINING a nested guard whose body is a module function mints: the inner
+  # guard is its own clause, its module function a slot.
   flake.tests.guard.test-guardkey-nested-guard-fn-body =
     let
       g = aspects.guard (aspects.pred.eq [ "thimble" "name" ] "cortex") {
@@ -521,7 +262,7 @@ in
       };
     in
     {
-      expr = lib.hasPrefix "guard-loc:" (aspects.guardKey g);
+      expr = lib.hasPrefix "guard:" (aspects.guardKey (placed "g" g));
       expected = true;
     };
 
@@ -559,22 +300,29 @@ in
       expected = true;
     };
 
-  # end-to-end opaque-body soundness (completes Task 1 M2): two guards with FUNCTION bodies at
-  # different sites -> DIFFERENT keys, because guardKey falls back to source-position via meta.loc
-  flake.tests.guard.test-guard-opaque-body-site-distinct =
+  # end-to-end: a guard whose body is a module function is a declared module slot, keyed by the
+  # mint over (condition, slot position) with no source-position fallback (den-hoag-lwbb1): the
+  # same guard at two sites is ONE key, and a differing condition is another.
+  flake.tests.guard.test-guard-slot-body-keyed-by-mint =
     let
       gv = aspects.mkGuardVocab { };
       mk =
-        name:
+        name: v:
         (mkSchemaEval {
           modules = [
-            { config.aspects.${name} = gv.vocab.whenEq [ "thimble" "name" ] "cortex" ({ config, ... }: { }); }
+            { config.aspects.${name} = gv.vocab.whenEq [ "thimble" "name" ] v ({ config, ... }: { }); }
           ];
         }).config.aspects.${name};
     in
     {
-      expr = aspects.key (mk "aaa") == aspects.key (mk "bbb");
-      expected = false;
+      expr = {
+        siteIndependent = aspects.key (mk "aaa" "cortex") == aspects.key (mk "bbb" "cortex");
+        conditionDiscriminates = aspects.key (mk "aaa" "cortex") == aspects.key (mk "aaa" "blade");
+      };
+      expected = {
+        siteIndependent = true;
+        conditionDiscriminates = false;
+      };
     };
 
   # O8 (den-hoag-sezf): the above "multi-def limitation" fixture RETIRES here — it asserted the
@@ -627,8 +375,8 @@ in
       expr = {
         isGuard = carrier.__guard or false;
         fragmentCount = builtins.length carrier.fragments;
-        preds = map (f: f.pred.a.value.v) carrier.fragments;
-        bodies = map (f: f.body.classOne.setting) carrier.fragments;
+        preds = map (f: f.condition.value) carrier.fragments;
+        bodies = map (f: f.body.attrs.classOne.setting) carrier.fragments;
       };
       expected = {
         isGuard = true;
@@ -721,8 +469,8 @@ in
     {
       expr = {
         isGuard = eval.config.aspects.solo.__guard or false;
-        pred = eval.config.aspects.solo.pred.a.value.v;
-        body = eval.config.aspects.solo.body;
+        pred = eval.config.aspects.solo.condition.value;
+        body = eval.config.aspects.solo.body.attrs;
         flatKeys = builtins.attrNames (aspects.flatten eval.config.aspects);
       };
       expected = {

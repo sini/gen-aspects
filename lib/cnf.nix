@@ -53,7 +53,7 @@ let
   # submodule (`types.submoduleWith`'s `binOp`) it is payload, never identity: two declarations
   # concatenate theirs, a monoid with identity `[ ]`: the lists are joined unread, never compared,
   # so one read from `config` is not forced while declarations fold (ADR-0033). An `excluded`
-  # key is read by no type (`guardForms` reaches only `mkGuardVocab`), so it distinguishes nothing.
+  # key is read by no type (`ref` reaches only the guard resolver), so it distinguishes nothing.
   cnfVocabulary = {
     aspectModules = {
       default = [ ];
@@ -75,6 +75,10 @@ let
     # the framework's to declare). At an instance-producing applicator, a context shape is handed the
     # context narrowed to them; `null` hands it whole (lib/require-wrapped-closure.nix
     # `requireContextOf`). A guard predicate's evaluation is never narrowed.
+    # The DECLARED COORDINATE SET, with the entity kinds a marked subset (design Q5 (A): one set,
+    # widening `entityKinds`). `null` is the open world. A list declares its names as coordinates that
+    # are all entity kinds; an attrset `{ <name> = <bool>; }` declares its names, marking an entity kind
+    # `true`. `[ ]` and `{ }` are the closed world with no coordinates.
     entityKinds = {
       default = null;
       regime = "minted";
@@ -83,8 +87,11 @@ let
       default = [ ];
       regime = "minted";
     };
-    guardForms = {
-      default = { };
+    # The door the framework supplies (unifying spec §2.8's door call): `null` resolves no
+    # registration identifier. Read only by the guard resolver's read environment, so it is in no
+    # construction.
+    ref = {
+      default = null;
       regime = "excluded";
     };
     keySemantics = {
@@ -227,33 +234,99 @@ let
     let
       c = checkedCnf cnf;
     in
-    builtins.seq c (builtins.seq (checkEntityKinds c.entityKinds) (f c));
+    builtins.seq c (
+      builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef c.ref) (f c))
+    );
+
+  # `cnf.ref`, the framework's door: `null`, or a function the resolver can call with
+  # `{ id; context; sources; captured; }` without aborting. A formals pattern is read through
+  # `toXML` (the ellipsis is invisible to `functionArgs`): without `...` it must name all four
+  # fields, and it may require no other. A functor is callable only when its `__functor` is a function
+  # that, given the functor, returns one (`__functor = self: { right = …; }` forgot its argument).
+  # Everything else refuses here, by name, before any firing.
+  doorFields = [
+    "id"
+    "context"
+    "sources"
+    "captured"
+  ];
+  checkRef =
+    door:
+    let
+      functor = builtins.isAttrs door && door ? __functor;
+      callable = builtins.isFunction door || functor && builtins.isFunction door.__functor;
+      raw = if functor then door.__functor door else door;
+      formals = if builtins.isFunction raw then builtins.functionArgs raw else { };
+      ellipsis = builtins.match ".*<attrspat[^>]*ellipsis=\"1\".*" (builtins.toXML raw) != null;
+      required = builtins.filter (n: !formals.${n}) (builtins.attrNames formals);
+      foreign = builtins.filter (n: !(builtins.elem n doorFields)) required;
+      unnamed = builtins.filter (n: !(formals ? ${n})) doorFields;
+      refuse =
+        msg:
+        throw "gen-aspects: cnf.ref must be null or the framework's door, a function of `{ id; context; sources; captured; }`; ${msg}.";
+    in
+    if door == null then
+      door
+    else if functor && !callable then
+      refuse "received: a set whose `__functor` is of type ${builtins.typeOf door.__functor}, not a function"
+    else if !callable then
+      refuse "received: ${builtins.typeOf door}"
+    else if !(builtins.isFunction raw) then
+      refuse "received: a functor whose `__functor` returns a value of type ${builtins.typeOf raw}, not a function; a functor door is `self: { id, context, sources, captured, ... }: …`"
+    else if formals == { } then
+      door
+    else if foreign != [ ] then
+      refuse "it requires `${builtins.concatStringsSep "`, `" foreign}`, which the call never supplies"
+    else if !ellipsis && unnamed != [ ] then
+      refuse "its formals omit `${builtins.concatStringsSep "`, `" unnamed}` and take no `...`, so the call would be refused"
+    else
+      door;
 
   # `kinds` itself when it is `null` or a non-empty list of strings, a refusal by name otherwise.
   # Also read by `requireContextOf`, for a record extended past `checkedEntry` (`extendCnf`).
   checkEntityKinds =
     kinds:
-    let
-      received =
-        if !builtins.isList kinds then
-          builtins.typeOf kinds
-        else if kinds == [ ] then
-          "[ ]"
-        else
-          "a list holding a value of type ${
-            builtins.typeOf (builtins.head (builtins.filter (k: !builtins.isString k) kinds))
-          }";
-    in
     if
-      kinds == null || builtins.isList kinds && kinds != [ ] && builtins.all builtins.isString kinds
+      kinds == null
+      || builtins.isList kinds && builtins.all builtins.isString kinds
+      || builtins.isAttrs kinds && builtins.all builtins.isBool (builtins.attrValues kinds)
     then
       kinds
     else
-      throw "gen-aspects: cnf.entityKinds must be null or a non-empty list of context keys (strings); received: ${received}.";
+      throw "gen-aspects: cnf.entityKinds must be null, a list of coordinate names (strings), or an attrset marking each declared coordinate `true` when it is an entity kind; received: ${
+        if builtins.isList kinds then
+          "a list holding a value of type ${
+            builtins.typeOf (builtins.head (builtins.filter (k: !builtins.isString k) kinds))
+          }"
+        else if builtins.isAttrs kinds then
+          "an attrset whose value at `${
+            builtins.head (builtins.filter (n: !builtins.isBool kinds.${n}) (builtins.attrNames kinds))
+          }` is of type ${
+            builtins.typeOf
+              kinds.${builtins.head (builtins.filter (n: !builtins.isBool kinds.${n}) (builtins.attrNames kinds))}
+          }"
+        else
+          builtins.typeOf kinds
+      }.";
+  # D, the declared coordinate set, and E, the entity kinds (`null` both, in the open world).
+  declaredOf =
+    cnf:
+    let
+      k = checkEntityKinds cnf.entityKinds;
+    in
+    if builtins.isAttrs k then builtins.attrNames k else k;
+  entityKindsOf =
+    cnf:
+    let
+      k = checkEntityKinds cnf.entityKinds;
+    in
+    if builtins.isAttrs k then builtins.filter (n: k.${n}) (builtins.attrNames k) else k;
 in
 {
   inherit
     checkEntityKinds
+    declaredOf
+    entityKindsOf
     cnfConstruction
     cnfDefaults
     cnfKeys

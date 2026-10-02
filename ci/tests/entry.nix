@@ -59,6 +59,7 @@
   genMerge,
   genSchema,
   genIdentity,
+  genAlgebra,
   lib,
   ...
 }:
@@ -97,6 +98,7 @@ let
     merge = genMerge;
     schema = genSchema;
     identity = genIdentity;
+    algebra = genAlgebra;
     inputs = { };
     src = segs: throw "the entry cell must not fetch: ${builtins.concatStringsSep "." segs}";
     dep = segs: throw "the entry cell must not build: ${builtins.concatStringsSep "." segs}";

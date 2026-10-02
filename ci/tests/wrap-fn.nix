@@ -350,19 +350,6 @@ in
               value = gv.vocab.whenEq [ "host" ] "nope" { description = "b"; };
             }
           ];
-      # A custom guard form whose `eval` is the subject, dispatched against `ctx` with a non-empty
-      # predicate argument record, so both of its positions are handed a wider value.
-      form =
-        eval:
-        let
-          v = aspects.mkGuardVocab {
-            guardForms.f = {
-              inherit eval;
-              reads = [ ];
-            };
-          };
-        in
-        v.applyGuard ctx (v.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; });
       via = f: {
         wrapFn = ((aspects.wrapFn cnf "n" f) ctx).description;
         merge = ((native f) ctx).description;
@@ -375,8 +362,6 @@ in
       test-closed-empty = {
         expr = via closedEmpty // {
           functor = (aspects.applyGuard ctx functorClosedEmpty).description;
-          formContext = (form ({ }: _: true)).description;
-          formArgument = (form (_: { }: true)).description;
         };
         expected = {
           wrapFn = "ce";
@@ -384,8 +369,6 @@ in
           carrier = "ce";
           applyGuard = "ce";
           functor = "fce";
-          formContext = "fired";
-          formArgument = "fired";
         };
       };
       # S2, the control that the classifier moves only `{ }:`: `ctx:` and `a@{ ... }:` are handed the
@@ -464,8 +447,8 @@ in
   # ENTITY-KIND NARROWING AND `__receives` (0cmbt spec §2.4, cells K-a and K-b). A framework declares
   # its entity kinds as `cnf.entityKinds`, the context keys that carry them; a context shape (`ctx:`,
   # `{ ... }:`) is handed the context narrowed to those keys at every instance-producing applicator,
-  # formals are narrowed to exactly the formals, and a custom form's `eval`, a predicate that mints no
-  # instance, is never narrowed at either of its positions. Every wrap record publishes `__receives`,
+  # formals are narrowed to exactly the formals, and a guard's condition, which mints no instance, is
+  # never narrowed. Every wrap record publishes `__receives`,
   # the keys its door hands at a context.
   # K-a's RED, before the key: `gen-aspects: unrecognised cnf key 'entityKinds'.`
   flake.tests.entity-kinds =
@@ -521,39 +504,11 @@ in
           receivesWrapFn = (aspects.wrapFn c "n" f).__receives ctx;
           receivesMerge = (native f).__receives ctx;
         };
-      # A custom form whose `eval` reads both of its positions: the context keys it is handed and
-      # whether its predicate argument record still carries `name`.
-      form =
-        c:
-        let
-          v = aspects.mkGuardVocab (
-            c
-            // {
-              guardForms.f = {
-                eval = c: a: c.host == "h" && c ? extra && a ? name;
-                reads = [ ];
-              };
-            }
-          );
-        in
-        (v.applyGuard ctx (v.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; }))
-        .description or "not fired";
-      formUnnarrowed =
-        let
-          v = aspects.mkGuardVocab {
-            guardForms.f = {
-              eval = c: a: c ? extra && a ? name;
-              reads = [ ];
-            };
-          };
-        in
-        (v.applyGuard ctx (v.guard (aspects.pred.custom "f" { name = "h"; }) { description = "fired"; }))
-        .description or "not fired";
     in
     {
       # K-a: with `entityKinds = [ "host" ]`, the context shapes are handed `{ host }` only at the
       # instance-producing applicators (`wrapFn`, `wrapGuardFn`, the carrier's function fragment, the
-      # hatch), and `__receives` names `host` alone. A custom form's `eval` is never narrowed.
+      # hatch), and `__receives` names `host` alone. A guard's condition is never narrowed.
       test-kinds-narrow-context-shapes = {
         expr = {
           bare = via kcnf bare;
@@ -623,79 +578,26 @@ in
           };
         };
       };
-      # A custom form's `eval` is never narrowed, at either position: under the kinds its context
-      # still carries `extra` and its predicate arguments still carry `name`. RED (narrowing the
-      # context position, `contextOf` in `evalDoors`): `extra` is dropped, so the form does not fire;
-      # RED (narrowing the argument position too): `a` is handed `{ }`. `formUnnarrowed` is the
-      # control with the kinds unset.
-      test-kinds-custom-form-positions = {
-        expr = {
-          kinds = form kcnf;
-          unset = formUnnarrowed;
-        };
-        expected = {
-          kinds = "fired";
-          unset = "fired";
-        };
-      };
-      # Parity with the core forms: under the kinds, a context-shaped custom form reading `tags.role`
-      # fires wherever the built-in `tagEq` fires, by a tolerant read and by a strict one, and a
-      # mismatch fires neither. RED (narrowing the context position, `contextOf` in `evalDoors`):
-      # `soft` is "not fired" and `hard` aborts on `attribute 'tags' missing`, past `tryEval`.
-      test-kinds-custom-form-tag-parity =
+      # A guard's condition is never narrowed: under the kinds, the built-in `tagEq` reads `tags.role`
+      # (a field of this library's own, in the declared set the kinds widen) and fires where the role
+      # matches, and a mismatch does not fire.
+      test-kinds-condition-not-narrowed =
         let
           tctx = {
             host = "h";
             tags.role = "web";
           };
-          v = aspects.mkGuardVocab (
-            kcnf
-            // {
-              guardForms = {
-                soft = {
-                  eval = c: a: (c.tags.role or null) == a.v.v;
-                  reads = [
-                    [
-                      "tags"
-                      "role"
-                    ]
-                  ];
-                };
-                hard = {
-                  eval = c: a: c.tags.role == a.v.v;
-                  reads = [
-                    [
-                      "tags"
-                      "role"
-                    ]
-                  ];
-                };
-              };
-            }
-          );
+          v = aspects.mkGuardVocab kcnf;
           run = pr: (v.applyGuard tctx (v.guard pr { description = "fired"; })).description or "not fired";
-          at = role: {
-            tagEq = run (aspects.pred.tagEq "role" role);
-            soft = run (aspects.pred.custom "soft" { v = role; });
-            hard = run (aspects.pred.custom "hard" { v = role; });
-          };
         in
         {
           expr = {
-            web = at "web";
-            db = at "db";
+            web = run (aspects.pred.tagEq "role" "web");
+            db = run (aspects.pred.tagEq "role" "db");
           };
           expected = {
-            web = {
-              tagEq = "fired";
-              soft = "fired";
-              hard = "fired";
-            };
-            db = {
-              tagEq = "not fired";
-              soft = "not fired";
-              hard = "not fired";
-            };
+            web = "fired";
+            db = "not fired";
           };
         };
       # `wrapGatedFn`'s hand-built record carries `__receives` too: the narrowed formals when it fires,

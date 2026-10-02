@@ -19,7 +19,7 @@
 #
 # The element's own relation is over its cnf (den-hoag-bfc0k, `test-differing-cnf-refuses` below),
 # by regime (lib/cnf.nix `cnfVocabulary`): minted and compared keys decide identity, the module
-# lists concatenate as a nixpkgs submodule's `modules` do, and `guardForms` is excluded.
+# lists concatenate as a nixpkgs submodule's `modules` do, and `ref` (the framework's door) is excluded.
 {
   lib,
   aspects,
@@ -179,7 +179,7 @@ in
     };
   };
 
-  # den-hoag-a0gc arm (e), per regime: `guardForms` is excluded (no type reads it), `collections`
+  # den-hoag-a0gc arm (e), per regime: `ref` is excluded (no type reads it), `collections`
   # is still compared, and a minted key still refuses. The control is the identical pair.
   flake.tests.root-type-merge.test-cnf-regimes-decide = {
     expr =
@@ -188,12 +188,14 @@ in
         v = c: verdict ((at c).typeMerge (at cnf1).functor);
       in
       {
-        guardFormsDiffer = v (
+        refDiffer = v (
           cnf1
           // {
-            guardForms.g = {
-              eval = _: _: true;
-              reads = [ ];
+            ref = _: {
+              right = {
+                output = { };
+                scope = { };
+              };
             };
           }
         );
@@ -202,7 +204,7 @@ in
         identical = v cnf1;
       };
     expected = {
-      guardFormsDiffer = "MERGED:aspect";
+      refDiffer = "MERGED:aspect";
       collectionsDiffer = "REFUSED";
       scalarDiffer = "REFUSED";
       identical = "MERGED:aspect";
