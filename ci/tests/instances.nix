@@ -486,8 +486,12 @@ in
           suppliers = relSuppliers;
           scopes = { inherit (relScopes) a; };
         };
+        # an id the other relation lacks reads null, so a mismatch is a false cell, never an abort
         slice =
-          rr: builtins.mapAttrs (id: _: rr.vertices.${id} // { nested = rr.nested.${id}; }) rA.vertices;
+          rr:
+          builtins.mapAttrs (
+            id: _: if rr.vertices ? ${id} then rr.vertices.${id} // { nested = rr.nested.${id}; } else null
+          ) rA.vertices;
       in
       {
         expr = {
