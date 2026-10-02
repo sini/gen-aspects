@@ -805,7 +805,8 @@ let
   # keyCategory cnf key : "structural" | "class" | "channel" | "facet" | null. The single classification
   # surface — a consumer reads a key's category from HERE, never a parallel membership list. null = the key is
   # neither native-structural nor a declared keySemantics key (a typo, a freeform nested-aspect child, or an
-  # option declared by a schema extension or `aspectModules`; the closed gate distinguishes the first two). A key that IS declared but malformed (not an attrset, or an
+  # option declared by a schema extension or `aspectModules`; the closed gate distinguishes the first
+  # two). A key that IS declared but malformed (not an attrset, or an
   # attrset with an unrecognised category) refuses BY NAME via checkCategory — this is the read site
   # den-hoag-7cya measured as a silent pass-through (it never went through aspectSubmodule's own
   # check, so a bad entry rode all the way to a consumer as an unvalidated string, or an attribute
