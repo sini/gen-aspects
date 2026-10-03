@@ -362,10 +362,99 @@ let
         + "the framework's surface does not reach it: the lowering does not enter a module function's result, so "
         + "the closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
         + "of the module function's arguments can be written beside the function instead of inside it.";
+      # A refusal VALUE of a value-regime library (ADR-0025 item 1), forwarded unread to an aspect
+      # position (den-hoag-3sk7j). Recognised by each live encoding's EXACT shape, never by a mark: a
+      # refusal mints nothing (ADR-0034). `null`, or `{ kind; code; message; }`. Each test leads with
+      # one `?` probe, so an aspect costs at most three. An encoding whose keys this aspect type DECLARES
+      # is not recognised: a declared key is the author's, and the value is that author's aspect. The declared
+      # set is read only once a shape matched, inline, so an aspect pays no binding for it (§2.3's bound).
+      refusalOf =
+        v:
+        if !(builtins.isAttrs v) then
+          null
+        else if v ? left && builtins.attrNames v == [ "left" ] && !((sub.getSubOptions [ ]) ? left) then
+          if builtins.isAttrs v.left && builtins.isString (v.left.code or null) then
+            {
+              kind = "an Either refusal (`{ left = { code; witness; }; }`, gen-algebra / gen-rules)";
+              inherit (v.left) code;
+              message = v.left.witness.message or null;
+            }
+          else if builtins.isList v.left && v.left != [ ] then
+            {
+              kind = "an Either refusal carrying a failure list (`{ left = [ failure … ]; }`, gen-types / gen-schema `runValidators`, gen-algebra `collectErrors`)";
+              code = null;
+              message =
+                let
+                  f = builtins.head v.left;
+                in
+                if builtins.isAttrs f then f.message or null else null;
+            }
+          else
+            null
+        else if
+          v ? refused
+          &&
+            builtins.attrNames v == [
+              "blamed"
+              "code"
+              "message"
+              "refused"
+              "witness"
+            ]
+          && v.refused == true
+          && builtins.isString v.code
+          && !(builtins.any (k: (sub.getSubOptions [ ]) ? ${k}) (builtins.attrNames v))
+        then
+          {
+            kind = "a refusal record (`{ refused = true; code; … }`, gen-program)";
+            inherit (v) code message;
+          }
+        else if
+          v ? __crossingResult
+          &&
+            builtins.attrNames v == [
+              "__crossingResult"
+              "refusal"
+            ]
+          && v.__crossingResult == "refusal"
+          && builtins.isAttrs v.refusal
+          && !(builtins.any (k: (sub.getSubOptions [ ]) ? ${k}) (builtins.attrNames v))
+        then
+          {
+            kind = "a crossing refusal (`__crossingResult = \"refusal\"`, gen-bind)";
+            code = v.refusal.code or null;
+            message = null;
+          }
+        else
+          null;
+      refusalRefusal =
+        loc: r:
+        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a refusal value reached an aspect position: "
+        + r.kind
+        + (if builtins.isString r.code then " with code `${r.code}`" else "")
+        + ", not an aspect. A call that returns its refusals as values refused, and its result was placed "
+        + "here unread; read the refusal where it was returned."
+        + (
+          if builtins.isString r.message && r.message != "" then
+            " Its message: ${r.message}"
+            + (if builtins.substring (builtins.stringLength r.message - 1) 1 r.message == "." then "" else ".")
+          else
+            ""
+        )
+        + " A context closure crosses the gen-rules door: declare the aspect through the framework's surface, "
+        + "so that gen-rules' lowering turns the closure into a door node, or write it as a guard term.";
       dispatch =
         loc: defs:
         if builtins.any isClosureDef defs then
           { value = throw (bareClosureRefusal loc); }
+        else if builtins.any (d: refusalOf d.value != null) defs then
+          {
+            value = throw (
+              refusalRefusal loc (
+                refusalOf (builtins.head (builtins.filter (d: refusalOf d.value != null) defs)).value
+              )
+            );
+          }
         else if builtins.length defs != 1 then
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
             { value = orphanLeaf loc (merge.mergeDefaultOption loc defs); }
