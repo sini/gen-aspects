@@ -13,6 +13,7 @@
   aspects,
   mkSchemaEval,
   genMerge,
+  genSchema,
   genIdentity,
   genAlgebra,
   ...
@@ -1025,5 +1026,100 @@ in
       test-unscoped-takes-fallback-depth-2 = thrown (unscoped 2) (
         exactly "scope-door: the outer closure was re-applied"
       );
+    };
+
+  # den-hoag-3sk7j (spec §3a, the message): a refusal VALUE of a value-regime library at an aspect
+  # position is refused by name, naming its encoding, its code and the gen-rules door; the producer's
+  # own message is carried. The structure half (catchable, beside its admitted control) is
+  # `ci/tests` `refusal-value`.
+  flake.testsError.refusal-value-door =
+    let
+      place =
+        defs:
+        (mkSchemaEval {
+          keySemantics.nixos.category = "class";
+          modules = [ { config.aspects = defs; } ];
+        }).config.aspects;
+      inc = v: builtins.head (place { x.includes = [ v ]; }).x.includes;
+      door =
+        loc: kind: code: carried:
+        exactly (
+          "gen-aspects: aspect `${loc}`: a refusal value reached an aspect position: ${kind}"
+          + (if code == null then "" else " with code `${code}`")
+          + ", not an aspect. A call that returns its refusals as values refused, and its result was "
+          + "placed here unread; read the refusal where it was returned.${carried} A context closure crosses "
+          + "the gen-rules door: declare the aspect through the framework's surface, so that gen-rules' "
+          + "lowering turns the closure into a door node, or write it as a guard term."
+        );
+      record = "a refusal record (`{ refused = true; code; … }`, gen-program)";
+      at = "x.includes.[definition 1-entry 1]";
+    in
+    {
+      test-record-escape-retired-in-includes = thrown (inc {
+        refused = true;
+        blamed = "author";
+        code = "policy-body/escape-retired";
+        witness.retired = "escape";
+        message = "`escape` is retired";
+      }) (door at record "policy-body/escape-retired" " Its message: `escape` is retired.");
+      test-record-flat-witness-in-includes = thrown (inc {
+        refused = true;
+        blamed = "author";
+        code = "policy-body/skeleton-malformed";
+        witness = 42;
+        message = "a policy body is a record.";
+      }) (door at record "policy-body/skeleton-malformed" " Its message: a policy body is a record.");
+      test-either-left-in-includes =
+        thrown
+          (inc {
+            left = {
+              code = "unsafe-read";
+              witness.message = "read outside the guard";
+            };
+          })
+          (
+            door at "an Either refusal (`{ left = { code; witness; }; }`, gen-algebra / gen-rules)"
+              "unsafe-read"
+              " Its message: read outside the guard."
+          );
+      test-crossing-refusal-in-includes = thrown (inc {
+        __crossingResult = "refusal";
+        refusal = {
+          code = "c";
+          blamed = "author";
+          witness = { };
+        };
+      }) (door at "a crossing refusal (`__crossingResult = \"refusal\"`, gen-bind)" "c" "");
+      test-record-flat-witness-at-root =
+        thrown
+          (place {
+            x = {
+              refused = true;
+              blamed = "author";
+              code = "policy-body/skeleton-malformed";
+              witness = 42;
+              message = "m";
+            };
+          }).x
+          (door "x" record "policy-body/skeleton-malformed" " Its message: m.");
+      # The failure-list Either from its real producer (gen-schema `runValidators`): no code, and the
+      # first failure's message is carried.
+      test-failure-list-left-in-includes =
+        thrown
+          (inc (
+            genSchema.runValidators "host" [
+              {
+                name = "named";
+                pred = i: i ? name;
+                message = "a host is named";
+              }
+            ] { h = { }; }
+          ))
+          (
+            door at
+              "an Either refusal carrying a failure list (`{ left = [ failure … ]; }`, gen-types / gen-schema `runValidators`, gen-algebra `collectErrors`)"
+              null
+              " Its message: a host is named."
+          );
     };
 }
