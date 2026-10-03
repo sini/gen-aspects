@@ -310,40 +310,50 @@ let
   # Each position of `ps` in `v` replaced by what `fireAt` makes of it, in ONE pass: the positions are
   # grouped by their first segment, so a list is rebuilt once however many of its elements are patched
   # (one write per position rebuilds it once per position, quadratic in the fan-out). A position below
-  # another is patched first, and the guard above it fires over the patched value.
+  # another is patched first, and the guard above it fires over the patched value. `fireAt` answers
+  # `{ value; scope; }`, and so does `patchAt`: its scope is the union of every firing's, each taken
+  # from the one firing whose value it patched in (never fired a second time to read it).
   patchAt =
     fireAt: ps: v:
     let
       deeper = builtins.filter (p: p != [ ]) ps;
       groups = builtins.groupBy (p: builtins.toJSON (builtins.head p)) deeper;
-      sub = g: x: patchAt fireAt (map builtins.tail g) x;
+      seg = g: builtins.head (builtins.head g);
+      subs = builtins.mapAttrs (
+        _: g:
+        patchAt fireAt (map builtins.tail g) (
+          if builtins.isList v then builtins.elemAt v (seg g) else v.${seg g}
+        )
+      ) groups;
       patched =
         if deeper == [ ] then
           v
         else if builtins.isList v then
           builtins.genList (
-            i:
-            let
-              x = builtins.elemAt v i;
-            in
-            if groups ? ${toString i} then sub groups.${toString i} x else x
+            i: if subs ? ${toString i} then subs.${toString i}.value else builtins.elemAt v i
           ) (builtins.length v)
         else
           v
           // builtins.listToAttrs (
-            map (
-              g:
-              let
-                s = builtins.head (builtins.head g);
-              in
-              {
-                name = s;
-                value = sub g v.${s};
-              }
-            ) (builtins.attrValues groups)
+            map (k: {
+              name = seg groups.${k};
+              value = subs.${k}.value;
+            }) (builtins.attrNames groups)
           );
+      below = builtins.foldl' (acc: s: acc // s.scope) { } (builtins.attrValues subs);
+      top =
+        if builtins.elem [ ] ps then
+          fireAt patched
+        else
+          {
+            value = patched;
+            scope = { };
+          };
     in
-    if builtins.elem [ ] ps then fireAt patched else patched;
+    {
+      inherit (top) value;
+      scope = below // top.scope;
+    };
 
   # The read environment of one firing. `sources` is `null` where the caller holds none (`applyGuard`),
   # and a door node then refuses by name: the door keys its output on them.
@@ -394,7 +404,11 @@ let
   # node's value is the door's output, whose nested door nodes fire HERE, at the same context, under the
   # scope extended by the one the door returned (design G5): the lexically nested path. A nested node
   # whose condition is FALSE stays in the output as a node, and a later firing of it is the fallback.
-  fire =
+  # `fireScoped` answers `{ value; scope; }`: `scope` is the scope the firing was handed, extended by
+  # every door firing inside it, the nested ones included (the closures of the nodes left in `value`,
+  # keyed by nested identifier). Handed back to a later firing of such a node, it is that firing's
+  # `captured`, and the fallback is not taken (den-hoag-ohvjc). `fire` is its value.
+  fireScoped =
     cnf: at: args: g:
     if g.__declared != declaredFor cnf then
       throw "gen-aspects.guard: ${at}: one-declared-set: this guard was checked under the declared set ${builtins.toJSON g.__declared} and is fired under ${builtins.toJSON (declaredFor cnf)}; a guard is checked and resolved under ONE set, the framework's (fire it through the vocabulary of the cnf that placed it)."
@@ -407,7 +421,10 @@ let
       if isLeft c then
         throw (render at c.left)
       else if !c.right then
-        null
+        {
+          value = null;
+          inherit (args) scope;
+        }
       else if isLeft b then
         throw (render at b.left)
       else if isDoorBody g.body then
@@ -452,9 +469,15 @@ let
           fireAt =
             x:
             let
-              v = fire cnf at (args // { inherit scope; }) (checkGuard cnf at x);
+              r = fireScoped cnf at (args // { inherit scope; }) (checkGuard cnf at x);
             in
-            if v == null then x else v;
+            if r.value == null then
+              {
+                value = x;
+                scope = { };
+              }
+            else
+              r;
         in
         if !isRec then
           shape "a `right` that is not { output; scope; } (got ${builtins.typeOf res}${
@@ -463,9 +486,21 @@ let
         else if problems != [ ] then
           shape (builtins.head problems)
         else
-          patchAt fireAt (map (d: d.r.nested.position) decoded) res.output
+          let
+            patched = patchAt fireAt (map (d: d.r.nested.position) decoded) res.output;
+          in
+          {
+            inherit (patched) value;
+            scope = scope // patched.scope;
+          }
       else
-        b.right;
+        {
+          value = b.right;
+          inherit (args) scope;
+        };
+  fire =
+    cnf: at: args: g:
+    (fireScoped cnf at args g).value;
 
   # Whether a checked guard's condition holds at a context, absence under the open world reading as
   # FALSE (an instance relation's pre-filter, as a missing required formal is today).
@@ -491,6 +526,7 @@ in
     checkGuard
     derivedReads
     fire
+    fireScoped
     holds
     isDoorId
     maxLiftDepth

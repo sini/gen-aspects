@@ -48,35 +48,50 @@ in
       checked = loc: GT.checkGuard cnf (at loc);
       fireAt =
         args: loc: g:
-        GT.fire cnf (at loc) args (checked loc g);
+        GT.fireScoped cnf (at loc) args (checked loc g);
       fires = ctx: g: GT.holds cnf ctx (checked (g.meta.loc or [ "<guard>" ]) g);
       # Multi-def guard carrier discharge (den-hoag-sezf Arm B): one fragment per definition. A record
       # fragment is a first-order guard, fired as one; an unconditional fragment always survives.
       dischargeFragment =
         args: loc: f:
-        if f.kind == "record" then fireAt args loc f.guard else f.body;
-      applyGuardWith =
+        if f.kind == "record" then
+          fireAt args loc f.guard
+        else
+          {
+            value = f.body;
+            inherit (args) scope;
+          };
+      # `{ value; scope; }`: the firing's value, and its instantiation scope (lib/guard-term.nix
+      # `fireScoped`), a carrier's the union of its surviving fragments' scopes. Their keys are nested
+      # identifiers, which name the registration and the position, so two fragments share a key only
+      # where they share the closure.
+      applyGuardScoped =
         args: g:
         if g ? fragments then
           let
             loc = g.meta.loc or [ "<guard-carrier>" ];
-            survivors = builtins.filter (v: v != null) (map (dischargeFragment args loc) g.fragments);
+            survivors = builtins.filter (r: r.value != null) (map (dischargeFragment args loc) g.fragments);
+            values = map (r: r.value) survivors;
           in
-          if survivors == [ ] then
-            null
-          else if builtins.length survivors == 1 then
-            builtins.head survivors
-          else
-            # The module system's own law for untyped content (`types.anything`): lists concatenate,
-            # attrsets merge per key, equal scalars agree, and a conflicting scalar is refused by name
-            # (ADR-0025 item 1). `mergeDefaultOption` folds attrsets with `//`, which drops a
-            # definition's keys without a message (den-hoag-ywlww).
-            merge.types.anything.merge loc (
-              map (v: {
-                file = g.meta.file or "<unknown>";
-                value = v;
-              }) survivors
-            )
+          {
+            value =
+              if survivors == [ ] then
+                null
+              else if builtins.length survivors == 1 then
+                builtins.head values
+              else
+                # The module system's own law for untyped content (`types.anything`): lists concatenate,
+                # attrsets merge per key, equal scalars agree, and a conflicting scalar is refused by name
+                # (ADR-0025 item 1). `mergeDefaultOption` folds attrsets with `//`, which drops a
+                # definition's keys without a message (den-hoag-ywlww).
+                merge.types.anything.merge loc (
+                  map (v: {
+                    file = g.meta.file or "<unknown>";
+                    value = v;
+                  }) values
+                );
+            scope = builtins.foldl' (acc: r: acc // r.scope) args.scope survivors;
+          }
         else if g.__guard or false then
           fireAt args (g.meta.loc or [ "<guard>" ]) g
         # A context closure has no arm here (den-hoag-lwbb1 stage 2b): it crosses the gen-rules door.
@@ -84,6 +99,7 @@ in
           throw "gen-aspects.guard: applyGuard: a context closure was handed where a guard record belongs. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the framework's surface, or write it as a guard term (`guard (pred.has <coordinate>) <body>`)."
         else
           throw "gen-aspects.guard: applyGuard: not a guard record";
+      applyGuardWith = args: g: (applyGuardScoped args g).value;
     in
     {
       inherit
@@ -91,6 +107,7 @@ in
         guard
         fires
         applyGuardWith
+        applyGuardScoped
         ;
       vocab = {
         whenClass = name: guard (pred.class name);

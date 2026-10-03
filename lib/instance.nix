@@ -1,12 +1,15 @@
-# THE INSTANCE MINT (den-hoag-0cmbt spec §2.5): `instanceOf cnf { aspect; value; context; sources; }`
-# → `{ id; entry; formals; }`. A parametric aspect applied to a context is a node of its own, the
-# instance, whose identity is its declaration and what it was handed (design §3): two contexts that
-# hand it different values are two instances, and two that differ only in keys it never receives are
-# one.
+# THE INSTANCE MINT (den-hoag-0cmbt spec §2.5): `instanceOf cnf { aspect; value; context; sources;
+# scope ? { }; }` → `{ id; entry; formals; scope; }`. A parametric aspect applied to a context is a
+# node of its own, the instance, whose identity is its declaration and what it was handed (design
+# §3): two contexts that hand it different values are two instances, and two that differ only in keys
+# it never receives are one.
 #
 #   formals = { <k> = sources.<k>; } for every key k the definitions are handed at `context`
 #   id      = hashIdentity "aspect-instance" [ "aspect" "formals" ] { aspect; formals; }
 #   entry   = the aspect applied to `context`
+#
+#   scope   = the instance's instantiation scope: the scope it was handed, extended by every door
+#             firing inside it (lib/guard-term.nix `fireScoped`)
 #
 # `formals` nests under its own label, so a formal named `aspect` does not clash with the relatum.
 # A `{ }:` aspect receives nothing: `formals = { }`, one id for every context.
@@ -23,7 +26,7 @@
 #
 # THE DOORS, each a catchable `throw` naming this entry:
 # - the argument is not the closed record `{ aspect; value; context; sources; }`, or `aspect` is not a
-#   string, or `context` or `sources` is not an attrset;
+#   string, or `context`, `sources` or `scope` is not an attrset;
 # - the value is not parametric (not a guard record or carrier);
 # - a received key has no source (design §3, "a formal with no known supplier refuses by name");
 # - a source is not identity-shaped (`<kind>:<64 hex>`): the honest mistake of handing the context
@@ -41,9 +44,23 @@
 # carrying two different entries. `instancesFor` (below) cannot be handed that input: it derives each
 # context from its sources through one `suppliers` map (spec §2.6, gate C-1).
 #
+# THE SCOPE (den-hoag-ohvjc). A door node left unfired in an instance's entry (its condition needs a
+# key the instance's context lacks) is fired later as an instance of its own, and handed the scope of
+# the instance whose entry holds it, it reads its closure there: the door is handed it as `captured`
+# and applies it, once. `scope` is the door's closure environment passed explicitly (guard-term's G5
+# scope ruling: a guard stores no closure), never an input to the id: it holds closures (ADR-0034's
+# sealed limb), and the nested id it serves already names its outer and the outer's sources. `scope`
+# JOINS THE CALLER'S OBLIGATION and is unchecked beyond the key lookup: a scope holding no key for the
+# node's id is the fallback, silently and with the same value, and a scope of the same outer sources
+# carrying other values is the mismatch above, undetected. The door's own source-rebound refusal
+# (gen-rules `mkApply`) fires before `captured` is read, whichever scope is handed.
+#
 # COST: O(definitions × reads) for the received keys, one `hashIdentity` over O(formals) labelled
 # entries, and one firing. The guard vocabulary that discharges a carrier is built once per
-# `instanceOf cnf`. Nothing scans another instance.
+# `instanceOf cnf`. Nothing scans another instance. A deferred door node fired WITHOUT its outer's
+# scope is the door's fallback, a correct degraded mode (ADR-0025 item 1: the value is returned): it
+# re-applies the outer closure, and every closure between, to recover its own, so K such firings
+# cost K outer applications where the scope costs none.
 {
   prelude,
   hashIdentity,
@@ -75,17 +92,18 @@ let
   mint =
     cnf:
     let
-      inherit (mkGuardVocab cnf) applyGuardWith;
+      inherit (mkGuardVocab cnf) applyGuardScoped;
     in
     args:
     let
-      a = prelude.checkOptions door fields (prelude.checkRequired door fields args);
+      a = prelude.checkOptions door (fields ++ [ "scope" ]) (prelude.checkRequired door fields args);
       inherit (a)
         aspect
         value
         context
         sources
         ;
+      scope = a.scope or { };
       guarded = builtins.isAttrs value && (value.__guard or false);
       carrier = guarded && value ? fragments;
       fragments = if carrier then value.fragments else [ ];
@@ -120,6 +138,8 @@ let
       refuse "was handed a context of type ${builtins.typeOf context}; a context is an attrset of coords."
     else if !(builtins.isAttrs sources) then
       refuse "was handed sources of type ${builtins.typeOf sources}; sources map each context key to the identity that supplied it."
+    else if !(builtins.isAttrs scope) then
+      refuse "was handed a scope of type ${builtins.typeOf scope}; a scope is an instance's `scope`, closures keyed by nested registration identifiers."
     else if !guarded then
       refuse "is not parametric: it is not a guard record or carrier, so it has no instances."
     else if missing != [ ] then
@@ -133,12 +153,13 @@ let
         names (map (k: "`${builtins.head (kindOf sources.${k})}`") foreign)
       }, which supplies no argument; hand the identity of the entity or argument binding that supplied it. An instance's reaching node is an edge, never a formal's source."
     else
+      let
+        fired = applyGuardScoped { inherit context sources scope; } value;
+      in
       {
         id = hashIdentity "aspect-instance" [ "aspect" "formals" ] (l: { inherit aspect formals; }.${l});
-        entry = applyGuardWith {
-          inherit context sources;
-          scope = { };
-        } value;
+        entry = fired.value;
+        inherit (fired) scope;
         inherit formals;
       };
 in
@@ -149,7 +170,7 @@ in
   # { suppliers; scopes; }`,
   #   suppliers = { <source identity> = { <key> = <value>; … }; … }
   #   scopes    = { <node> = { members; sources; descendants ? [ { sources; } … ]; }; }
-  #   ⇒ { vertices.<iid> = { aspect; formals; entry; };   one content cell per instance id
+  #   ⇒ { vertices.<iid> = { aspect; formals; entry; scope; };   one content cell per instance id
   #       reaches.<node>.<aspect> = [ <iid> … ];           scope → instance edges
   #       nested.<iid>.<aspect>   = [ <iid> … ]; }         reaching edges FROM vertices
   # the materialised view (ADR-0012 clause 2) htfv3's `project` reads. Instances are nodes: the
@@ -374,7 +395,12 @@ in
           targets = locals (core.sitesOfEntry (i.entry.key or a) i.entry);
         in
         {
-          inherit (i) id formals entry;
+          inherit (i)
+            id
+            formals
+            entry
+            scope
+            ;
           aspect = a;
           # nested: parametric targets at the vertex's own tuple, never fanned out (design §3; not O3)
           children = builtins.concatMap (r: if admits tuple r then [ (mintOne r tuple) ] else [ ]) (
@@ -461,7 +487,14 @@ in
       groupIds = ms: builtins.mapAttrs (_: xs: unique (ids xs)) (builtins.groupBy (m: m.aspect) ms);
     in
     {
-      vertices = builtins.mapAttrs (_: m: { inherit (m) aspect formals entry; }) final.seen;
+      vertices = builtins.mapAttrs (_: m: {
+        inherit (m)
+          aspect
+          formals
+          entry
+          scope
+          ;
+      }) final.seen;
       reaches = builtins.mapAttrs (_: groupIds) final.edges;
       nested = builtins.mapAttrs (_: m: groupIds m.children) final.seen;
     }
