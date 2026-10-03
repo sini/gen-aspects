@@ -42,7 +42,7 @@ let
   # threads as a proper nta child.
   spied = import "${genMergeSrc}/lib" {
     inherit prelude;
-    types = import "${genTypesSrc}/lib" { inherit identity prelude; };
+    types = import "${genTypesSrc}/lib" { inherit algebra identity prelude; };
     memo = import "${genMemoSrc}/lib" { inherit graph prelude; };
     scope = scope // {
       eval =
