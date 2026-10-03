@@ -78,6 +78,22 @@ let
     ];
   };
 
+  # den-hoag-ndwvn: the priority an aspect reads when the kind entry carries `defs` beside a declared
+  # `options.priority` (default 0).
+  priorityOf =
+    defs:
+    (mkSchemaEval {
+      modules = [
+        {
+          config.schema.aspect.options.priority = genMerge.mkOption {
+            type = genMerge.types.int;
+            default = 0;
+          };
+        }
+      ]
+      ++ map (d: { config.schema.aspect = d; }) defs
+      ++ [ { config.aspects.x = { }; } ];
+    }).config.aspects.x.priority;
 in
 {
   # Introspection reports kind names
@@ -169,5 +185,30 @@ in
   flake.tests.schema-integration.test-schema-extension-default-on-instance = {
     expr = eval.config.aspects.desktop.priority;
     expected = 50;
+  };
+
+  # den-hoag-ndwvn (ADR-0025 item 1): a kind entry def that is a function or a path is a MODULE, as
+  # gen-schema's default branch and nixpkgs' submodule type treat it, and its content lands. RED
+  # (measured at gen-aspects 9827a96): both read the declared default, `0`, with no message.
+  flake.tests.schema-integration.test-kind-entry-function-def-lands = {
+    expr = priorityOf [ ({ ... }: { priority = 7; }) ];
+    expected = 7;
+  };
+  flake.tests.schema-integration.test-kind-entry-module-function-def-lands = {
+    expr = priorityOf [ ({ ... }: { config.priority = 7; }) ];
+    expected = 7;
+  };
+  flake.tests.schema-integration.test-kind-entry-path-def-lands = {
+    expr = priorityOf [ ../fixtures/kind-entry-priority.nix ];
+    expected = 7;
+  };
+  # controls, same fixture: an attrset def lands, and no def reads the default.
+  flake.tests.schema-integration.test-kind-entry-attrset-def-lands = {
+    expr = priorityOf [ { priority = 7; } ];
+    expected = 7;
+  };
+  flake.tests.schema-integration.test-kind-entry-no-def-reads-default = {
+    expr = priorityOf [ ];
+    expected = 0;
   };
 }

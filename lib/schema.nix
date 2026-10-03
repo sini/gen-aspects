@@ -45,20 +45,28 @@ let
       formalNamed = prelude.concatMap (
         d: if builtins.isAttrs d.value then builtins.filter (k: d.value ? ${k}) cnfKeys else [ ]
       ) defs;
+      # A def that is a function or a path is a MODULE, imported whole as gen-schema's default branch
+      # and nixpkgs' submodule type do (den-hoag-ndwvn); only an attrset def can be inspected above.
       defsModules =
         if formalNamed != [ ] then
           throw "gen-aspects: kind '${kind}': declaration key '${builtins.head formalNamed}' is an mkAspectSchema construction formal — it is fixed by `mkAspectSchema { ${builtins.head formalNamed} = …; }`, and written on a kind entry it is not read as one; pass it there, or write `config.${builtins.head formalNamed}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`"
         else
-          map (
-            d:
-            if d.value ? __functor then
-              {
-                __reservedKeys = reservation;
-                imports = [ d.value ];
-              }
-            else
-              d.value // { __reservedKeys = reservation; }
-          ) (builtins.filter (d: builtins.isAttrs d.value) defs);
+          map
+            (
+              d:
+              if d.value ? __functor || !(builtins.isAttrs d.value) then
+                {
+                  __reservedKeys = reservation;
+                  imports = [ d.value ];
+                }
+              else
+                d.value // { __reservedKeys = reservation; }
+            )
+            (
+              builtins.filter (
+                d: builtins.isAttrs d.value || builtins.isFunction d.value || builtins.isPath d.value
+              ) defs
+            );
       # THE IMPORTS-ROUTE RESERVATION (den-hoag-8x97u). The instance modules here (`__defsModule`
       # and the functor's `allModules`) are built by this library, not gen-schema, so it marks them
       # itself with gen-merge's `__reservedKeys`: `cnfKeys` with this library's text, united with
