@@ -26,7 +26,9 @@ let
   # A guard reading nothing (design Section 3: constants become `always`).
   empty = aspects.guard aspects.pred.always { description = "e"; };
   # Two guard-record definitions under one key, one reading `host` and one reading `x`: the aspect
-  # type's merge builds a guard carrier (K2's site).
+  # type's merge builds a guard carrier (K2's site). The two bodies set DISTINCT keys: two firing
+  # definitions that disagree on one scalar are refused (den-hoag-ywlww, guard.test-guard-multidef-
+  # carrier-discharge-merges-by-module-law), and this fixture asserts the union.
   kinds = {
     entityKinds = [ "host" ];
   };
@@ -51,7 +53,7 @@ let
         {
           file = "/b.nix";
           value = aspects.guard (aspects.pred.has "x") {
-            description = t.concat [
+            note = t.concat [
               (t.lit "b:")
               (t.readCtx "x" [ ])
             ];

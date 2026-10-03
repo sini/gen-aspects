@@ -699,4 +699,72 @@ in
         selfIsTheReference = "selfw";
       };
     };
+
+  # den-hoag-ywlww (ADR-0025 item 1): the carrier's discharge merges the surviving fragments by the
+  # module system's law for untyped content (`types.anything`), as nixpkgs does: lists concatenate,
+  # attrsets merge per key, a conflicting scalar is refused by name. RED (measured at gen-aspects
+  # 9827a96): `mergeDefaultOption` folded with `//`, so two firing definitions with different
+  # `description` read one value at rc 0 and `includes = [ "p" ]` / `[ "q" ]` read `[ "p" ]`.
+  flake.tests.guard.test-guard-multidef-carrier-discharge-merges-by-module-law =
+    let
+      gv = aspects.mkGuardVocab { };
+      fire =
+        a: b:
+        gv.applyGuard { thimble.name = "cortex"; }
+          (mkSchemaEval {
+            modules = [
+              { config.aspects.dup = a; }
+              { config.aspects.dup = b; }
+            ];
+          }).config.aspects.dup;
+      always = gv.vocab.always;
+      ok = v: (builtins.tryEval (builtins.deepSeq v true)).success;
+    in
+    {
+      expr = {
+        conflictRefuses = ok (
+          fire (always { description = "a"; }) (always {
+            description = "b";
+          })
+        );
+        conflictWithUnconditionalRefuses = ok (
+          fire { description = "u"; } (always {
+            description = "g";
+          })
+        );
+        includes = lib.sort (x: y: x < y) (
+          (fire (always { includes = [ "p" ]; }) (always {
+            includes = [ "q" ];
+          })).includes
+        );
+        disjointKeysBothLand = builtins.attrNames (
+          fire (always { description = "a"; }) (always {
+            classOne.x = [ "k" ];
+          })
+        );
+        # controls: equal scalars agree; a definition whose guard does not fire does not conflict.
+        equalScalars =
+          (fire (always { description = "s"; }) (always {
+            description = "s";
+          })).description;
+        nonFiringDoesNotConflict =
+          (fire (always { description = "a"; }) (
+            gv.vocab.whenEq [ "thimble" "name" ] "blade" { description = "b"; }
+          )).description;
+      };
+      expected = {
+        conflictRefuses = false;
+        conflictWithUnconditionalRefuses = false;
+        includes = [
+          "p"
+          "q"
+        ];
+        disjointKeysBothLand = [
+          "classOne"
+          "description"
+        ];
+        equalScalars = "s";
+        nonFiringDoesNotConflict = "a";
+      };
+    };
 }

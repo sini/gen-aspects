@@ -64,8 +64,14 @@ in
           in
           if survivors == [ ] then
             null
+          else if builtins.length survivors == 1 then
+            builtins.head survivors
           else
-            merge.mergeDefaultOption loc (
+            # The module system's own law for untyped content (`types.anything`): lists concatenate,
+            # attrsets merge per key, equal scalars agree, and a conflicting scalar is refused by name
+            # (ADR-0025 item 1). `mergeDefaultOption` folds attrsets with `//`, which drops a
+            # definition's keys without a message (den-hoag-ywlww).
+            merge.types.anything.merge loc (
               map (v: {
                 file = g.meta.file or "<unknown>";
                 value = v;

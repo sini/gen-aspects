@@ -950,4 +950,21 @@ in
           }).config.aspects
           ("^" + lib.escapeRegex "gen-aspects: unrecognised cnf key 'deferIncludeResolution'.");
     };
+
+  # den-hoag-ywlww: two firing definitions of one parametric aspect that disagree on a scalar are
+  # refused by name at the carrier's discharge, as nixpkgs refuses the same two definitions. They
+  # read one value at rc 0 before (`mergeDefaultOption`'s `//` fold).
+  flake.testsError.guard-carrier-conflict.test-conflicting-scalar-refused =
+    let
+      always = gv.vocab.always;
+      eval = mkSchemaEval {
+        modules = [
+          { config.aspects.dup = always { description = "a"; }; }
+          { config.aspects.dup = always { description = "b"; }; }
+        ];
+      };
+    in
+    thrown (gv.applyGuard { } eval.config.aspects.dup) (
+      "^" + lib.escapeRegex "gen-merge: the option `dup.description' has conflicting definitions:"
+    );
 }
