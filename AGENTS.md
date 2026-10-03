@@ -66,9 +66,9 @@ through one content-address encoding.
 
 **Instances** — `lib/instance.nix`
 
-| Export       | Signature                                                                                                                                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `instanceOf` | `cnf -> { aspect, value, context, sources } -> { id, entry, formals }` — the instance mint (0cmbt spec §2.5): `formals` maps each key `value` receives at `context` to its source, `id` = `hashIdentity "aspect-instance"` over `{ aspect; formals; }` |
+| Export       | Signature                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `instanceOf` | `cnf -> { aspect, value, context, sources, scope ? { } } -> { id, entry, formals, scope }` — the instance mint (0cmbt spec §2.5): `formals` maps each key `value` receives at `context` to its source, `id` = `hashIdentity "aspect-instance"` over `{ aspect; formals; }`; `scope` is the instantiation scope (den-hoag-ohvjc), never in the id: a deferred door node in `entry`, fired later handed it, reads its closure there instead of re-applying the outer |
 
 `value` is a first-order guard (its DERIVED READS that the context carries: the coordinates its
 condition and body terms read, and each door registration's declared reads, `lib/guard-term.nix`
@@ -83,14 +83,14 @@ Enumerated, not refused: a source that is the instance's own id aborts with `inf
 The caller's obligation, unchecked: each source supplies the value the context carries under its key.
 The id reads only the sources, so a mismatch mints one id with two different entries; `instancesFor`
 cannot be handed that input, since it derives each context from one `suppliers` map.
-Tests: `ci/tests/instances.nix`; `instance-doors.*` in `ci/tests-error.nix`.
+Tests: `ci/tests/instances.nix`, `ci/tests/instance-scope.nix`; `instance-doors.*` and `instance-scope.*` in `ci/tests-error.nix`.
 
 `instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; reaches; nested; }` is the instance
 relation (0cmbt spec §2.6), with `suppliers.<source>.<key> = <value>` and
 `scopes.<node> = { members; sources; descendants ? [ { sources; } ]; }`. A tuple's context is derived,
 `mapAttrs (k: src: suppliers.${src}.${k}) sources`, so one source names one value per key and one scope
 never reads another's content.
-`vertices.<iid> = { aspect; formals; entry; }` holds one cell per `instanceOf` id (`aspect` is the
+`vertices.<iid> = { aspect; formals; entry; scope; }` holds one cell per `instanceOf` id (`aspect` is the
 parametric node's facts id); `reaches.<node>.<aspect>` and `nested.<iid>.<aspect>` are ascending id
 lists. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
 nodes and inline content. A node mints at its own tuple when the guard's condition holds there,
@@ -129,13 +129,13 @@ Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doo
 
 **Guard vocabulary** — `lib/guard.nix`
 
-| Export                      | Signature                                                                                                                                                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `guard`                     | `condition -> body -> { __guard = true; condition; body; }` — the condition a term of gen-algebra's algebra, the body a term or first-order data, lifted and checked where the guard meets its `cnf` (`lib/guard-term.nix` `checkGuard`)               |
-| `pred`                      | `{ class, tagEq, eq, has, all, any, always, not, custom }` — constructors emitting core terms (`class v` = `eq [ "class" ] v`, `tagEq k v` = `eq [ "tags" k ] v`); `pred.always` is a value; `pred.custom` is the retired form's refused-by-name alias |
-| `mkGuardVocab`              | `cnf -> { pred, guard, fires, vocab, applyGuard, applyGuardWith }` — `applyGuardWith { context; sources; scope; }` is the firing a door node needs (its door keys its output on the sources)                                                           |
-| `mkGuardVocab cnf` `.vocab` | `{ whenClass, whenTagEq, whenEq, whenAll, whenAny, always }` — each is `args -> body -> guardRecord`                                                                                                                                                   |
-| `applyGuard`                | `ctx -> guardRecord \| closure \| wrappedFn -> value` — the top-level binding is `(mkGuardVocab { }).applyGuard`; no sources, so a door node refuses here by name                                                                                      |
+| Export                      | Signature                                                                                                                                                                                                                                                                           |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guard`                     | `condition -> body -> { __guard = true; condition; body; }` — the condition a term of gen-algebra's algebra, the body a term or first-order data, lifted and checked where the guard meets its `cnf` (`lib/guard-term.nix` `checkGuard`)                                            |
+| `pred`                      | `{ class, tagEq, eq, has, all, any, always, not, custom }` — constructors emitting core terms (`class v` = `eq [ "class" ] v`, `tagEq k v` = `eq [ "tags" k ] v`); `pred.always` is a value; `pred.custom` is the retired form's refused-by-name alias                              |
+| `mkGuardVocab`              | `cnf -> { pred, guard, fires, vocab, applyGuard, applyGuardWith, applyGuardScoped }` — `applyGuardWith { context; sources; scope; }` is the firing a door node needs (its door keys its output on the sources); `applyGuardScoped` is the same firing answering `{ value; scope; }` |
+| `mkGuardVocab cnf` `.vocab` | `{ whenClass, whenTagEq, whenEq, whenAll, whenAny, always }` — each is `args -> body -> guardRecord`                                                                                                                                                                                |
+| `applyGuard`                | `ctx -> guardRecord \| closure \| wrappedFn -> value` — the top-level binding is `(mkGuardVocab { }).applyGuard`; no sources, so a door node refuses here by name                                                                                                                   |
 
 **Introspection and registry** — `lib/can-take.nix`, `lib/walk.nix`, `lib/flatten.nix`, `lib/facts.nix`
 
@@ -336,7 +336,7 @@ nix eval --json .#lib --apply 'l: {
 Current output (verbatim):
 
 ```json
-{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","applyGuardWith","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","has","not","tagEq"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","hasClassContent","includeSitesOfEntry","instanceOf","instancesFor","isGuardLeaf","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenTagEq"]}
+{"canTake":["atLeast","upTo"],"guardVocab":["applyGuard","applyGuardScoped","applyGuardWith","fires","guard","pred","vocab"],"pred":["all","always","any","class","custom","eq","has","not","tagEq"],"schema":["aspectPath","aspectType","canTake","identity","isMeaningfulName","key","keyCategory","mkAspectModule","mkAspectOption","mkIsModuleFn","mkNamespaceType","pathKey","schemaOption"],"schemaIdentity":["aspectPath","isMeaningfulName","key","pathKey"],"structuralKeys":["name","description","key","id_hash","meta","includes"],"top":["applyGuard","aspectId","aspectOrFn","aspectPath","aspectSubmodule","aspectType","aspectsRoot","aspectsType","canTake","cnfKeys","flatten","graphFacts","guard","guardKey","hasClassContent","includeSitesOfEntry","instanceOf","instancesFor","isGuardLeaf","isMeaningfulName","key","keyCategory","keyRef","mkAspectSchema","mkGuardVocab","mkIsModuleFn","pathKey","pred","structuralKeys","wrapFn","wrapGatedFn"],"vocab":["always","whenAll","whenAny","whenClass","whenEq","whenTagEq"]}
 ```
 
 **Checks.** Test-runner invocation (from the repo root; CI runs the same command from the

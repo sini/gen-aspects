@@ -590,7 +590,7 @@ in
             extra = 1;
           })
           (
-            exactly "gen-aspects.instanceOf: 'extra' is not an option of this door; the options are closed (accepted: 'aspect', 'value', 'context', 'sources') (in prelude.checkOptions)"
+            exactly "gen-aspects.instanceOf: 'extra' is not an option of this door; the options are closed (accepted: 'aspect', 'value', 'context', 'sources', 'scope') (in prelude.checkOptions)"
           );
       test-aspect-not-string =
         thrown
@@ -606,6 +606,20 @@ in
       test-sources-not-attrs = thrown (mint p { host = "h1"; } "h1") (
         at "was handed sources of type string; sources map each context key to the identity that supplied it."
       );
+      # den-hoag-ohvjc: `scope` is an instance's `scope`. RED (without the door): `//` aborts `expected a
+      # set but found a string` inside the firing, naming no door.
+      test-scope-not-attrs =
+        thrown
+          (aspects.instanceOf { } {
+            aspect = "A";
+            value = p;
+            context.host = "h1";
+            sources.host = entity "h1";
+            scope = "s";
+          })
+          (
+            at "was handed a scope of type string; a scope is an instance's `scope`, closures keyed by nested registration identifiers."
+          );
     };
 
   # The instance relation's doors (lib/instance.nix `instancesFor`; den-hoag-0cmbt spec §2.6, the C1
@@ -967,4 +981,49 @@ in
     thrown (gv.applyGuard { } eval.config.aspects.dup) (
       "^" + lib.escapeRegex "gen-merge: the option `dup.description' has conflicting definitions:"
     );
+  # The unscoped arm of `instance-scope` (den-hoag-ohvjc §3a G1′): a deferred door node fired with no
+  # scope takes the door's fallback, which re-applies the outer, and the poisoned door
+  # (`ci/fixtures/scope-door.nix`) throws there. It pins that the out-of-domain path is still the
+  # fallback; the value plane pins that the scoped arm does not throw.
+  flake.testsError.instance-scope =
+    let
+      T = genAlgebra.term genIdentity.hashIdentity;
+      sd = import ./fixtures/scope-door.nix { inherit aspects T; };
+      src = n: "entity:" + builtins.hashString "sha256" n;
+      kinds.entityKinds = {
+        thimble = true;
+        bobbin = true;
+      };
+      unscoped =
+        depth:
+        let
+          o = aspects.instanceOf (kinds // { ref = sd.door depth false; }) {
+            aspect = "outer";
+            value = sd.outerNode depth;
+            context.thimble = "h0";
+            sources.thimble = src "h0";
+          };
+          first = builtins.head o.entry.includes;
+        in
+        (aspects.instanceOf (kinds // { ref = sd.door depth true; }) {
+          aspect = "inner";
+          value = if depth == 1 then first else builtins.head first.includes;
+          context = {
+            thimble = "h0";
+            bobbin = "u0";
+          };
+          sources = {
+            thimble = src "h0";
+            bobbin = src "u0";
+          };
+        }).entry;
+    in
+    {
+      test-unscoped-takes-fallback = thrown (unscoped 1) (
+        exactly "scope-door: the outer closure was re-applied"
+      );
+      test-unscoped-takes-fallback-depth-2 = thrown (unscoped 2) (
+        exactly "scope-door: the outer closure was re-applied"
+      );
+    };
 }
