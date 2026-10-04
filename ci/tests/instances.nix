@@ -210,6 +210,67 @@ let
   desc = id: r.vertices.${id}.entry.description;
   descs = map desc;
   facts = aspects.graphFacts { } rel;
+  # H1–H6 (den-hoag-ehkse): a guard placed at a path is a declaration, identified by origin + declared
+  # path (identity design §1). `marked` guards are one condition and one non-class body apart from
+  # their `classOne` payloads, which are module content outside the term's mint (ADR-0034 a0gc).
+  # One cnf at placement and at the relation, so a carrier's fragments discharge against the class
+  # key the single records were checked against.
+  idCnf = {
+    keySemantics.classOne.category = "class";
+    entityKinds = {
+      host = true;
+      user = true;
+    };
+  };
+  marked = m: aspects.guard (aspects.pred.has "host") { classOne.marks = [ m ]; };
+  placedMods =
+    mods: (mkSchemaEval (idCnf // { modules = map (m: { config.aspects = m; }) mods; })).config.aspects;
+  placed = defs: placedMods [ defs ];
+  idSuppliers = {
+    ${entity "h1"}.host = "h1";
+    ${entity "h2"}.host = "h2";
+    ${entity "u1"}.user = "u1";
+  };
+  hostAt = h: members: {
+    inherit members;
+    sources.host = entity h;
+  };
+  userAt = h: u: members: {
+    inherit members;
+    sources = {
+      host = entity h;
+      user = entity u;
+    };
+  };
+  relOf =
+    tree: scopes:
+    aspects.instancesFor idCnf tree {
+      suppliers = idSuppliers;
+      inherit scopes;
+    };
+  vertexCount = rr: builtins.length (builtins.attrNames rr.vertices);
+  marksAt =
+    rr: n: a:
+    map (id: rr.vertices.${id}.entry.classOne.marks) rr.reaches.${n}.${a};
+  siblings = placed {
+    x = marked "x";
+    y = marked "y";
+  };
+  nestedPair = placed {
+    f.x = marked "fx";
+    g.x = marked "gx";
+  };
+  # two definitions per key: each is a guard carrier of two record fragments
+  carriers = placedMods [
+    {
+      x = marked "x1";
+      y = marked "y1";
+    }
+    {
+      x = marked "x2";
+      y = marked "y2";
+    }
+  ];
 in
 {
   flake.tests.instances = {
@@ -583,6 +644,231 @@ in
           reaches = true;
           vertices = true;
           control = false;
+        };
+      };
+    # H1. Siblings `x` and `y`, a payload apart, are two declarations and two instances, each reach
+    # delivering its own payload. RED (`key` reads the term's mint): one vertex, and `y` delivers `x`'s
+    # marks. Controls in both arms: a distinct `description`, or a distinct condition, splits the terms.
+    test-guard-siblings-two-instances =
+      let
+        rr = relOf siblings {
+          n = hostAt "h1" [
+            "x"
+            "y"
+          ];
+        };
+        ctlDescription =
+          relOf
+            (placed {
+              x = aspects.guard (aspects.pred.has "host") {
+                classOne.marks = [ "x" ];
+                description = "x";
+              };
+              y = aspects.guard (aspects.pred.has "host") {
+                classOne.marks = [ "y" ];
+                description = "y";
+              };
+            })
+            {
+              n = hostAt "h1" [
+                "x"
+                "y"
+              ];
+            };
+        ctlCondition =
+          relOf
+            (placed {
+              x = marked "x";
+              y = aspects.guard (aspects.pred.not (aspects.pred.has "user")) { classOne.marks = [ "y" ]; };
+            })
+            {
+              n = hostAt "h1" [
+                "x"
+                "y"
+              ];
+            };
+      in
+      {
+        expr = {
+          vertices = vertexCount rr;
+          x = marksAt rr "n" "x";
+          y = marksAt rr "n" "y";
+          ctlDescription = vertexCount ctlDescription;
+          ctlCondition = vertexCount ctlCondition;
+        };
+        expected = {
+          vertices = 2;
+          x = [ [ "x" ] ];
+          y = [ [ "y" ] ];
+          ctlDescription = 2;
+          ctlCondition = 2;
+        };
+      };
+    # H2. One leaf name under two parents, `f.x` and `g.x`: the declared path, not the leaf name,
+    # tells them apart. RED (`key` reads the term's mint, or `aspectPath`, which reduces a guard leaf
+    # with no `aspect-chain` to its name): one vertex, and `g/x` delivers `f/x`'s marks.
+    test-guard-nested-two-instances =
+      let
+        rr = relOf nestedPair {
+          n = hostAt "h1" [
+            "f/x"
+            "g/x"
+          ];
+        };
+      in
+      {
+        expr = {
+          vertices = vertexCount rr;
+          fx = marksAt rr "n" "f/x";
+          gx = marksAt rr "n" "g/x";
+        };
+        expected = {
+          vertices = 2;
+          fx = [ [ "fx" ] ];
+          gx = [ [ "gx" ] ];
+        };
+      };
+    # H3. Across nodes: a host node reaches `x`, a user node sourcing `host` from the same entity
+    # reaches `y`. RED: one vertex, and the user node's `y` delivers `x`'s marks.
+    test-guard-cross-node-two-instances =
+      let
+        rr = relOf siblings {
+          hostN = hostAt "h1" [ "x" ];
+          userU = userAt "h1" "u1" [ "y" ];
+        };
+      in
+      {
+        expr = {
+          vertices = vertexCount rr;
+          distinct = rr.reaches.hostN.x != rr.reaches.userU.y;
+          y = marksAt rr "userU" "y";
+        };
+        expected = {
+          vertices = 2;
+          distinct = true;
+          y = [ [ "y" ] ];
+        };
+      };
+    # H4. Two two-definition carriers, a payload apart: two instances. RED (`key` reads `carrierKey`, a
+    # hash over the fragment tokens): one vertex, and `y` delivers `x`'s marks. Control in both arms: a
+    # carrier holding a function fragment keys apart.
+    test-guard-carriers-two-instances =
+      let
+        rr = relOf carriers {
+          n = hostAt "h1" [
+            "x"
+            "y"
+          ];
+        };
+        carrFn = placedMods [
+          {
+            x = marked "x1";
+            y = marked "y1";
+          }
+          {
+            x.classOne = _: { };
+            y.classOne = _: { };
+          }
+        ];
+      in
+      {
+        expr = {
+          vertices = vertexCount rr;
+          x = marksAt rr "n" "x";
+          y = marksAt rr "n" "y";
+          ctlFunctionFragment = aspects.aspectId [ ] carrFn.x != aspects.aspectId [ ] carrFn.y;
+        };
+        expected = {
+          vertices = 2;
+          x = [
+            [
+              "x2"
+              "x1"
+            ]
+          ];
+          y = [
+            [
+              "y2"
+              "y1"
+            ]
+          ];
+          ctlFunctionFragment = true;
+        };
+      };
+    # H5. The sharing H1–H4 must not break: one declaration reached from two host nodes at equal
+    # formals is one instance (design Q6), and so is one reached from a host node and a user node
+    # sourcing one `host`; from two hosts it is two.
+    test-guard-one-declaration-shared =
+      let
+        one = placed { x = marked "x"; };
+        count = scopes: vertexCount (relOf one scopes);
+      in
+      {
+        expr = {
+          equal = count {
+            a = hostAt "h1" [ "x" ];
+            b = hostAt "h1" [ "x" ];
+          };
+          crossNode = count {
+            hostN = hostAt "h1" [ "x" ];
+            userU = userAt "h1" "u1" [ "x" ];
+          };
+          distinct = count {
+            a = hostAt "h1" [ "x" ];
+            b = hostAt "h2" [ "x" ];
+          };
+        };
+        expected = {
+          equal = 1;
+          crossNode = 1;
+          distinct = 2;
+        };
+      };
+    # H6. `key` of a placed guard is its declared path; `guardKey` of the same value, the TERM's key,
+    # is unchanged (`guard:` + 64 hex, one for all four); static keys are unchanged.
+    test-guard-key-is-the-declared-path =
+      let
+        stat = placed {
+          sx.classOne.marks = [ "sx" ];
+          f.sz.classOne.marks = [ "fz" ];
+        };
+        terms = map aspects.guardKey [
+          siblings.x
+          siblings.y
+          nestedPair.f.x
+          nestedPair.g.x
+        ];
+      in
+      {
+        expr = {
+          keys = map aspects.key [
+            siblings.x
+            siblings.y
+            nestedPair.f.x
+            nestedPair.g.x
+          ];
+          oneTerm = builtins.all (k: k == builtins.head terms) terms;
+          termPrefix = builtins.substring 0 6 (builtins.head terms);
+          termLength = builtins.stringLength (builtins.head terms);
+          static = [
+            (aspects.key stat.sx)
+            (aspects.key stat.f.sz)
+          ];
+        };
+        expected = {
+          keys = [
+            "x"
+            "y"
+            "f/x"
+            "g/x"
+          ];
+          oneTerm = true;
+          termPrefix = "guard:";
+          termLength = 70;
+          static = [
+            "sx"
+            "f/sz"
+          ];
         };
       };
     # R-9 (gate C-1). One scope never reads another's content: every instance a scope reaches, and the

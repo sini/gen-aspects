@@ -247,7 +247,8 @@ in
       expected = true;
     };
 
-  # end-to-end site-independence: same guard (first-order body) at two sites -> equal key
+  # end-to-end site-independence: same guard (first-order body) at two sites -> equal TERM key
+  # (`guardKey`), and two declarations, each keyed by its declared path (identity design §1)
   flake.tests.guard.test-guard-record-key-site-independent =
     let
       gv = aspects.mkGuardVocab { };
@@ -262,13 +263,26 @@ in
         }).config.aspects.${name};
     in
     {
-      expr = aspects.key (mk "aaa") == aspects.key (mk "bbb");
-      expected = true;
+      expr = {
+        termSiteIndependent = aspects.guardKey (mk "aaa") == aspects.guardKey (mk "bbb");
+        declarations = [
+          (aspects.key (mk "aaa"))
+          (aspects.key (mk "bbb"))
+        ];
+      };
+      expected = {
+        termSiteIndependent = true;
+        declarations = [
+          "aaa"
+          "bbb"
+        ];
+      };
     };
 
-  # end-to-end: a guard whose body is a module function is a declared module slot, keyed by the
-  # mint over (condition, slot position) with no source-position fallback (den-hoag-lwbb1): the
-  # same guard at two sites is ONE key, and a differing condition is another.
+  # end-to-end: a guard whose body is a module function is a declared module slot, its TERM keyed by
+  # the mint over (condition, slot position) with no source-position fallback (den-hoag-lwbb1): the
+  # same guard at two sites is ONE term key, and a differing condition is another. Its declaration
+  # key is its declared path.
   flake.tests.guard.test-guard-slot-body-keyed-by-mint =
     let
       gv = aspects.mkGuardVocab { };
@@ -282,12 +296,21 @@ in
     in
     {
       expr = {
-        siteIndependent = aspects.key (mk "aaa" "cortex") == aspects.key (mk "bbb" "cortex");
-        conditionDiscriminates = aspects.key (mk "aaa" "cortex") == aspects.key (mk "aaa" "blade");
+        siteIndependent = aspects.guardKey (mk "aaa" "cortex") == aspects.guardKey (mk "bbb" "cortex");
+        conditionDiscriminates =
+          aspects.guardKey (mk "aaa" "cortex") == aspects.guardKey (mk "aaa" "blade");
+        declarations = [
+          (aspects.key (mk "aaa" "cortex"))
+          (aspects.key (mk "bbb" "cortex"))
+        ];
       };
       expected = {
         siteIndependent = true;
         conditionDiscriminates = false;
+        declarations = [
+          "aaa"
+          "bbb"
+        ];
       };
     };
 
