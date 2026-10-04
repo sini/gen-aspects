@@ -182,7 +182,8 @@ rec {
       origin = cnf.providerPrefix;
       idOf = path: render (origin ++ path);
       # An already-rendered container-relative key (an include element's `.key`) qualified the same
-      # way. The key is slash-joined and the origin is a segment list, so one join spans both.
+      # way: the origin is rendered and the key, already a rendering, is joined as is (rendering it as
+      # one segment would escape its own separators).
       qualify = key: if origin == [ ] then key else render origin + "/" + key;
 
       entries = walk aspects;
