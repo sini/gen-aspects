@@ -982,6 +982,48 @@ in
     thrown (gv.applyGuard { } eval.config.aspects.dup) (
       "^" + lib.escapeRegex "gen-merge: the option `dup.description' has conflicting definitions:"
     );
+  # den-hoag-bgeum (spec §3a A3, gate C1): an instance's member that refuses is refused at its own
+  # read, named by aspect AND field; a context-free include element that refuses at the declaration
+  # is named by aspect and include position, though nothing instantiates the declaration. The
+  # structure halves are `ci/tests` `instantiation-edge`.
+  flake.testsError.instantiation-edge =
+    let
+      t = (genAlgebra.term genIdentity.hashIdentity).term;
+      g = aspects.guard;
+      has = aspects.pred.has;
+      tree =
+        (mkSchemaEval {
+          modules = [
+            {
+              config.aspects = {
+                lazy = g (has "host") {
+                  fine = "fine";
+                  bad = t.readCtx "host" [ "deep" ];
+                };
+                neverFires = g (has "user") { includes = [ (t.concat [ (t.lit 1) ]) ]; };
+              };
+            }
+          ];
+        }).config.aspects;
+      src = "entity:" + builtins.hashString "sha256" "h1";
+      r = aspects.instancesFor { } tree {
+        suppliers.${src}.host = "h1";
+        scopes.n = {
+          members = [ "lazy" ];
+          sources.host = src;
+        };
+      };
+    in
+    {
+      test-member-refuses-by-field = thrown r.vertices.${builtins.head r.reaches.n.lazy}.entry.bad (
+        "^" + lib.escapeRegex "gen-aspects.guard: aspect `lazy`, field `bad`: projection-path-missing: "
+      );
+      test-declaration-member-refuses-by-position = thrown (aspects.graphFacts { } tree).includesOf (
+        "^"
+        + lib.escapeRegex "gen-aspects.guard: aspect `neverFires`, include position 0, a declaration member resolved once at the declaration: former-operand-type: "
+      );
+    };
+
   # The unscoped arm of `instance-scope` (den-hoag-ohvjc §3a G1′): a deferred door node fired with no
   # scope takes the door's fallback, which re-applies the outer, and the poisoned door
   # (`ci/fixtures/scope-door.nix`) throws there. It pins that the out-of-domain path is still the

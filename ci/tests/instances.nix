@@ -321,7 +321,7 @@ in
         a = builtins.attrNames r.reaches.a;
         d = builtins.attrNames r.reaches.d;
         vertexAspects = builtins.attrNames (
-          builtins.groupBy (id: r.vertices.${id}.aspect) (builtins.attrNames r.vertices)
+          builtins.groupBy (id: builtins.head r.instantiates.${id}) (builtins.attrNames r.vertices)
         );
       };
       expected = {

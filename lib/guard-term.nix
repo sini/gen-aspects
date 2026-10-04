@@ -425,7 +425,7 @@ let
           value = null;
           inherit (args) scope;
         }
-      else if isLeft b then
+      else if isDoorBody g.body && isLeft b then
         throw (render at b.left)
       else if isDoorBody g.body then
         let
@@ -495,7 +495,12 @@ let
           }
       else
         {
-          value = b.right;
+          # Each field resolved where it is READ (ADR-0010 §4(a) clause 3; gen-algebra `resolveFields`):
+          # a member that refuses refuses at its own read, by name and field, and its siblings resolve.
+          # The door body above stays whole: its output is a sealed product the scope is defined over.
+          value = T.resolveFields env (
+            p: l: throw (render "${at}, field `${builtins.concatStringsSep "." (map toString p)}`" l)
+          ) g.body;
           inherit (args) scope;
         };
   fire =
@@ -529,6 +534,7 @@ in
     fireScoped
     holds
     isDoorId
+    render
     maxLiftDepth
     maxIdLength
     ;

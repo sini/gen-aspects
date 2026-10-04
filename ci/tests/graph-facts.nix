@@ -1423,9 +1423,11 @@ in
         builtins.filter (n: lib.hasSuffix "Refusal" n) (builtins.attrNames factsInternals)
       );
       # Each name below is exercised in this suite by BOTH a catchability assertion (on the real
-      # path) and a message assertion (on the renderer).
+      # path) and a message assertion (on the renderer); `declarationMemberRefusal`'s are in
+      # ci/tests/instantiation-edge.nix, beside the relation they gate.
       covered = [
         "danglingIncludeRefusal"
+        "declarationMemberRefusal"
         "includeSitesDepthRefusal"
         "memberKeyRefusal"
       ];
@@ -1433,11 +1435,13 @@ in
     expected = {
       renderers = [
         "danglingIncludeRefusal"
+        "declarationMemberRefusal"
         "includeSitesDepthRefusal"
         "memberKeyRefusal"
       ];
       covered = [
         "danglingIncludeRefusal"
+        "declarationMemberRefusal"
         "includeSitesDepthRefusal"
         "memberKeyRefusal"
       ];
