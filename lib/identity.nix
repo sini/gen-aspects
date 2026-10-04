@@ -1,4 +1,5 @@
-# Aspect identity: path-based key for dedup.
+# Aspect identity: a declaration's key is its declared path, rendered by `path.nix`'s one injective
+# rendering (identity design §1).
 { prelude }:
 let
   # The rendering of a record's OWN fields. It is the key only of a record with no declared path
@@ -13,8 +14,8 @@ let
   # (origin/path each a list, or a "/"-joined string) OR a bare "origin/seg/seg" string. Marked
   # `__keyRef` so the includes element type recognizes it BEFORE aspectType's accept-all merge absorbs
   # it as a nested aspect. Carries `.key` (= pathKey path) so a reference's target key is inspectable
-  # uniformly with an aspect's own `.key`. `builtins.split "/"` is a single-literal-char regex (no `.*`
-  # backtracking — safe on short key strings, cf. the whole-file hasInfix stack overflow split fixes).
+  # uniformly with an aspect's own `.key`. The string sugar splits through `path.nix`'s `parse`, so
+  # `"f%2Fx"` names the one segment `f/x`.
   splitSlash = parse;
 
   # keyRef's refusal (ADR-0025 item 1). It names the TYPE and never interpolates the value, because
