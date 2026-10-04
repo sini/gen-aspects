@@ -27,6 +27,67 @@
 let
   identity = import ./identity.nix { inherit prelude; };
   canTake = import ./can-take.nix { inherit prelude; };
+
+  # The identity inputs are written by the type and by nothing else (ADR-0016 r5: one minting
+  # authority). `key` and `id_hash` are the type's computed values, and a write that differs from
+  # them refuses by name at the option's `apply`; `meta.loc` is a plain type definition, so a
+  # caller's unequal write conflicts with it at merge, and one that wins by priority refuses at
+  # `locChecked` (`aspectSubmodule`). A write EQUAL to the type's own value is accepted: it mints
+  # nothing. An already-typed value placed at a second position is a reference and is passed through
+  # unmerged (`isTypedAspect`), so carriage never meets the refusal.
+  isTypedAspect = v: builtins.isAttrs v && v ? id_hash && v ? key && !(v.__guard or false);
+
+  # An inline element's declaring SITE (identity design §2, a raw named value: the position of its
+  # `name` attribute and the name). A named attrset element is declared at
+  # `<owner> includes <name>@<line>:<column>:<file>`, so two elements sharing a name at two positions
+  # are two declarations, and module order moves neither (ADR-0034's rider: the declaring position,
+  # never the merged one). An element with no positioned string `name` keeps its merge position
+  # (`[definition N-entry M]`), the §1 anonymous rule's remaining gap: its module and definition
+  # ordinal need gen-merge. `@` is escaped in the name, so the segment is injective, and `path.nix`
+  # escapes the file's `/` where the path is rendered.
+  includeSite =
+    v: prefix:
+    let
+      pos = if v ? name && builtins.isString v.name then builtins.unsafeGetAttrPos "name" v else null;
+    in
+    if pos == null then
+      prefix
+    else
+      prelude.init prefix
+      ++ [
+        "${
+          builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] v.name
+        }@${toString pos.line}:${toString pos.column}:${pos.file}"
+      ];
+  # The element, read as a module that also DEFINES its declared path, from the module argument
+  # `prefix` (its merge position) and its own authored value. An authored `key`, `id_hash` or
+  # `meta.loc` refuses by name BEFORE the wrap: inside `imports` the attrset is a module, and its
+  # top-level `key` would be the module key, dropped silently or deduplicating the element away.
+  stampIncludeSite =
+    d:
+    let
+      written =
+        builtins.filter (k: d.value ? ${k}) [
+          "key"
+          "id_hash"
+        ]
+        ++ prelude.optional (builtins.isAttrs (d.value.meta or null) && d.value.meta ? loc) "meta.loc";
+    in
+    if written != [ ] then
+      throw "gen-aspects: an include element named `${d.value.name}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
+    else
+      d
+      // {
+        value =
+          {
+            prefix ? [ ],
+            ...
+          }:
+          {
+            imports = [ d.value ];
+            config.meta.loc = includeSite d.value prefix;
+          };
+      };
   inherit (import ./cnf.nix)
     extendCnf
     checkedEntry
@@ -482,6 +543,8 @@ let
                 };
               };
             }
+          else if isTypedAspect v then
+            { value = v; }
           else if builtins.isFunction v then
             { member = sub; }
           else if builtins.isAttrs v then
@@ -548,17 +611,31 @@ let
   # the declaration's identity), and it is an IDENTITY, not a vertex name: gen-link NAMES a federation node by its
   # origin-qualified `aspects.key`, never this. Consumers (the `id_hash` default; den-hoag, which retired
   # `sha256 "den-aspect:${key}"`) call THIS, never re-derive the preimage. `origin` is the source label as
-  # a path list (concatStringsSep "/"); default [] ⇒ "" ⇒ today's `.key` partition preserved.
-  aspectId =
+  # a path list, entering the preimage as the list; default [] is the local partition.
+  # A DECLARATION mints over its declared path as a LIST, never its rendering (identity design §1:
+  # "no preimage is a rendered string"), so `[ "f/x" ]` and `[ "f" "x" ]` mint apart by construction.
+  # A record with no declared path keeps the key-labelled shape, a disjoint key space.
+  aspectId = origin: aspect: builtins.seq (aspect.key or null) (mintAspectId origin aspect);
+  mintAspectId =
     origin: aspect:
-    hashIdentity "aspect" [ "origin" "key" ] (
-      k:
-      {
-        origin = prelude.concatStringsSep "/" origin;
-        key = identity.key aspect;
-      }
-      .${k}
-    );
+    if identity.isDeclared aspect then
+      hashIdentity "aspect" [ "origin" "path" ] (
+        k:
+        {
+          inherit origin;
+          path = identity.checkedPath aspect;
+        }
+        .${k}
+      )
+    else
+      hashIdentity "aspect" [ "origin" "key" ] (
+        k:
+        {
+          inherit origin;
+          key = identity.rawKey aspect;
+        }
+        .${k}
+      );
 
   # Recursion-safe binding: either doesn't force subtypes during construction.
   aspectOrFn = cnf: merge.either (aspectType cnf) (aspectSubmodule cnf);
@@ -660,6 +737,7 @@ let
       # function module, which the submodule reads as a module.
       (entryCoerced (aspectSubmodule cnf) (d: d // { value = _: d.value; }))
       (aspectOrFn cnf)
+      (entryCoerced (aspectSubmodule cnf) stampIncludeSite)
     ];
   includesElemTypeOver =
     cnf: alternatives:
@@ -690,6 +768,15 @@ let
           }
         else if builtins.length defs == 1 && isBareModuleInclude then
           { member = builtins.elemAt alternatives 0; }
+        else if
+          builtins.length defs == 1
+          && builtins.isAttrs v
+          && v ? name
+          && !(v.__guard or false)
+          && !(v ? _type)
+          && !(isTypedAspect v)
+        then
+          { member = builtins.elemAt alternatives 2; }
         else
           { member = builtins.elemAt alternatives 1; };
     };
@@ -846,6 +933,27 @@ let
         prefix ? [ ],
         ...
       }:
+      let
+        # The type's identity values, computed once: the option's default and its write check share them.
+        # A tree position's declared path is `prefix`; a `meta.loc` that says otherwise (an mkForce'd
+        # write) is refused here, where key and id read it.
+        treeLoc =
+          if prefix != [ ] && !(builtins.elem "includes" (builtins.tail prefix)) then prefix else null;
+        locChecked =
+          treeLoc == null
+          || (config.meta.loc or null) == treeLoc
+          || throw "gen-aspects: the option `${
+            merge.showOption (
+              prefix
+              ++ [
+                "meta"
+                "loc"
+              ]
+            )
+          }' is written by the aspect type; remove the definition.";
+        stampedKey = builtins.seq locChecked (identity.rawKey config);
+        stampedId = builtins.seq locChecked (mintAspectId cnf.providerPrefix config);
+      in
       {
         freeformType =
           let
@@ -885,8 +993,9 @@ let
         # den-hoag's root-relative `__provider`. `name` (`last prefix` by default) and
         # `meta.aspect-chain` (`init prefix`) are its RENDERINGS: a caller may set `name`, which moves
         # no identity, and a chain that contradicts the declared path refuses by name at `key`
-        # (identity design Q4). The stamps are mkDefault because a typed value carried by value (an
-        # include, an alias at a tree position) brings its own as definitions, and those win.
+        # (identity design Q4). The type is the one writer of `meta.loc`, `key` and `id_hash` (see
+        # `isTypedAspect`): a typed value carried by value (an include, an alias at a tree position)
+        # is passed through as a reference and never re-merged against these definitions.
         #
         # No `meta.loc` at the container root (`prefix == [ ]`), which declares nothing, nor on an
         # element written in an `includes` list: its prefix is its MERGE position
@@ -897,9 +1006,7 @@ let
         config.meta = {
           aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
         }
-        // prelude.optionalAttrs (prefix != [ ] && !(builtins.elem "includes" (builtins.tail prefix))) {
-          loc = merge.mkDefault prefix;
-        };
+        // prelude.optionalAttrs (treeLoc != null) { loc = treeLoc; };
 
         options = {
           name = merge.mkOption {
@@ -918,7 +1025,15 @@ let
             internal = true;
             readOnly = true;
             type = t.str;
-            default = identity.key config;
+            default = stampedKey;
+            apply =
+              v:
+              if v == stampedKey then
+                v
+              else
+                throw "gen-aspects: the option `${
+                  merge.showOption (prefix ++ [ "key" ])
+                }' is written by the aspect type; remove the definition.";
           };
 
           # Convenience content-address on plain submodules, mirroring gen-schema's `id_hash` — computed
@@ -928,7 +1043,15 @@ let
             internal = true;
             readOnly = true;
             type = t.str;
-            default = aspectId cnf.providerPrefix config;
+            default = stampedId;
+            apply =
+              v:
+              if v == stampedId then
+                v
+              else
+                throw "gen-aspects: the option `${
+                  merge.showOption (prefix ++ [ "id_hash" ])
+                }' is written by the aspect type; remove the definition.";
           };
 
           meta = merge.mkOption {

@@ -1,7 +1,7 @@
 # Partition-identity through the exported `aspects.aspectId` — THE canonical, uniform aspect content-
 # address for every kind (plain / parametric guard / guard — identity.nix `key`, whose dispatch IS
-# that enumeration). `aspectId origin aspect` = gen-schema hashIdentity over
-# [origin, key], key = identity.key aspect (NOT mkIdentityModule
+# that enumeration). `aspectId origin aspect` = gen-identity hashIdentity over [origin, path] for a
+# declaration (its declared path, a list) and [origin, key] for a record with none (NOT mkIdentityModule
 # reflection — that would fold `description` in and break the `.key` partition, design §Identity note).
 # With origin = []: aspectId [] a == aspectId [] b ⟺ key(a) == key(b), over all three kinds + a custom-
 # `description` pair (description must NOT change the id). A non-empty origin distinguishes two same-key
@@ -117,13 +117,15 @@ in
   # formula — gen-aspects' ci pins gen-schema independently, so that comparison silently becomes
   # "do these two pins agree" the moment either moves, which is the failure this cell exists to
   # exclude.
+  # A declaration mints over its declared path as a LIST (identity design §1: "no preimage is a
+  # rendered string"), and the origin enters as a list too.
   flake.tests.aspect-id-hash.test-aspectid-is-canonical-formula = {
     expr =
-      aspectId [ ] plainFoo == genIdentity.hashIdentity "aspect" [ "origin" "key" ] (
+      aspectId [ ] plainFoo == genIdentity.hashIdentity "aspect" [ "origin" "path" ] (
         k:
         {
-          origin = "";
-          key = aspects.key plainFoo;
+          origin = [ ];
+          path = [ "foo" ];
         }
         .${k}
       );

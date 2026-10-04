@@ -5,7 +5,8 @@ let
   # (`meta.loc`: an include element, a hand-built record); a placed declaration keys by `meta.loc`.
   aspectPath = a: (a.meta.aspect-chain or [ ]) ++ [ (a.name or "<anon>") ];
 
-  pathKey = path: prelude.concatStringsSep "/" path;
+  inherit (import ./path.nix) render parse;
+  pathKey = render;
 
   # keyRef — an origin-qualified reference to a node that may live OUTSIDE the local fixpoint
   # (cross-source direct-use, gen-link federation, decision 6). Accepts a structured `{ origin; path }`
@@ -14,7 +15,7 @@ let
   # it as a nested aspect. Carries `.key` (= pathKey path) so a reference's target key is inspectable
   # uniformly with an aspect's own `.key`. `builtins.split "/"` is a single-literal-char regex (no `.*`
   # backtracking — safe on short key strings, cf. the whole-file hasInfix stack overflow split fixes).
-  splitSlash = s: builtins.filter (seg: builtins.isString seg && seg != "") (builtins.split "/" s);
+  splitSlash = parse;
 
   # keyRef's refusal (ADR-0025 item 1). It names the TYPE and never interpolates the value, because
   # interpolating a non-string is itself the coercion abort the refusal replaces, and `typeOf` is
@@ -301,6 +302,8 @@ let
       throw (declaredPathRefusal "a list holding a non-string")
     else
       loc;
+  # A record is a DECLARATION when the type stamped its declared path (`meta.loc`, null when unstamped).
+  isDeclared = a: builtins.isAttrs (a.meta or null) && (a.meta.loc or null) != null;
   # Renders a caller-set chain for the refusal below without coercing it: interpolating a
   # non-string is itself an uncatchable abort.
   renderChain =
@@ -311,28 +314,43 @@ let
       "a ${builtins.typeOf chain}";
   # A static declaration's key. Its chain is a rendering of the declared path (`init loc`), so a
   # chain that says otherwise is refused by name rather than honoured or ignored (identity design Q4).
-  declaredKey =
+  checkedPath =
     a:
     let
       loc = declaredPath a;
       chain = a.meta.aspect-chain or null;
     in
-    if chain != null && chain != prelude.init loc then
+    if a.__guard or false then
+      loc
+    else if chain != null && chain != prelude.init loc then
       throw (
         "gen-aspects: identity: `${pathKey loc}` sets meta.aspect-chain = ${renderChain chain}, "
         + "which contradicts its declared path [ ${prelude.concatStringsSep " " loc} ]. meta.aspect-chain "
         + "is a rendering of the declared path and never an identity input; remove the definition."
       )
     else
-      pathKey loc;
+      loc;
+  rawKeyOf =
+    a:
+    if isDeclared a then
+      pathKey (checkedPath a)
+    else if a.__guard or false then
+      guardKey a
+    else
+      pathKey (aspectPath a);
 in
 {
   inherit
     aspectPath
     pathKey
+    ;
+  parsePath = parse;
+  inherit
     isMeaningfulName
     guardKey
     keyRef
+    isDeclared
+    checkedPath
     ;
 
   # Exported for the CI's guard cells and their message assertion, NOT re-exported from
@@ -359,12 +377,8 @@ in
   # declaration by it gave two declarations with one condition and one non-class body one key, and one
   # instance. Only a record with no declared path (an unplaced guard, a hand-built record, the container
   # root) keys by its own fields.
-  key =
-    a:
-    if a ? meta.loc then
-      (if a.__guard or false then pathKey (declaredPath a) else declaredKey a)
-    else if a.__guard or false then
-      guardKey a
-    else
-      pathKey (aspectPath a);
+  # A typed aspect's checked `key` option is forced first, so a declared path forced past the type
+  # (an mkForce'd `meta.loc`) refuses at every reader, not only at the option.
+  key = a: builtins.seq (a.key or null) (rawKeyOf a);
+  rawKey = rawKeyOf;
 }

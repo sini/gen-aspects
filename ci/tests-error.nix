@@ -192,8 +192,11 @@ in
             }
           )).includesOf.app
           (notMember "lib/base");
-      # A value from another tree whose key names no node here.
-      test-key-naming-no-node = thrown (read (_: [ { key = "no/such"; } ])) (notMember "no/such");
+      # A literal's `key` is a caller write of an identity input, refused by the type that writes it
+      # (den-hoag-gywcg) before any registry lookup.
+      test-key-naming-no-node = thrown (read (_: [ { key = "no/such"; } ])) (
+        exactly "gen-aspects: the option `app.includes.\"[definition 1-entry 1]\".key' is written by the aspect type; remove the definition."
+      );
       test-bare-string-naming-nothing = thrown (read (_: [ "lib/bsae" ])) (
         exactly "${door}reference 'lib/bsae' names no entry of the registry (in prelude.resolve)"
       );
@@ -1165,10 +1168,10 @@ in
           );
     };
 
-  # A declaration's identity inputs (den-hoag-qseuh). A malformed declared path (`meta` is freeform,
-  # so a caller can write any `meta.loc`) refuses by name, naming the type and never the value; `"zz"`
-  # and `[ 1 ]` aborted the evaluator inside the key before. A chain that contradicts the declared path
-  # refuses by name (identity design Q4).
+  # A declaration's identity inputs (den-hoag-qseuh, den-hoag-gywcg). The type defines `meta.loc` at a
+  # tree position, so a caller's unequal write, malformed or not, conflicts with it at merge and refuses
+  # by name; `"zz"` and `[ 1 ]` aborted the evaluator inside the key before. A chain that contradicts the
+  # declared path refuses by name (identity design Q4).
   flake.testsError.identity-inputs =
     let
       keyOf =
@@ -1177,11 +1180,12 @@ in
           (mkSchemaEval {
             modules = [ { config.aspects.x = def; } ];
           }).config.aspects.x;
-      malformed =
+      conflicting =
         got:
         exactly (
-          "gen-aspects: identity: meta.loc is ${got}, expected the declared path: a non-empty list of strings. "
-          + "meta.loc is stamped by the aspect type from the position the aspect is declared at; remove the definition."
+          "gen-merge: the option `x.meta.loc' has conflicting definitions:\n"
+          + "- In `<gen-merge>': <a list>\n"
+          + "- In `<gen-merge>': ${got}"
         );
       contradicts =
         chain:
@@ -1191,13 +1195,61 @@ in
         );
     in
     {
-      test-loc-string = thrown (keyOf { meta.loc = "zz"; }) (malformed "a string");
-      test-loc-non-string = thrown (keyOf { meta.loc = [ 1 ]; }) (
-        malformed "a list holding a non-string"
-      );
-      test-loc-empty = thrown (keyOf { meta.loc = [ ]; }) (malformed "an empty list");
+      test-loc-string = thrown (keyOf { meta.loc = "zz"; }) (conflicting "\"zz\"");
+      test-loc-non-string = thrown (keyOf { meta.loc = [ 1 ]; }) (conflicting "<a list>");
+      test-loc-empty = thrown (keyOf { meta.loc = [ ]; }) (conflicting "<a list>");
       test-chain-contradicts = thrown (keyOf { meta.aspect-chain = [ "k" ]; }) (contradicts "[ k ]");
       # A malformed chain is rendered by its type, never coerced: interpolating it aborted uncatchably.
       test-chain-malformed = thrown (keyOf { meta.aspect-chain = [ 1 ]; }) (contradicts "a list");
+    };
+
+  # The type is the one writer of `key`, `id_hash` and `meta.loc` (den-hoag-gywcg). A write that wins
+  # by priority refuses where it is read, and a NAMED include element's write refuses by name before the
+  # element is read as a module (where its `key` would be the module key, dropped silently).
+  flake.testsError.structured-key-writes =
+    let
+      at =
+        def:
+        (mkSchemaEval {
+          modules = [ { config.aspects.x = def; } ];
+        }).config.aspects.x;
+      el =
+        write:
+        builtins.head
+          (mkSchemaEval {
+            modules = [
+              {
+                config.aspects.loom.includes = [
+                  (
+                    {
+                      name = "t";
+                    }
+                    // write
+                  )
+                ];
+              }
+            ];
+          }).config.aspects.loom.includes;
+      typeWrites =
+        field:
+        exactly "gen-aspects: the option `x.${field}' is written by the aspect type; remove the definition.";
+      elementWrites =
+        field:
+        exactly "gen-aspects: an include element named `t' writes `${field}', which the aspect type writes; remove the definition.";
+    in
+    {
+      test-key = thrown (at { key = "y"; }).key (typeWrites "key");
+      test-id-hash = thrown (at { id_hash = "aspect:0"; }).id_hash (typeWrites "id_hash");
+      test-loc-forced-at-key = thrown (aspects.key (at {
+        meta.loc = genMerge.mkForce [ "y" ];
+      })) (typeWrites "meta.loc");
+      test-loc-forced-at-id = thrown (aspects.aspectId [ ] (at {
+        meta.loc = genMerge.mkForce [ "y" ];
+      })) (typeWrites "meta.loc");
+      test-element-key = thrown (el { key = "q"; }).key (elementWrites "key");
+      test-element-id-hash = thrown (el { id_hash = "aspect:0"; }).id_hash (elementWrites "id_hash");
+      test-element-loc = thrown (aspects.key (el {
+        meta.loc = [ "q" ];
+      })) (elementWrites "meta.loc");
     };
 }

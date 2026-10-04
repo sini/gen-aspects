@@ -1187,8 +1187,8 @@ in
         (one [ (lit "a") ])
         (one [ (lit "b") ])
       ];
-      # A hand key INSIDE the include-position space claims to be content, and is: nothing can be a
-      # node there, so the forger gains nothing.
+      # A hand key INSIDE the include-position space is a caller write of an identity input, and the
+      # aspect type, its one writer, refuses it (den-hoag-gywcg).
       forgedOwnPosition = declRead { } [
         (one [
           {
@@ -1282,7 +1282,7 @@ in
         n = 2;
       };
       forgedOwnPosition = {
-        u = [ 0 ];
+        u = "REFUSED";
         n = 1;
       };
     };
