@@ -16,7 +16,7 @@ in
 aspects:
 builtins.listToAttrs (
   map (e: {
-    name = builtins.concatStringsSep "/" e.path;
+    name = (import ./path.nix).render e.path;
     inherit (e) value;
   }) (walk aspects)
 )

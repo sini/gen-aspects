@@ -118,6 +118,7 @@ in
   inherit (aspectIdentity)
     aspectPath
     pathKey
+    parsePath
     key
     isMeaningfulName
     guardKey

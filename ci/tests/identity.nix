@@ -217,8 +217,8 @@ in
   };
 
   # CONTROL (over-fix): a typed value carried by value keeps the identity it was declared with, at an
-  # include position and aliased at another tree position alike (its stamps are definitions, and they
-  # beat the receiving position's mkDefault).
+  # include position and aliased at another tree position alike (it is a reference, passed through
+  # unmerged, so the receiving position's own identity values never meet it).
   flake.tests.identity.test-a-carried-value-keeps-its-declared-identity =
     let
       o =
@@ -250,11 +250,12 @@ in
       };
     };
 
-  # An element written in an `includes` list has no declared path (its merge position moves with
-  # module order), so it carries no `meta.loc` and keeps its field-keyed identity: swapping the two
-  # modules moves neither element's key nor id (ADR-0034's den-module rider, "reordering includes
-  # changes nothing"). Keyed by the merge position, A and B swapped `[definition N-entry 1]` keys and ids
-  # with the order.
+  # A NAMED element written in an `includes` list is keyed by its declaring site, the position of its
+  # `name` (identity design §2), never by its merge position, which moves with module order: swapping
+  # the two modules moves neither element's key nor id (ADR-0034's den-module rider, "reordering
+  # includes changes nothing"). Keyed by the merge position, A and B swapped `[definition N-entry 1]`
+  # keys and ids with the order. The site carries a source path, so the key is asserted by its owner
+  # prefix, never as a literal.
   flake.tests.identity.test-named-include-elements-keep-their-identity-across-module-order =
     let
       ab = ownerIncludes [
@@ -269,26 +270,27 @@ in
     {
       expr = {
         orderInvariant = ab == ba;
-        keys = lib.mapAttrs (_: e: e.key) ab;
+        keys = lib.mapAttrs (n: e: lib.hasPrefix "owner/includes/tool${n}@" e.key) ab;
       };
       expected = {
         orderInvariant = true;
         keys = {
-          A = "owner/includes/toolA";
-          B = "owner/includes/toolB";
+          A = true;
+          B = true;
         };
       };
     };
 
-  # `meta` is freeform, so a caller can write any `meta.loc`; one that is not a non-empty list of
-  # strings refuses by name and catchably (ADR-0025 item 1), where `"zz"` and `[ 1 ]` aborted the
-  # evaluator inside the key. The message is the error plane's (`tests-error.nix`, `identity-inputs`).
+  # The type defines `meta.loc` at a tree position, so a caller's unequal write conflicts with it at
+  # merge and refuses catchably (ADR-0025 item 1), where `"zz"` and `[ 1 ]` aborted the evaluator inside
+  # the key before. The shape check stays for a hand-built record and a guard. The message is the error
+  # plane's (`tests-error.nix`, `identity-inputs`).
   flake.tests.identity.test-a-malformed-declared-path-refuses-catchably = {
     expr = {
       string = ok (aspects.key (locOf "zz"));
       nonString = ok (aspects.key (locOf [ 1 ]));
       empty = ok (aspects.key (locOf [ ]));
-      # CONTROL: a well-formed one is read.
+      # CONTROL: a write equal to the type's own value is one value and is read.
       wellFormed = aspects.key (locOf [ "x" ]);
     };
     expected = {
@@ -299,20 +301,23 @@ in
     };
   };
 
-  # STATED BOUNDARY, pinned as open (spec OQ1): the stamps themselves stay writable, because they are
-  # the channel a typed value's identity rides on when carried by value. So one write of
-  # `meta.loc = [ "q" ]`, or a forged `key` + `id_hash` pair, still makes `includes = [ p ]` resolve to
-  # `q`: the one-write impersonation MOVED from `name` to `meta.loc`, and closes when the carriage
-  # channel does (den-hoag-gywcg). This cell flips then; it is a pin, not a guarantee.
-  flake.tests.identity.test-the-stamp-channel-is-still-open =
+  # STATED BOUNDARY, pinned (den-hoag-gywcg OQ1, a forger's bypass): a typed value placed at a second
+  # position is a reference and passes through by its shape (`id_hash` and `key`), so a literal carrying
+  # a FORGED pair, two writes and one of them a digest copied from `q`, still makes `includes = [ p ]`
+  # resolve to `q`. One write cannot: `meta.loc = [ "q" ]`, which moved `p` onto `q` before, now refuses
+  # (the type is the one writer). This cell is a pin, not a guarantee.
+  flake.tests.identity.test-the-forged-pair-is-the-pinned-boundary =
     let
       qIdHash = (aside { }).q.id_hash;
     in
     {
       expr = {
-        loc = readAside (aside {
-          meta.loc = [ "q" ];
-        });
+        locRefuses =
+          !(ok (
+            readAside (aside {
+              meta.loc = [ "q" ];
+            })
+          ));
         forgedPair =
           (readAside (aside {
             key = "q";
@@ -320,14 +325,7 @@ in
           })).includesTop;
       };
       expected = {
-        loc = {
-          keyP = "q";
-          pIsQ = true;
-          includesTop = [
-            "q"
-            "ctl"
-          ];
-        };
+        locRefuses = true;
         forgedPair = [
           "q"
           "ctl"

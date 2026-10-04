@@ -52,7 +52,7 @@ let
   inherit (import ./cnf.nix) checkedEntry;
   inherit (import ./walk.nix) walk isGuardLeaf;
 
-  render = prelude.concatStringsSep "/";
+  inherit (import ./path.nix) render;
   # `builtins.warn` where the evaluator has it (it honours `abort-on-warn`), a trace otherwise
   # (gen-schema `lib/entry-type.nix`, the same binding).
   warn = builtins.warn or (msg: v: builtins.trace "evaluation warning: ${msg}" v);
@@ -183,7 +183,7 @@ rec {
       idOf = path: render (origin ++ path);
       # An already-rendered container-relative key (an include element's `.key`) qualified the same
       # way. The key is slash-joined and the origin is a segment list, so one join spans both.
-      qualify = key: render (origin ++ [ key ]);
+      qualify = key: if origin == [ ] then key else render origin + "/" + key;
 
       entries = walk aspects;
 

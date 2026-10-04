@@ -169,6 +169,7 @@ in
       "lib/guard.nix"
       "lib/identity.nix"
       "lib/instance.nix"
+      "lib/path.nix"
       "lib/schema.nix"
       "lib/types.nix"
       "lib/walk.nix"
