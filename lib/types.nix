@@ -1137,9 +1137,7 @@ let
   # `protoTypeMerge` (gen-merge `lib/interface.nix`) reaches `binOp` only once it has established
   # both operands carry a non-null payload, so a null second operand is a state this function is
   # never handed.
-  # `binOp` is the foreign protocol's two-place function and gen-merge publishes the relation as a
-  # record of its two roles (den-hoag-7gp66 P2), so this binding adapts one to the other.
-  mergeElemTypes = deciding: partner: merge.mergeTypes { inherit deciding partner; };
+  mergeElemTypes = merge.mergeTypes;
 
   aspectsRootWith =
     elemType:
