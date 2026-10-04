@@ -239,14 +239,20 @@ let
       );
       expected = "y";
     };
+    # The TERM is unmintable (a path as an `eq` value), so `guardKey` refuses; the declaration still
+    # has its key, its declared path (design §4's sealed row: "the site has a declaration key").
     test-eq-path-guard-unmintable = {
       expr = {
-        key = ok (a.key (place { } { p = a.guard (a.pred.eq [ "p" ] ./first-order-guards.nix) "y"; }).p);
-        control = ok (a.key (place { } { p = a.guard (a.pred.eq [ "p" ] "s") "y"; }).p);
+        key = ok (
+          a.guardKey (place { } { p = a.guard (a.pred.eq [ "p" ] ./first-order-guards.nix) "y"; }).p
+        );
+        control = ok (a.guardKey (place { } { p = a.guard (a.pred.eq [ "p" ] "s") "y"; }).p);
+        declared = a.key (place { } { p = a.guard (a.pred.eq [ "p" ] ./first-order-guards.nix) "y"; }).p;
       };
       expected = {
         key = false;
         control = true;
+        declared = "p";
       };
     };
     # UC1: a door-registration `ref` only as the whole body.
@@ -323,8 +329,9 @@ let
         doorFormals = [ "thimble" ];
       };
     };
-    # Guard identity is the mint over (condition, body): site-independent, body-discriminating, and a
-    # module slot's payload is outside the preimage (its key is not).
+    # Guard TERM identity (`guardKey`) is the mint over (condition, body): site-independent,
+    # body-discriminating, and a module slot's payload is outside the preimage (its key is not). Each
+    # placement is a declaration of its own, keyed by its declared path (identity design §1).
     test-guard-identity-mint = {
       expr =
         let
@@ -338,16 +345,28 @@ let
           };
         in
         {
-          slotPayloadOutside = a.key ps.p1 == a.key ps.p2;
-          attrsetSlotOutside = a.key ps.p5 == a.key ps.p6;
-          bodyDiscriminates = a.key ps.p3 != a.key ps.p4;
-          minted = builtins.substring 0 6 (a.key ps.p3);
+          slotPayloadOutside = a.guardKey ps.p1 == a.guardKey ps.p2;
+          attrsetSlotOutside = a.guardKey ps.p5 == a.guardKey ps.p6;
+          bodyDiscriminates = a.guardKey ps.p3 != a.guardKey ps.p4;
+          minted = builtins.substring 0 6 (a.guardKey ps.p3);
+          declarations = map a.key [
+            ps.p1
+            ps.p2
+            ps.p5
+            ps.p6
+          ];
         };
       expected = {
         slotPayloadOutside = true;
         attrsetSlotOutside = true;
         bodyDiscriminates = true;
         minted = "guard:";
+        declarations = [
+          "p1"
+          "p2"
+          "p5"
+          "p6"
+        ];
       };
     };
     # A function outside a module slot is refused by name; a module function at a class key is admitted
@@ -466,7 +485,7 @@ let
                 sub = a.guard (a.pred.has "thimble") { description = t.readCtx "thimble" [ ]; };
               };
             }).o;
-          k = inner: a.key (place { } { o = a.guard a.pred.always { sub = inner; }; }).o;
+          k = inner: a.guardKey (place { } { o = a.guard a.pred.always { sub = inner; }; }).o;
         in
         {
           subIsGuard = fired.sub.__guard or false;
@@ -477,6 +496,7 @@ let
           innerIdentityEnters =
             k (a.guard (a.pred.class "nixos") "x") != k (a.guard (a.pred.class "darwin") "x");
           outerReadsNotInner = (inst { } covered ctx2 srcs2).formals;
+          declared = a.key o;
         };
       expected = {
         subIsGuard = true;
@@ -486,6 +506,7 @@ let
         innerCovered.description = "p";
         innerIdentityEnters = true;
         outerReadsNotInner = { };
+        declared = "o";
       };
     };
     # G-C2: a cyclic body is refused catchably (den-hoag-49xc's property, now a refusal); an acyclic control mints.
@@ -548,7 +569,7 @@ let
           gv = a.mkGuardVocab { };
           fire =
             body: gv.applyGuard { class = "nixos"; } (place { } { g = a.guard (a.pred.class "nixos") body; }).g;
-          k = body: a.key (place { } { g = a.guard a.pred.always body; }).g;
+          k = body: a.guardKey (place { } { g = a.guard a.pred.always body; }).g;
         in
         {
           wholeBody = builtins.isFunction (fire ({ config, ... }: { }));
@@ -567,6 +588,9 @@ let
                 ({ config, ... }: { })
               ];
             };
+          declared =
+            a.key
+              (place { } { g = a.guard a.pred.always { includes = [ ({ config, ... }: { }) ]; }; }).g;
         };
       expected = {
         wholeBody = true;
@@ -574,6 +598,7 @@ let
         contextClosureInIncludes = false;
         payloadOutside = true;
         positionEnters = true;
+        declared = "g";
       };
     };
     # G-C3: every malformed door refuses catchably; a conforming door fires.

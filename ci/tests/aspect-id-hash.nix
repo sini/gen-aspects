@@ -58,8 +58,9 @@ let
     }).config.aspects.svc;
 
   # the parametric kind: a first-order guard over `host` (a context closure is refused), a BARE record
-  # (no id_hash option): key = the mint over (condition, body), site-independent. `wfElsewhere` is the
-  # same guard placed at another path.
+  # (no id_hash option). Its TERM key (`guardKey`) is the mint over (condition, body), site-independent;
+  # its declaration key is its declared path (identity design §1). `wfElsewhere` is the same guard
+  # placed at another path.
   wfGuard = aspects.guard (aspects.pred.has "host") { classOne.networking.hostName = "x"; };
   wf = (mkSchemaEval { modules = [ { config.aspects.wf = wfGuard; } ]; }).config.aspects.wf;
   wfElsewhere =
@@ -163,20 +164,31 @@ in
     };
   };
 
-  # parametric kind: uniform id via aspectId (bare record, no option), keyed by the mint and not by
-  # the path, so the same guard at two paths shares its id and a plain aspect at its path does not.
+  # parametric kind: uniform id via aspectId (bare record, no option), keyed by the declared path, so
+  # the same guard at two paths is two declarations with two ids, and shares one plain aspect's key
+  # space; its term key stays the mint, site-independent.
   flake.tests.aspect-id-hash.test-wrapped-fn-key = {
-    expr = builtins.substring 0 6 (aspects.key wf);
-    expected = "guard:";
+    expr = {
+      key = aspects.key wf;
+      elsewhere = aspects.key wfElsewhere;
+      term = builtins.substring 0 6 (aspects.guardKey wf);
+    };
+    expected = {
+      key = "wf";
+      elsewhere = "deeper/wf2";
+      term = "guard:";
+    };
   };
   flake.tests.aspect-id-hash.test-wrapped-fn-uniform = {
     expr = {
       sameGuardTwoPaths = aspectId [ ] wf == aspectId [ ] wfElsewhere;
+      sameTermTwoPaths = aspects.guardKey wf == aspects.guardKey wfElsewhere;
       plainAtItsPath = aspectId [ ] wf == aspectId [ ] plainWf;
     };
     expected = {
-      sameGuardTwoPaths = true;
-      plainAtItsPath = false;
+      sameGuardTwoPaths = false;
+      sameTermTwoPaths = true;
+      plainAtItsPath = true;
     };
   };
 

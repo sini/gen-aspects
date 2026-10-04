@@ -1,5 +1,6 @@
 # Test: a placed guard record carries its name from its position (Palmer §5.1: ℓ, the program point,
-# from the merge location), and its key is the mint over (condition, body), never a path.
+# from the merge location). Its declaration key is its declared path (identity design §1), and its
+# term key (`guardKey`) is the mint over (condition, body), never a path.
 {
   lib,
   aspects,
@@ -57,15 +58,18 @@
       };
     in
     {
-      # static uses aspectPath (meta.aspect-chain ++ name); a guard record keys by the mint over its
-      # condition and body (`guard:` prefix), so the two never share a key.
+      # static uses aspectPath (meta.aspect-chain ++ name); a placed guard keys by its declared path,
+      # so two declarations at two paths never share a key, whatever their kinds. The guard's term key
+      # is the mint over its condition and body (`guard:` prefix).
       expr = {
         static = aspects.key eval.config.aspects.staticOne;
-        guardIsMinted = lib.hasPrefix "guard:" (aspects.key eval.config.aspects.guardOne);
+        guard = aspects.key eval.config.aspects.guardOne;
+        termIsMinted = lib.hasPrefix "guard:" (aspects.guardKey eval.config.aspects.guardOne);
       };
       expected = {
         static = "staticOne";
-        guardIsMinted = true;
+        guard = "guardOne";
+        termIsMinted = true;
       };
     };
 

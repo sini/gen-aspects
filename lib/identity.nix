@@ -303,5 +303,19 @@ in
     guardChainMaxDepth
     guardChainDepthRefusal
     ;
-  key = a: if a.__guard or false then guardKey a else pathKey (aspectPath a);
+  # A DECLARATION's key: origin + declared path (identity design §1), the origin entering at `aspectId`.
+  # A guard leaf placed at an aspect position is a named declaration like any other, and placement
+  # stamps its declared path (`meta.loc`, types.nix: the single record and the carrier alike). Its
+  # `guardKey` is the TERM's identity and never the declaration's: the class payload is outside the
+  # term's mint (ADR-0034 a0gc), so keying the declaration by it gave two declarations with one
+  # condition and one non-class body one key, and one instance. Only an unplaced guard, which declares
+  # nothing, still answers its term's key.
+  key =
+    a:
+    if !(a.__guard or false) then
+      pathKey (aspectPath a)
+    else if a ? meta.loc then
+      pathKey a.meta.loc
+    else
+      guardKey a;
 }

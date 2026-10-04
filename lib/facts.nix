@@ -145,11 +145,11 @@ rec {
       # key (ADR-0016), which is why `aspectId` already mints over `[ "origin" "key" ]`; the
       # container-relative half is the walk position the registry already keys on.
       #
-      # ★ THE ID IS DELIBERATELY NOT `identity.key`, AND THE DIFFERENCE IS NOT COSMETIC. That
-      # function's `__guard` arm returns `guardKey`, which CONTENT-ADDRESSES a guard (`"guard:<hash>"`,
-      # the mint over its condition and body; a carrier's function fragment `"guard-loc:" + …`) — so a
-      # guard record's minted key is not its position at all, and building the id from it would
-      # move every guard node's name off its walk position. ADR-0016 ruling 5 rules the separation
+      # ★ THE ID IS DELIBERATELY NOT `identity.key`. For a placed guard the two render alike
+      # (`identity.key` is its declared path, `meta.loc`, identity design §1), but a static aspect's
+      # key reads `meta.aspect-chain` and `name`, which a caller can set, while the walk position
+      # cannot be moved; and `guardKey`, the guard TERM's identity (`"guard:<hash>"`, the mint over
+      # condition and body), is never a position at all. ADR-0016 ruling 5 rules the separation
       # directly: an identifier is not an identity, and `id_hash` — which for this library IS
       # `aspectId` — is internal addressing only, so the minted hash may never be the durable
       # vertex name.

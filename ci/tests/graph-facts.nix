@@ -576,15 +576,17 @@ in
   flake.tests.graph-facts.test-node-id-is-the-walk-key-not-the-minted-key = {
     expr = {
       guardLeafId = builtins.elem "top/g" facts.nodes;
-      # What building the id from `identity.key` would have named it instead: a content address.
-      mintedGuardKeyIsContentAddressed = lib.hasPrefix "guard:" (aspects.key flat."top/g");
-      # CONTROL: for a PLAIN aspect the minted key and the walk key coincide, so the prefix test
-      # above is not simply true of everything.
+      # The guard's TERM key is a content address, so it can never name the node.
+      termGuardKeyIsContentAddressed = lib.hasPrefix "guard:" (aspects.guardKey flat."top/g");
+      # Its declaration key is its declared path, which renders as the walk key does.
+      declaredGuardKeyIsTheWalkKey = aspects.key flat."top/g" == "top/g";
+      # CONTROL: for a PLAIN aspect the declaration key and the walk key coincide too.
       mintedPlainKeyIsTheWalkKey = aspects.key flat."infra/networking/dns" == "infra/networking/dns";
     };
     expected = {
       guardLeafId = true;
-      mintedGuardKeyIsContentAddressed = true;
+      termGuardKeyIsContentAddressed = true;
+      declaredGuardKeyIsTheWalkKey = true;
       mintedPlainKeyIsTheWalkKey = true;
     };
   };
