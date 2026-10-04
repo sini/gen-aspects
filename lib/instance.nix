@@ -173,7 +173,9 @@ in
   #   ⇒ { vertices.<iid> = { formals; entry; scope; };          one content cell per instance id
   #       instantiates.<iid> = [ <aspect> ];               instance → declaration, exactly one
   #       reaches.<node>.<aspect> = [ <iid> … ];           scope → instance edges
-  #       nested.<iid>.<aspect>   = [ <iid> … ]; }         reaching edges FROM vertices
+  #       nested.<iid>.<aspect>   = [ <iid> … ];           reaching edges FROM vertices
+  #       declined = { reaches.<node> = [ <aspect> … ];    the walked guards decided FALSE, per
+  #                    nested.<iid>   = [ <aspect> … ]; }; } handed scope and per vertex, ascending
   # the materialised view (ADR-0012 clause 2) htfv3's `project` reads. Instances are nodes: the
   # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `<aspect>` is the facts id of
   # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, gen-graph `labeledFrom`'s
@@ -206,6 +208,20 @@ in
   # source cannot carry two values for it, and one scope never reads another's content (gate C-1). The
   # value lives on the node its source names (ADR-0016 r6); how several emissions of one supplier
   # compose is its assembler's, under the minting phase spec R§4.4 (spec §4.1 O4), never this relation's.
+  #
+  # THE DECISION (den-hoag-n8wb5). The edges are the reaches whose condition was decided TRUE. A
+  # walked first-order guard with no edge is DECLINED, listed in `declined.reaches.<node>` (or
+  # `declined.nested.<iid>`), iff its condition was decided FALSE at every tuple tried: the scope's
+  # and each descendant's at node scope (the static targets of vertices included, htfv3 Open 4), the
+  # vertex's own tuple when nested. The third outcome is the evaluator's REFUSAL R (quf7g OQ1, design
+  # Section 2): under the open world `has` over a coordinate the scope lacks is refused by name, and
+  # `GT.decide` carries that refusal as `null`, which is neither TRUE nor FALSE, so the guard is in
+  # neither set and the consumer refuses the reach. Under a declared coordinate set the same absence
+  # is FALSE (Clark completion), and `eq` over an absent coordinate does not fire, FALSE in both
+  # worlds. A carrier admits every tuple, so it is never declined. A guard never walked at a scope is
+  # in neither set too. `declined` selects only between "no edge" and "refuse" for an empty reach:
+  # a declined reach is no edge (ADR-0019), so a reader never folds, counts or orders over it. Each
+  # entry reads only its own scope's or vertex's tuples, so the restriction property below holds.
   #
   # FAN-OUT (design §3). `admits` decides whether a tuple can mint at all: a first-order guard where
   # its condition holds at the tuple's context (`GT.holds`), a carrier always. At node scope: the
@@ -414,6 +430,7 @@ in
             sources = builtins.intersectAttrs i.formals t.sources;
           };
           targets = locals (core.instanceSites a i.entry);
+          params = builtins.filter (r: mintable nodeData.${r}) targets;
         in
         {
           inherit (i)
@@ -422,11 +439,12 @@ in
             entry
             scope
             ;
+          inherit tuple;
           aspect = a;
           # nested: parametric targets at the vertex's own tuple, never fanned out (design §3; not O3)
-          children = builtins.concatMap (r: if admits tuple r then [ (mintOne r tuple) ] else [ ]) (
-            builtins.filter (r: mintable nodeData.${r}) targets
-          );
+          children = builtins.concatMap (r: if admits tuple r then [ (mintOne r tuple) ] else [ ]) params;
+          # the parametric targets this vertex's tuple decided, admitted or not
+          walked = unique params;
           # static targets: their parametric reach, resolved at node scope
           statics = paramsFrom (builtins.filter (r: !(isGuardLeaf nodeData.${r})) targets);
         };
@@ -506,6 +524,14 @@ in
         };
       final = step start;
       groupIds = ms: builtins.mapAttrs (_: xs: unique (ids xs)) (builtins.groupBy (m: m.aspect) ms);
+      reaches = builtins.mapAttrs (_: groupIds) final.edges;
+      nested = builtins.mapAttrs (_: m: groupIds m.children) final.seen;
+      # A walked first-order guard with no edge whose condition was decided FALSE at every tuple it was
+      # tried at (lib/guard-term.nix `decide`); a refused condition is in neither set (THE DECISION).
+      falseAt = t: a: termGuard nodeData.${a} && GT.decide cnf t.context nodeData.${a} == false;
+      declinedOf =
+        edges: tuples: walked:
+        builtins.filter (a: !(edges ? ${a}) && builtins.all (t: falseAt t a) tuples) walked;
     in
     {
       vertices = builtins.mapAttrs (_: m: {
@@ -516,8 +542,13 @@ in
           ;
       }) final.seen;
       instantiates = builtins.mapAttrs (_: m: [ m.aspect ]) final.seen;
-      reaches = builtins.mapAttrs (_: groupIds) final.edges;
-      nested = builtins.mapAttrs (_: m: groupIds m.children) final.seen;
+      inherit reaches nested;
+      declined = {
+        reaches = builtins.mapAttrs (
+          n: h: declinedOf reaches.${n} ([ sc.${n} ] ++ sc.${n}.descendants) (builtins.attrNames h)
+        ) final.handled;
+        nested = builtins.mapAttrs (id: m: declinedOf nested.${id} [ m.tuple ] m.walked) final.seen;
+      };
     }
   );
 }
