@@ -124,9 +124,10 @@ let
   rawFacts = aspects.graphFacts { } rawTree;
   rawFlat = aspects.flatten rawTree;
 
-  # A node whose HELD chain contradicts its walk position. `meta.aspect-chain` is `mkDefault`, so a
-  # hand-set chain wins in the substrate — and an earlier construction honoured it, producing a node
-  # whose parent contradicted its own id.
+  # A node whose HELD chain contradicts its walk position. An earlier construction honoured such a
+  # chain, producing a node whose parent contradicted its own id; the chain is now a rendering of the
+  # declared path, and one that contradicts it refuses by name (identity design Q4). `top.ctl` is a
+  # clean sibling.
   handSetEval = mkSchemaEval {
     fixtureKeySemantics = {
       nixos = {
@@ -140,6 +141,7 @@ let
           meta.aspect-chain = [ "real" ];
           nixos.networking.hostName = "s";
         };
+        config.aspects.top.ctl.nixos.networking.hostName = "c";
       }
     ];
   };
@@ -553,24 +555,33 @@ in
     };
   };
 
-  # A hand-set `meta.aspect-chain` no longer moves the edge. It is `mkDefault`, so the substrate
-  # lets a user set it — but the id is the walk key, so honouring a divergent chain publishes an
-  # edge between ids that do not relate. One source for both ends, or the disagreement is
-  # expressible and silent.
-  flake.tests.graph-facts.test-hand-set-chain-does-not-move-the-edge = {
-    expr = {
-      parentIsTheWalkPosition = handSetFacts.parentOf."top/deep";
-      # WITNESS, same record: the chain really is set, and to a real node — so this is the case
-      # where honouring it would have gone silently wrong rather than refused.
-      chainIsSetToSomethingElse = handSetEval.config.aspects.top.deep.meta.aspect-chain;
-      targetOfThatChainIsANode = builtins.elem "real" handSetFacts.nodes;
+  # A hand-set `meta.aspect-chain` never moves the edge: it refuses by name rather than publish an
+  # edge between ids that do not relate. The refusal reaches the whole tree's facts, since they force
+  # every node's key (spec OQ6), while the declaration's own fields and a clean sibling's key still
+  # read. Before, the chain was honoured nowhere and silently, and `parentOf."top/deep"` read `"top"`.
+  flake.tests.graph-facts.test-hand-set-chain-refuses-and-does-not-move-the-edge =
+    let
+      ok = x: (builtins.tryEval (builtins.deepSeq x x)).success;
+    in
+    {
+      expr = {
+        parentRefuses = !(ok handSetFacts.parentOf."top/deep");
+        nodesRefuse = !(ok handSetFacts.nodes);
+        siblingParentRefuses = !(ok handSetFacts.parentOf."top/ctl");
+        # WITNESS, same record: the chain really is set, and to a real node, so honouring it would
+        # have gone silently wrong.
+        chainIsSetToSomethingElse = handSetEval.config.aspects.top.deep.meta.aspect-chain;
+        # CONTROL: the refusal is the facts', not the tree's; a clean sibling still keys.
+        siblingKey = aspects.key handSetEval.config.aspects.top.ctl;
+      };
+      expected = {
+        parentRefuses = true;
+        nodesRefuse = true;
+        siblingParentRefuses = true;
+        chainIsSetToSomethingElse = [ "real" ];
+        siblingKey = "top/ctl";
+      };
     };
-    expected = {
-      parentIsTheWalkPosition = "top";
-      chainIsSetToSomethingElse = [ "real" ];
-      targetOfThatChainIsANode = true;
-    };
-  };
 
   # ── the node id ──────────────────────────────────────────────────────────────────────────────
   flake.tests.graph-facts.test-node-id-is-the-walk-key-not-the-minted-key = {

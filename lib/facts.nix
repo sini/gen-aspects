@@ -25,8 +25,9 @@
 #     `top/wf` and `top/deeper/wf2` both reported parent `null` — a non-root node spelled as a ROOT,
 #     silently: the exact defect above, reproduced inside the fix for it.
 #   * A record carrying no `meta.loc` at all made the read THROW.
-#   * A hand-set `meta.aspect-chain` (it is `mkDefault`) was honoured over the walk, yielding a node
-#     whose parent contradicts its own id.
+#   * A hand-set `meta.aspect-chain` was honoured over the walk, yielding a node whose parent
+#     contradicts its own id. (It now refuses by name at `identity.key`: the chain is a rendering of
+#     the declared path, never an input.)
 #
 # ⇒ THE ID AND THE PARENT NOW COME FROM ONE SOURCE, and that is the property rather than an
 # optimisation: the id IS the origin-qualified walk key, so any second source for the parent makes
@@ -146,9 +147,9 @@ rec {
       # container-relative half is the walk position the registry already keys on.
       #
       # ★ THE ID IS DELIBERATELY NOT `identity.key`. For a placed guard the two render alike
-      # (`identity.key` is its declared path, `meta.loc`, identity design §1), but a static aspect's
-      # key reads `meta.aspect-chain` and `name`, which a caller can set, while the walk position
-      # cannot be moved; and `guardKey`, the guard TERM's identity (`"guard:<hash>"`, the mint over
+      # (`identity.key` is its declared path, `meta.loc`, identity design §1), and so does a static
+      # aspect's, but `meta.loc` rides with a value carried by value (an alias at another tree
+      # position keeps the one it was declared with), while the walk position cannot be moved; and `guardKey`, the guard TERM's identity (`"guard:<hash>"`, the mint over
       # condition and body), is never a position at all. ADR-0016 ruling 5 rules the separation
       # directly: an identifier is not an identity, and `id_hash` — which for this library IS
       # `aspectId` — is internal addressing only, so the minted hash may never be the durable
@@ -310,9 +311,9 @@ rec {
       # `includes` is a native structural key, never a child aspect, and the walk never descends
       # into it: so no NODE's chain carries that segment past index 0 (a root aspect named
       # `includes` has it at index 0 only), while every element merged into an `includes` option
-      # has a chain `<owner path> ++ [ "includes" … ]`. The chain is stamped from the merge prefix
-      # and does not move with `name`; the `.key` does (`pathKey (chain ++ [ name ])`), so a node
-      # named `includes` keys `…/includes` and the key alone cannot decide. The key is tested too:
+      # has a chain `<owner path> ++ [ "includes" … ]`. Such an element carries no `meta.loc`, so its
+      # `.key` is the rendering of its own fields (`pathKey (chain ++ [ name ])`), and both are read so
+      # that neither field alone decides. The key is tested too:
       # its merge position under `includes` is PER DEFINITION (see AGENTS.md, "An `includes` list
       # holds REFERENCES and INLINE CONTENT"), so the test reads which key SPACE it is in and never
       # compares an index; a key set by hand outside that space is a claim to name a node, and it

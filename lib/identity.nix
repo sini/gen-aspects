@@ -1,6 +1,8 @@
 # Aspect identity: path-based key for dedup.
 { prelude }:
 let
+  # The rendering of a record's OWN fields. It is the key only of a record with no declared path
+  # (`meta.loc`: an include element, a hand-built record); a placed declaration keys by `meta.loc`.
   aspectPath = a: (a.meta.aspect-chain or [ ]) ++ [ (a.name or "<anon>") ];
 
   pathKey = path: prelude.concatStringsSep "/" path;
@@ -278,6 +280,51 @@ let
         probe = builtins.tryEval (bodyKey g.body);
       in
       if probe.success && probe.value != null then mintGuardKey g probe.value else guardLocFallback g;
+  # The declared path's shape (ADR-0025 item 1: malformed caller input refuses by name, catchably).
+  # `meta` is freeform, so `meta.loc` takes any value, and a non-list or a non-string segment
+  # otherwise aborts the evaluator inside `pathKey`/`init`, where `tryEval` cannot see it. The
+  # refusal names the type and never interpolates the value, as `keyRefRefusal` does.
+  declaredPathRefusal =
+    got:
+    "gen-aspects: identity: meta.loc is ${got}, expected the declared path: a non-empty list of strings. "
+    + "meta.loc is stamped by the aspect type from the position the aspect is declared at; remove the definition.";
+  declaredPath =
+    a:
+    let
+      loc = a.meta.loc;
+    in
+    if !(builtins.isList loc) then
+      throw (declaredPathRefusal "a ${builtins.typeOf loc}")
+    else if loc == [ ] then
+      throw (declaredPathRefusal "an empty list")
+    else if !(builtins.all builtins.isString loc) then
+      throw (declaredPathRefusal "a list holding a non-string")
+    else
+      loc;
+  # Renders a caller-set chain for the refusal below without coercing it: interpolating a
+  # non-string is itself an uncatchable abort.
+  renderChain =
+    chain:
+    if builtins.isList chain && builtins.all builtins.isString chain then
+      "[ ${prelude.concatStringsSep " " chain} ]"
+    else
+      "a ${builtins.typeOf chain}";
+  # A static declaration's key. Its chain is a rendering of the declared path (`init loc`), so a
+  # chain that says otherwise is refused by name rather than honoured or ignored (identity design Q4).
+  declaredKey =
+    a:
+    let
+      loc = declaredPath a;
+      chain = a.meta.aspect-chain or null;
+    in
+    if chain != null && chain != prelude.init loc then
+      throw (
+        "gen-aspects: identity: `${pathKey loc}` sets meta.aspect-chain = ${renderChain chain}, "
+        + "which contradicts its declared path [ ${prelude.concatStringsSep " " loc} ]. meta.aspect-chain "
+        + "is a rendering of the declared path and never an identity input; remove the definition."
+      )
+    else
+      pathKey loc;
 in
 {
   inherit
@@ -304,18 +351,20 @@ in
     guardChainDepthRefusal
     ;
   # A DECLARATION's key: origin + declared path (identity design §1), the origin entering at `aspectId`.
-  # A guard leaf placed at an aspect position is a named declaration like any other, and placement
-  # stamps its declared path (`meta.loc`, types.nix: the single record and the carrier alike). Its
-  # `guardKey` is the TERM's identity and never the declaration's: the class payload is outside the
-  # term's mint (ADR-0034 a0gc), so keying the declaration by it gave two declarations with one
-  # condition and one non-class body one key, and one instance. Only an unplaced guard, which declares
-  # nothing, still answers its term's key.
+  # The declared path is `meta.loc`, which the type stamps on every placed declaration: a guard leaf
+  # (placement, types.nix: the single record and the carrier alike) and a static aspect alike. Never
+  # `name` or `meta.aspect-chain`, which are renderings a caller can set; a static's chain that contradicts
+  # its declared path refuses by name (identity design Q4). A guard's `guardKey` is the TERM's identity and
+  # never the declaration's: the class payload is outside the term's mint (ADR-0034 a0gc), so keying the
+  # declaration by it gave two declarations with one condition and one non-class body one key, and one
+  # instance. Only a record with no declared path (an unplaced guard, a hand-built record, the container
+  # root) keys by its own fields.
   key =
     a:
-    if !(a.__guard or false) then
-      pathKey (aspectPath a)
-    else if a ? meta.loc then
-      pathKey a.meta.loc
+    if a ? meta.loc then
+      (if a.__guard or false then pathKey (declaredPath a) else declaredKey a)
+    else if a.__guard or false then
+      guardKey a
     else
-      guardKey a;
+      pathKey (aspectPath a);
 }
