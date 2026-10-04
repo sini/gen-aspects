@@ -488,7 +488,7 @@ in
     # RED (the first descendant tuple taken): one id, [ "u-u1" ].
     test-fan-out = {
       expr = {
-        # an instance set is keyed by id, so its order is the ids' and not the users'
+        # membership only; the order is test-fan-out-declared-order's
         uA = builtins.sort builtins.lessThan (descs r.reaches.a.u);
         eCountA = builtins.length r.reaches.a.e;
         uC = descs r.reaches.c.u;
@@ -503,6 +503,42 @@ in
         uC = [ "u-u3" ];
         bHasU = false;
       };
+    };
+    # A1 (den-hoag-htfv3 U3a). Fan-out siblings follow the scope's `descendants`, in both orders, never
+    # the ids' (ADR-0016 r5). RED (ascending id, the descendant order ignored): one arm differs.
+    test-fan-out-declared-order = {
+      expr =
+        map
+          (
+            users:
+            let
+              rr = aspects.instancesFor { } rel {
+                suppliers = relSuppliers;
+                scopes.a = relScope "h1" users [ "w" ];
+              };
+            in
+            map (id: rr.vertices.${id}.formals.user) rr.reaches.a.u
+          )
+          [
+            [
+              "u1"
+              "u2"
+            ]
+            [
+              "u2"
+              "u1"
+            ]
+          ];
+      expected = [
+        [
+          (entity "u1")
+          (entity "u2")
+        ]
+        [
+          (entity "u2")
+          (entity "u1")
+        ]
+      ];
     };
     # R-8 (structure). a and c hold one `e` id, read from one `vertices` cell, whose nested `q` is one
     # id. This gates the structure that gives value sharing, not the application count (spec §3b G2).

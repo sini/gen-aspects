@@ -180,7 +180,15 @@ in
   # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `<aspect>` is the facts id of
   # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, the adjacency shape
   # gen-graph's classical doors read); `reaches` and `nested` are grouped by `<aspect>` (`id → aspect → [ids]`), their ids
-  # ascending (a function of the set).
+  # in minting order, each at its first occurrence, so a scope's fan-out siblings follow its
+  # `descendants` list. Never by id: ADR-0016 r5 lets nothing durable depend on an `id_hash`, and an
+  # instance id moves when its aspect is renamed. Under 0cmbt O3 (OQ1 arm (a), still the owner's) a
+  # nested instance does not fan out, so a `nested` list holds one id.
+  # ORDER IS IMPORTED, NOT DISCHARGED (den-hoag-qvgob's scope gate). ADR-0029 asks for a DECLARED total
+  # order invariant under presentation order. `instancesFor` is HANDED its order, so what it owes is
+  # order-faithfulness: each list is a total function of the caller's `descendants`, and no site here
+  # introduces an order the caller did not supply. That the list is a declaration, invariant under
+  # presentation, is the obligation of whoever builds `scopes`; this function cannot observe it.
   #
   # THE INSTANTIATION EDGE (ADR-0010 §4(a) clauses 1–3; van Antwerpen 2018 §2.5, (F-TApp), Fig. 11).
   # An instance is its own scope (one vertex per id); its `I` edge, `instantiates`, points at its
@@ -523,7 +531,20 @@ in
           edges = m0;
         };
       final = step start;
-      groupIds = ms: builtins.mapAttrs (_: xs: unique (ids xs)) (builtins.groupBy (m: m.aspect) ms);
+      # Each id at its first occurrence, in minting order: `listToAttrs` keeps a name's first index, as
+      # in `index`. At a node scope one `atNode` call mints a (node, aspect) list, in `descendants` order.
+      firstOf =
+        xs:
+        let
+          at = builtins.listToAttrs (
+            prelude.imap0 (i: x: {
+              name = x;
+              value = i;
+            }) xs
+          );
+        in
+        builtins.concatLists (prelude.imap0 (i: x: if at.${x} == i then [ x ] else [ ]) xs);
+      groupIds = ms: builtins.mapAttrs (_: xs: firstOf (ids xs)) (builtins.groupBy (m: m.aspect) ms);
       reaches = builtins.mapAttrs (_: groupIds) final.edges;
       nested = builtins.mapAttrs (_: m: groupIds m.children) final.seen;
       # A walked first-order guard with no edge whose condition was decided FALSE at every tuple it was
