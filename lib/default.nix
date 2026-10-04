@@ -94,11 +94,12 @@ in
   # mint: a guard record or carrier applied to a context is a node of its own, identified by
   # its aspect and by the sources of the keys it receives there (0cmbt spec §2.5). See lib/instance.nix.
   inherit (instanceModule) instanceOf;
-  # `instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; instantiates; reaches; nested; }` —
-  # the instance relation: one vertex per minted instance, its `instantiates` edge to its declaration,
-  # scope → instance edges (fanning out over descendant tuples), and nested edges from vertices, minted
-  # in depth passes over reached pairs only (0cmbt spec §2.6). The materialised view htfv3's `project`
-  # reads. See lib/instance.nix.
+  # `instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; instantiates; reaches; nested;
+  # declined; }` — the instance relation: one vertex per minted instance, its `instantiates` edge to its
+  # declaration, scope → instance edges (fanning out over descendant tuples), and nested edges from
+  # vertices, minted in depth passes over reached pairs only (0cmbt spec §2.6), with the walked guards
+  # whose condition was decided FALSE (`declined`, den-hoag-n8wb5). The materialised view htfv3's
+  # `project` reads. See lib/instance.nix.
   inherit (instanceModule) instancesFor;
   # `structuralKeys` (the six native structural option names as ONE binding) + `keyCategory cnf key` — the
   # single aspect-key classification surface a consumer reads a key's category from. See lib/types.nix.

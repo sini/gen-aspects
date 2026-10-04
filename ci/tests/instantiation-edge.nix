@@ -303,6 +303,7 @@ in
       };
       expected = {
         fields = [
+          "declined"
           "instantiates"
           "nested"
           "reaches"

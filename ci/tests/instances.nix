@@ -913,5 +913,93 @@ in
           nestedW = [ [ "q-h2" ] ];
         };
       };
+    # n8wb5: the relation publishes its DECISION per handed scope. `declined.reaches.<node>` and
+    # `declined.nested.<iid>` list the walked first-order guards whose condition RESOLVED FALSE at every
+    # tuple tried. An edge is never declined; under the open world `has` over an absent coordinate is
+    # refused (R), so the guard is in neither. `n`: `d` (eq FALSE) and `u` (reached through static `st` inside `o`'s
+    # body, at node scope); `m` nested in `o`'s vertex. `nu`: `u` fans out to the user descendant.
+    # RED (declined = walked minus edges, reading R as FALSE): `openN` = [ d u ], `openNested` = [ m ].
+    test-declined-decision =
+      let
+        defs = {
+          o = aspects.guard (aspects.pred.has "host") {
+            description = "o";
+            includes = [
+              "m"
+              "st"
+            ];
+          };
+          m = aspects.guard (aspects.pred.has "user") { description = "m"; };
+          st.includes = [ "u" ];
+          u = aspects.guard (aspects.pred.has "user") { description = "u"; };
+          d = aspects.guard (aspects.pred.eq [ "host" ] "other") { description = "d"; };
+        };
+        relOf =
+          c:
+          aspects.instancesFor c
+            (mkSchemaEval ({ modules = [ { config.aspects = defs; } ]; } // c)).config.aspects
+            {
+              suppliers = {
+                ${entity "h"}.host = "h";
+                ${entity "u1"}.user = "u1";
+              };
+              scopes = {
+                n = {
+                  members = [
+                    "o"
+                    "d"
+                  ];
+                  sources.host = entity "h";
+                };
+                nu = {
+                  members = [ "o" ];
+                  sources.host = entity "h";
+                  descendants = [ { sources.user = entity "u1"; } ];
+                };
+                omit = {
+                  members = [ ];
+                  sources.host = entity "h";
+                };
+              };
+            };
+        rc = relOf {
+          entityKinds = {
+            host = true;
+            user = true;
+          };
+        };
+        ro = relOf { };
+        oAt = rr: builtins.head rr.reaches.n.o;
+        disjoint =
+          rr:
+          builtins.all (n: builtins.all (a: !(rr.reaches.${n} ? ${a})) rr.declined.reaches.${n}) (
+            builtins.attrNames rr.reaches
+          );
+      in
+      {
+        expr = {
+          closedN = rc.declined.reaches.n;
+          closedNested = rc.declined.nested.${oAt rc};
+          closedNu = rc.declined.reaches.nu;
+          nuReachesU = rc.reaches.nu ? u;
+          omit = rc.declined.reaches.omit;
+          openN = ro.declined.reaches.n;
+          openNested = ro.declined.nested.${oAt ro};
+          disjoint = disjoint rc && disjoint ro;
+        };
+        expected = {
+          closedN = [
+            "d"
+            "u"
+          ];
+          closedNested = [ "m" ];
+          closedNu = [ ];
+          nuReachesU = true;
+          omit = [ ];
+          openN = [ "d" ];
+          openNested = [ ];
+          disjoint = true;
+        };
+      };
   };
 }

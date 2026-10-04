@@ -507,9 +507,11 @@ let
     cnf: at: args: g:
     (fireScoped cnf at args g).value;
 
-  # Whether a checked guard's condition holds at a context, absence under the open world reading as
-  # FALSE (an instance relation's pre-filter, as a missing required formal is today).
-  holds =
+  # A checked guard's condition decided at a context: `true` or `false` where it resolves, `null` where
+  # the evaluator refuses it for an absent coordinate (R, under the open world; under a declared set
+  # that absence is FALSE). Any other refusal throws. `holds` reads `null` as not-TRUE: the instance
+  # relation's minting pre-filter, which mints nothing there and decides nothing.
+  decide =
     cnf: context: g:
     let
       c = T.resolveTerm (envOf cnf {
@@ -519,9 +521,12 @@ let
       }) g.condition;
     in
     if isLeft c then
-      (if c.left.code == "absent-coordinate" then false else throw (render "condition" c.left))
+      (if c.left.code == "absent-coordinate" then null else throw (render "condition" c.left))
     else
       c.right;
+  holds =
+    cnf: context: g:
+    decide cnf context g == true;
 in
 {
   inherit
@@ -532,6 +537,7 @@ in
     derivedReads
     fire
     fireScoped
+    decide
     holds
     isDoorId
     render
