@@ -108,6 +108,30 @@ let
     id: where: left:
     GT.render "aspect `${id}`, ${where}, a declaration member resolved once at the declaration" left;
 
+  # A term at a STATIC include position (a node's own `includes`, an applied body's, an unconditional
+  # fragment's) has no context to read and no instance to resolve under: a static declaration is the
+  # `always` case, which covers no read. Rendered in guard-term's form. Only the TOP former is named
+  # and decides the code: the aspect type has already read the term's children as aspect options, so
+  # descending into them aborts with an orphan-leaf refusal instead. `ReadCtx` and `Default` are the
+  # formers gen-algebra's `checkClause` counts as unsafe reads (`always ⇒ readCtx` is `unsafe-read`);
+  # every other former takes `static-term`, whose message claims nothing about what the term reads.
+  staticTermRefusal =
+    id: i: former:
+    let
+      where = "aspect `${id}`, include position ${toString i}, a static declaration";
+      remedy = "declare the aspect parametrically, `guard (pred.has <coordinate>) { includes = [ … ]; }`, or name the aspect to include";
+    in
+    if former == "ReadCtx" || former == "Default" then
+      GT.render where {
+        code = "unsafe-read";
+        witness.message = "the include position holds a ${former} term, and a static declaration has no condition covering a context read (`always` covers nothing); ${remedy}";
+      }
+    else
+      GT.render where {
+        code = "static-term";
+        witness.message = "the include position holds a ${former} term; only static content is admitted at a static include position; ${remedy}";
+      };
+
   includeSitesDepthRefusal =
     id: pos:
     "gen-aspects: aspect '${id}' nests inline include content deeper than the budget of "
@@ -123,6 +147,7 @@ rec {
   inherit
     danglingIncludeRefusal
     declarationMemberRefusal
+    staticTermRefusal
     includeSitesDepthRefusal
     includeSitesMaxDepth
     memberKeyRefusal
@@ -265,7 +290,12 @@ rec {
       # node of another tree carries no `.key` to locate it by, and its content awaits a firing.
       resolve =
         id: i: elem:
-        if builtins.isAttrs elem && (elem.__keyRef or false) then
+        if T.isTerm elem then
+          # A term reaching `resolve` is at a STATIC position: `declInfo` classifies a context-dependent
+          # declaration member itself, before `resolve` is asked. The aspect type stamps a key on a term
+          # written at a static `includes`, so the keyed branch below would take it for content.
+          throw (staticTermRefusal id i elem.__bodyTerm)
+        else if builtins.isAttrs elem && (elem.__keyRef or false) then
           # A keyRef is a REFERENCE by construction, so a bad one is an error and not an ambiguity.
           # It is checkable exactly when its origin is ours; a genuinely foreign origin names a node
           # in a fixpoint this library does not hold and cannot be checked here at all.
@@ -296,10 +326,6 @@ rec {
           # origin is always its FIRST segment, so under most origins it would name a foreign node
           # nothing checks, instead of the local sibling the writer named.
           local (includesDoor id i) elem
-        else if T.isTerm elem then
-          # A context-dependent element of a parametric declaration (`declSites`): its target is
-          # known only per instance, where it is classified at its position of the fired body.
-          { kind = "deferred"; }
         else if builtins.isAttrs elem && !(isGuardLeaf elem) then
           # Key-less inline content (above): an applied body's literal, or a raw tree's.
           { kind = "content"; }
@@ -425,17 +451,17 @@ rec {
         if v ? fragments then
           let
             records = builtins.filter (f: f.kind == "record") v.fragments;
-          in
-          if builtins.any (f: (declInfo id f.guard).sites != [ ]) records then
-            wholeDeferred
-          else
-            split (
-              sitesOf id [ ] (
-                builtins.concatMap (f: if builtins.isAttrs f.body then f.body.includes or [ ] else [ ]) (
-                  builtins.filter (f: f.kind != "record") v.fragments
-                )
+            # The unconditional fragments' members are static whichever arm is taken, so they are classified
+            # here, and a term among them refuses at the declaration, never only when an instance fires.
+            unconditional = sitesOf id [ ] (
+              builtins.concatMap (f: if builtins.isAttrs f.body then f.body.includes or [ ] else [ ]) (
+                builtins.filter (f: f.kind != "record") v.fragments
               )
-            )
+            );
+            # `seq` each site's kind: a list of thunks is not forced by its length.
+            forced = builtins.foldl' (acc: s: builtins.seq s.kind acc) wholeDeferred unconditional;
+          in
+          if builtins.any (f: (declInfo id f.guard).sites != [ ]) records then forced else split unconditional
         else if !(T.isTerm b) || b.__bodyTerm != "Attrs" then
           wholeDeferred
         else if inc == null then
@@ -443,7 +469,13 @@ rec {
         else if T.isTerm inc && inc.__bodyTerm == "List" then
           split (
             prelude.imap0 (
-              i: x: siteAt id [ i ] (if dependent x then x else declValue id v "include position ${toString i}" x)
+              i: x:
+              # A context-dependent member's target is known only per instance, where it is classified at
+              # its position of the fired body.
+              if dependent x then
+                { kind = "deferred"; }
+              else
+                siteAt id [ i ] (declValue id v "include position ${toString i}" x)
             ) inc.items
           )
         else if dependent inc then
