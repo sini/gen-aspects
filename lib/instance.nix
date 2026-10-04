@@ -178,8 +178,8 @@ in
   #                    nested.<iid>   = [ <aspect> … ]; }; } handed scope and per vertex, ascending
   # the materialised view (ADR-0012 clause 2) htfv3's `project` reads. Instances are nodes: the
   # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `<aspect>` is the facts id of
-  # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, gen-graph `labeledFrom`'s
-  # shape); `reaches` and `nested` are grouped by `<aspect>` (`id → aspect → [ids]`), their ids
+  # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, the adjacency shape
+  # gen-graph's classical doors read); `reaches` and `nested` are grouped by `<aspect>` (`id → aspect → [ids]`), their ids
   # ascending (a function of the set).
   #
   # THE INSTANTIATION EDGE (ADR-0010 §4(a) clauses 1–3; van Antwerpen 2018 §2.5, (F-TApp), Fig. 11).
