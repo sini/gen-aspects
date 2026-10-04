@@ -85,15 +85,18 @@ The id reads only the sources, so a mismatch mints one id with two different ent
 cannot be handed that input, since it derives each context from one `suppliers` map.
 Tests: `ci/tests/instances.nix`, `ci/tests/instance-scope.nix`; `instance-doors.*` and `instance-scope.*` in `ci/tests-error.nix`.
 
-`instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; instantiates; reaches; nested; }` is the instance
-relation (0cmbt spec §2.6), with `suppliers.<source>.<key> = <value>` and
+`instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; instantiates; reaches; nested; declined; }` is the
+instance relation (0cmbt spec §2.6), with `suppliers.<source>.<key> = <value>` and
 `scopes.<node> = { members; sources; descendants ? [ { sources; } ]; }`. A tuple's context is derived,
 `mapAttrs (k: src: suppliers.${src}.${k}) sources`, so one source names one value per key and one scope
 never reads another's content.
 `vertices.<iid> = { formals; entry; scope; }` holds one cell per `instanceOf` id, and
 `instantiates.<iid> = [ <aspect> ]` is its `I` edge to its declaration, the parametric node's facts id
 (ADR-0010 §4(a); an adjacency map `id → [ids]`); `reaches.<node>.<aspect>` and `nested.<iid>.<aspect>`
-are ascending id lists grouped by aspect (`id → aspect → [ids]`). `entry` resolves each field where it
+are ascending id lists grouped by aspect (`id → aspect → [ids]`). `declined.reaches.<node>` and `declined.nested.<iid>` list, ascending and per handed scope or vertex,
+the walked first-order guards with no edge whose condition was decided FALSE at every tuple tried (`GT.decide`);
+a condition the evaluator refuses (R: `has` over an absent coordinate under the open world) and a never-walked
+guard are in neither set (den-hoag-n8wb5). A reader uses `declined` only to choose "no edge" over "refuse". `entry` resolves each field where it
 is read (gen-algebra `resolveFields`): a refusing member refuses at its own read, named by aspect and
 field, and its siblings and the relation's edges still answer. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
 nodes and inline content. A node mints at its own tuple when the guard's condition holds there,
