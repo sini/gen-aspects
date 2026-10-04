@@ -170,12 +170,31 @@ in
   # { suppliers; scopes; }`,
   #   suppliers = { <source identity> = { <key> = <value>; … }; … }
   #   scopes    = { <node> = { members; sources; descendants ? [ { sources; } … ]; }; }
-  #   ⇒ { vertices.<iid> = { aspect; formals; entry; scope; };   one content cell per instance id
+  #   ⇒ { vertices.<iid> = { formals; entry; scope; };          one content cell per instance id
+  #       instantiates.<iid> = [ <aspect> ];               instance → declaration, exactly one
   #       reaches.<node>.<aspect> = [ <iid> … ];           scope → instance edges
   #       nested.<iid>.<aspect>   = [ <iid> … ]; }         reaching edges FROM vertices
   # the materialised view (ADR-0012 clause 2) htfv3's `project` reads. Instances are nodes: the
-  # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `aspect` is the facts id of
-  # the parametric node, and every edge list is grouped by it, its ids ascending (a function of the set).
+  # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `<aspect>` is the facts id of
+  # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, gen-graph `labeledFrom`'s
+  # shape); `reaches` and `nested` are grouped by `<aspect>` (`id → aspect → [ids]`), their ids
+  # ascending (a function of the set).
+  #
+  # THE INSTANTIATION EDGE (ADR-0010 §4(a) clauses 1–3; van Antwerpen 2018 §2.5, (F-TApp), Fig. 11).
+  # An instance is its own scope (one vertex per id); its `I` edge, `instantiates`, points at its
+  # declaration, whose members stay reachable through it (`instantiates · includes`, the members
+  # `graphFacts.includeSitesOf` publishes from the checked body term); the substitution σ is the
+  # vertex's `formals`, a datum on the node and never a payload on the edge (ADR-0016 r3), applied to
+  # each field where it is read (`entry` is resolved per field, gen-algebra `resolveFields`), so one
+  # unsound member refuses at its own read and nothing else. The query returns the RESOLVED members
+  # only: a context-dependent element is a `deferred` site (ADR-0010 §4(b)'s σ-dependent target), found
+  # in `unresolvedIncludesOf` and, per instance, in `nested`.
+  # Clause 4, reverse-order normalisation along a projection path, is VACUOUS by construction: no term
+  # former binds a coordinate (gen-algebra cell `known-formers-bind-no-coordinate`), a nested
+  # instance's σ restricts its parent's (`mintOne`'s `tuple`), and the one place a path could carry two
+  # substitutions for one key, a nested door rebinding an outer source, is refused (gen-rules
+  # `mkApply`). Cells `instance-scope.test-rebound-refused-whichever-scope` and the path-consistency
+  # cells in `instances.nix` hold each premise.
   #
   # ONLY REACHED PAIRS ARE EDGES. A node's `members` (facts ids) are walked over `graphFacts`' local
   # include sites, through static nodes and inline `content`, stopping at parametric ones; those are
@@ -193,9 +212,11 @@ in
   # scope's tuple when it admits; otherwise each descendant tuple that does; otherwise no edge, and the
   # consumer's door names it.
   #
-  # THE PASSES (spec §2.5's depth passes). Pass d+1 reads only the CONTENT of pass-d vertices: each
-  # vertex's applied body is classified by `includeSitesOfEntry`'s classification (the one `project`
-  # descends, inline `content` included), once per vertex. Its parametric targets are minted at the
+  # THE PASSES (spec §2.5's depth passes). Pass d+1 reads only the MEMBERS of pass-d vertices, through
+  # each vertex's `instantiates` edge: its declaration's published sites (`graphCore`'s
+  # `instanceSites`, the classification `project` descends, inline `content` included), each `deferred`
+  # one classified at its own position of the vertex's fired `includes` and no other field read. Its
+  # parametric targets are minted at the
   # vertex's own tuple (its context and sources narrowed to its formals) as `nested` edges, so a
   # vertex two nodes reach is applied once and its nested instances minted once. A nested instance
   # does not fan out (its site is `mintOne`'s `children`, ground design §3, never O3): a vertex is
@@ -235,8 +256,8 @@ in
   # The supplier door reads key names only, so no supplied value is forced.
   #
   # COST (derived; spec §3b G1 measures it): one application and one hash per distinct reached
-  # instance, one attribute lookup per (tuple, key), the static walk per node, and the body
-  # classification per vertex. Two routes: the whole relation is O(Σ reach) over every handed scope,
+  # instance, one attribute lookup per (tuple, key), the static walk per node, the members'
+  # classification once per DECLARATION, and per vertex only its `deferred` positions. Two routes: the whole relation is O(Σ reach) over every handed scope,
   # and a reader of one node pays all of it, the price of sharing a vertex across nodes; handed ONE
   # scope, it is O(reach(n)), constant in N. The RESTRICTION PROPERTY: the relation handed a subset of
   # the scopes equals the whole relation's slice for them, because a scope's values derive from its
@@ -392,7 +413,7 @@ in
             context = builtins.intersectAttrs i.formals t.context;
             sources = builtins.intersectAttrs i.formals t.sources;
           };
-          targets = locals (core.sitesOfEntry (i.entry.key or a) i.entry);
+          targets = locals (core.instanceSites a i.entry);
         in
         {
           inherit (i)
@@ -489,12 +510,12 @@ in
     {
       vertices = builtins.mapAttrs (_: m: {
         inherit (m)
-          aspect
           formals
           entry
           scope
           ;
       }) final.seen;
+      instantiates = builtins.mapAttrs (_: m: [ m.aspect ]) final.seen;
       reaches = builtins.mapAttrs (_: groupIds) final.edges;
       nested = builtins.mapAttrs (_: m: groupIds m.children) final.seen;
     }

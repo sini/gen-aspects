@@ -41,6 +41,8 @@
 # which is the engine drift one gen-scope exists to prevent (ADR-0006, ADR-0008).
 {
   prelude,
+  T,
+  GT,
   includesDefault,
   keyCategory,
   hasClassContent,
@@ -96,6 +98,15 @@ let
   # has to be far above any include nesting written as configuration.
   includeSitesMaxDepth = 256;
 
+  # A parametric declaration's context-free include element is resolved once, at the declaration
+  # (`declSites` below), so a refusal there is the declaration's: it names the aspect and the
+  # include position, in guard-term's form, and refuses wherever the declaration's sites are read,
+  # whether or not anything instantiates it.
+  # `where` is `include position <i>`, or `includes` for a whole member.
+  declarationMemberRefusal =
+    id: where: left:
+    GT.render "aspect `${id}`, ${where}, a declaration member resolved once at the declaration" left;
+
   includeSitesDepthRefusal =
     id: pos:
     "gen-aspects: aspect '${id}' nests inline include content deeper than the budget of "
@@ -110,6 +121,7 @@ rec {
   # the number from here.
   inherit
     danglingIncludeRefusal
+    declarationMemberRefusal
     includeSitesDepthRefusal
     includeSitesMaxDepth
     memberKeyRefusal
@@ -283,6 +295,10 @@ rec {
           # origin is always its FIRST segment, so under most origins it would name a foreign node
           # nothing checks, instead of the local sibling the writer named.
           local (includesDoor id i) elem
+        else if T.isTerm elem then
+          # A context-dependent element of a parametric declaration (`declSites`): its target is
+          # known only per instance, where it is classified at its position of the fired body.
+          { kind = "deferred"; }
         else if builtins.isAttrs elem && !(isGuardLeaf elem) then
           # Key-less inline content (above): an applied body's literal, or a raw tree's.
           { kind = "content"; }
@@ -328,43 +344,146 @@ rec {
       #   { kind = "foreign"; ref = { origin; path; key; }; }
       #   { kind = "content"; sites = [ site … ]; }   the element's OWN includes, by this same rule
       #   { kind = "sealed"; }
+      #   { kind = "deferred"; }                          a parametric declaration's context-dependent
+      #                                                    element (`declSites`), classified per instance
       #
       # The three relations below are PROJECTIONS of this one, not a second pass beside it, so they
       # cannot disagree with it or with each other. A position is a list index (at depth, a path of
       # them); nothing is minted, and a nested position renders only inside a refusal. A `content`
       # site's `sites` is a thunk: a dangling reference inside inline content refuses only for a
       # reader that descends into it, and the depth budget above bounds that descent.
-      sitesOf =
-        id: pos: elems:
-        prelude.imap0 (
-          i: elem:
+      siteAt =
+        id: p: elem:
+        let
+          at = prelude.concatStringsSep "." (map toString p);
+          r = resolve id at elem;
+        in
+        if r.kind == "content" then
+          {
+            kind = "content";
+            sites =
+              if builtins.length p >= includeSitesMaxDepth then
+                throw (includeSitesDepthRefusal id at)
+              else
+                sitesOf id p (expectList (includesDoor id at) "includes" (elem.includes or includesDefault));
+          }
+        else
+          r;
+      sitesOf = id: pos: prelude.imap0 (i: siteAt id (pos ++ [ i ]));
+
+      # ── a PARAMETRIC DECLARATION'S MEMBERS, published without firing it (ADR-0010 §4(a) clause 2) ──
+      #
+      # van Antwerpen 2018 §2.5: an instantiation's members stay reachable through its `I` edge to
+      # the declaration, whose members are static. A placed guard is CHECKED, so its body is an
+      # `Attrs` term and its `includes` a `List` term: the members are that term's structure, which
+      # does not depend on the substitution. An element with no context reader and no door `Ref` is
+      # CONTEXT-FREE: it has one value under every substitution, so it is resolved once, here, under
+      # an empty context and the guard's own nested map, and classified by `resolve`. Any other
+      # element is `deferred`: its target exists only per instance (ADR-0010 §4(b)'s σ-dependent
+      # edge target, admitted), and the instance classifies it at its own position.
+      #
+      # `whole` marks a declaration whose `includes` cannot be split by position: a context-dependent
+      # `includes` member (an `If`, a `ReadCtx`), a door body, a body that is not an `Attrs` term, or
+      # a carrier whose record fragments carry sites (they exist only where that fragment fires). It
+      # publishes one `deferred`, and each instance classifies its whole fired `includes`.
+      dependent =
+        x:
+        T.isTerm x
+        && (
+          T.readCtxHeads x != [ ] || builtins.any (n: n.__bodyTerm == "Ref" && GT.isDoorId n.id) (termNodes x)
+        );
+      termNodes = x: [ x ] ++ builtins.concatMap termNodes (T.children x);
+      declValue =
+        id: v: where: x:
+        let
+          r = T.resolveTerm {
+            context = { };
+            ref = rid: { right = (v.__nested or { }).${rid} or rid; };
+          } x;
+        in
+        if !(T.isTerm x) then
+          x
+        else if r ? left then
+          throw (declarationMemberRefusal id where r.left)
+        else
+          r.right;
+      wholeDeferred = {
+        whole = true;
+        sites = [ { kind = "deferred"; } ];
+      };
+      declInfo =
+        id: v:
+        let
+          b = v.body or null;
+          inc = b.attrs.includes or null;
+          split = sites: {
+            whole = false;
+            inherit sites;
+          };
+        in
+        if v ? fragments then
           let
-            p = pos ++ [ i ];
-            at = prelude.concatStringsSep "." (map toString p);
-            r = resolve id at elem;
+            records = builtins.filter (f: f.kind == "record") v.fragments;
           in
-          if r.kind == "content" then
-            {
-              kind = "content";
-              sites =
-                if builtins.length p >= includeSitesMaxDepth then
-                  throw (includeSitesDepthRefusal id at)
-                else
-                  sitesOf id p (expectList (includesDoor id at) "includes" (elem.includes or includesDefault));
-            }
+          if builtins.any (f: (declInfo id f.guard).sites != [ ]) records then
+            wholeDeferred
           else
-            r
-        ) elems;
+            split (
+              sitesOf id [ ] (
+                builtins.concatMap (f: if builtins.isAttrs f.body then f.body.includes or [ ] else [ ]) (
+                  builtins.filter (f: f.kind != "record") v.fragments
+                )
+              )
+            )
+        else if !(T.isTerm b) || b.__bodyTerm != "Attrs" then
+          wholeDeferred
+        else if inc == null then
+          split [ ]
+        else if T.isTerm inc && inc.__bodyTerm == "List" then
+          split (
+            prelude.imap0 (
+              i: x: siteAt id [ i ] (if dependent x then x else declValue id v "include position ${toString i}" x)
+            ) inc.items
+          )
+        else if dependent inc then
+          wholeDeferred
+        else
+          split (sitesOf id [ ] (expectList (memberDoor id) "includes" (declValue id v "`includes`" inc)));
+      declOf = builtins.mapAttrs declInfo (prelude.filterAttrs (_: isGuardLeaf) nodeData);
 
       # A whole value's include sites: a node's, or an applied instance body's (`includeSitesOfEntry`).
-      # `id` names the value in a refusal only.
-      sitesOfEntry = id: v: sitesOf id [ ] (includesOfValue id v);
+      # `id` names the value in a refusal only. A guard leaf's are its declaration's members.
+      sitesOfEntry =
+        id: v: if isGuardLeaf v then (declInfo id v).sites else sitesOf id [ ] (includesOfValue id v);
+
+      # AN INSTANCE'S SITES, read through its `instantiates` edge: the declaration's members, with each
+      # `deferred` one classified at its own position of the instance's fired `includes` (only that
+      # element is forced), or the whole fired `includes` where the declaration is `whole`.
+      instanceSites =
+        a: entry:
+        let
+          d = declOf.${a};
+          key = entry.key or a;
+        in
+        if d.whole then
+          sitesOf key [ ] (includesOfValue key entry)
+        else
+          prelude.imap0 (
+            i: s:
+            if s.kind == "deferred" then siteAt key [ i ] (builtins.elemAt (includesOfValue key entry) i) else s
+          ) d.sites;
 
       includeSitesOf = builtins.listToAttrs (
-        map (e: {
-          name = idOf e.path;
-          value = sitesOfEntry (idOf e.path) e.value;
-        }) entries
+        map (
+          e:
+          let
+            id = idOf e.path;
+          in
+          {
+            name = id;
+            value = if declOf ? ${id} then declOf.${id}.sites else sitesOfEntry id e.value;
+          }
+        ) entries
       );
 
       # The top-level sites with their positions, which is what each projection selects over.
@@ -397,6 +516,7 @@ rec {
           topSites [
             "content"
             "sealed"
+            "deferred"
           ] id
         )
       );
@@ -442,7 +562,7 @@ rec {
           deadNested
           ;
       };
-      inherit sitesOfEntry;
+      inherit sitesOfEntry instanceSites;
     };
 
   # A non-empty dead-nested view is SAID, not only published (ADR-0025 item 1): the record warns once

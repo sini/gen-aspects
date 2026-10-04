@@ -112,6 +112,15 @@
         # deliberately absent from `lib/default.nix` — a consumer reads a refusal, never renders one.
         factsInternals = import ../lib/facts.nix {
           prelude = gen-prelude.lib;
+          # Unread by the renderers but `declarationMemberRefusal`, which renders through guard-term's
+          # `render` (it reads only the refusal it is handed, so the instance's inputs stay unforced).
+          T = null;
+          GT = import ../lib/guard-term.nix {
+            T = null;
+            hashIdentity = null;
+            keyCategory = null;
+            mkIsModuleFn = null;
+          };
           # Unread here: the suite takes only the refusal renderer, and the published surface (pinned in
           # AGENTS.md) does not carry the default. `graphFacts` itself reads `types.includesDefault`.
           includesDefault = [ ];
