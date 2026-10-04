@@ -430,6 +430,122 @@ in
           message = "gen-aspects.guard: aspect `neverFires`, include position 0, a declaration member resolved once at the declaration: former-operand-type: {\"former\":\"Concat\"}";
         };
       };
+    # A13 (den-hoag-ekq31). A term at a STATIC include position is refused by name, catchably: a static
+    # declaration is the `always` case, which covers no read. RED (the keyed branch of `resolve` takes
+    # the stamped term for inline content): `kind = "content"` with no sites, and the read vanishes.
+    # The controls ride in the same record: a name is a `local` site, an inline literal is `content`, and
+    # the parametric declaration's context-dependent member is still `deferred`.
+    test-static-term-at-include-refuses =
+      let
+        sitesOf =
+          elem:
+          (aspects.graphFacts { } (place {
+            c.name = "c";
+            k.includes = [ elem ];
+          })).includeSitesOf.k;
+        nestedSitesOf =
+          elem:
+          (aspects.graphFacts { } (place {
+            c.name = "c";
+            p.k.includes = [ elem ];
+          })).includeSitesOf."p/k";
+        inlineSitesOf =
+          elem:
+          (aspects.graphFacts { } (place {
+            k.includes = [ { includes = [ elem ]; } ];
+          })).includeSitesOf.k;
+        fired = (aspects.graphFacts { } tree).includeSitesOf.dynRead;
+      in
+      {
+        expr = {
+          readCtx = refuses (sitesOf (t.readCtx "host" [ ]));
+          readCtxPath = refuses (sitesOf (t.readCtx "host" [ "deep" ]));
+          default = refuses (sitesOf (t.default "host" [ ] (t.lit "d")));
+          ifReads = refuses (sitesOf (t.ifThenElse (has "host") (t.readCtx "host" [ ]) (t.lit "c")));
+          lit = refuses (sitesOf (t.lit "c"));
+          list = refuses (sitesOf (t.list [ (t.lit "c") ]));
+          nested = refuses (nestedSitesOf (t.readCtx "host" [ ]));
+          inline = refuses (inlineSitesOf (t.readCtx "host" [ ]));
+          byName = sitesOf "c";
+          inlineLiteral = sitesOf { name = "i"; };
+          parametricStillDeferred = fired;
+        };
+        expected = {
+          readCtx = true;
+          readCtxPath = true;
+          default = true;
+          ifReads = true;
+          lit = true;
+          list = true;
+          nested = true;
+          inline = true;
+          byName = [
+            {
+              kind = "local";
+              target = "c";
+            }
+          ];
+          inlineLiteral = [
+            {
+              kind = "content";
+              sites = [ ];
+            }
+          ];
+          parametricStillDeferred = [ { kind = "deferred"; } ];
+        };
+      };
+    # A14 (den-hoag-ekq31, the gate's C1/C2). A multi-definition CARRIER's unconditional fragment is a
+    # STATIC position too, so a term in it refuses AT THE DECLARATION, whether or not the guard
+    # fragment publishes sites of its own (the second case returned `wholeDeferred` before the plain
+    # fragment was classified, so the term waited for an instance to fire). RED: `refuses` is false on
+    # `guardNone*` and `guardSites*` alike. Controls in the same record: a name in the plain fragment
+    # classifies (`local` beside a guard with no sites, `deferred` beside one with sites).
+    test-static-term-in-carrier-refuses =
+      let
+        carrier =
+          guardInc: plainInc:
+          (mkSchemaEval {
+            modules = [
+              { config.aspects.s2.name = "s2"; }
+              {
+                config.aspects.k = g (has "host") (
+                  { nixos.marks = [ "g" ]; } // (if guardInc == null then { } else { includes = guardInc; })
+                );
+              }
+              {
+                config.aspects.k = {
+                  includes = plainInc;
+                  nixos.marks = [ "u" ];
+                };
+              }
+            ];
+          }).config.aspects;
+        sitesOf = guardInc: plainInc: (aspects.graphFacts { } (carrier guardInc plainInc)).includeSitesOf.k;
+        read = [ (t.readCtx "host" [ ]) ];
+      in
+      {
+        expr = {
+          guardNoneRead = refuses (sitesOf null read);
+          guardNoneLit = refuses (sitesOf null [ (t.lit "s2") ]);
+          guardSitesRead = refuses (sitesOf read read);
+          guardSitesLit = refuses (sitesOf read [ (t.lit "s2") ]);
+          guardNoneName = sitesOf null [ "s2" ];
+          guardSitesName = sitesOf read [ "s2" ];
+        };
+        expected = {
+          guardNoneRead = true;
+          guardNoneLit = true;
+          guardSitesRead = true;
+          guardSitesLit = true;
+          guardNoneName = [
+            {
+              kind = "local";
+              target = "s2";
+            }
+          ];
+          guardSitesName = [ { kind = "deferred"; } ];
+        };
+      };
     # A12. The declaration's sites agree with each instance's entry where nothing defers: the shared
     # route (`instanceSites`) and `includeSitesOfEntry` over the fired entry classify alike. RED
     # (members reached only by firing): the declaration `[ ]` against the entry's `[ q s2 ]`.

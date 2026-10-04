@@ -991,6 +991,12 @@ in
       t = (genAlgebra.term genIdentity.hashIdentity).term;
       g = aspects.guard;
       has = aspects.pred.has;
+      # `k` holding `elem` at its static `includes`, and the read that forces its classification.
+      staticTerm =
+        elem:
+        (aspects.graphFacts { } (
+          (mkSchemaEval { modules = [ { config.aspects.k.includes = [ elem ]; } ]; }).config.aspects
+        )).includeSitesOf.k;
       tree =
         (mkSchemaEval {
           modules = [
@@ -1018,6 +1024,53 @@ in
       test-member-refuses-by-field = thrown r.vertices.${builtins.head r.reaches.n.lazy}.entry.bad (
         "^" + lib.escapeRegex "gen-aspects.guard: aspect `lazy`, field `bad`: projection-path-missing: "
       );
+      # P1: the TOP former decides the code. `ReadCtx` and `Default` are `unsafe-read`; every other former
+      # is `static-term`, whose message claims nothing about what the term reads (`readFrom` reads a
+      # source, a `concat` may hold a context read), and neither message is the other's.
+      test-static-term-at-include-refuses-by-name = thrown (staticTerm (t.readCtx "host" [ ])) (
+        "^"
+        + lib.escapeRegex "gen-aspects.guard: aspect `k`, include position 0, a static declaration: unsafe-read: the include position holds a ReadCtx term, and a static declaration has no condition covering a context read (`always` covers nothing); declare the aspect parametrically, `guard (pred.has <coordinate>) { includes = [ … ]; }`, or name the aspect to include"
+      );
+      test-static-default-refuses-as-unsafe-read =
+        thrown (staticTerm (t.default "host" [ ] (t.lit "d")))
+          (
+            "^"
+            + lib.escapeRegex "gen-aspects.guard: aspect `k`, include position 0, a static declaration: unsafe-read: the include position holds a Default term"
+          );
+      test-static-lit-refuses-as-static-term = thrown (staticTerm (t.lit "c")) (
+        "^"
+        + lib.escapeRegex "gen-aspects.guard: aspect `k`, include position 0, a static declaration: static-term: the include position holds a Lit term; only static content is admitted at a static include position; declare the aspect parametrically, `guard (pred.has <coordinate>) { includes = [ … ]; }`, or name the aspect to include"
+      );
+      test-static-read-from-refuses-as-static-term = thrown (staticTerm (t.readFrom "src" [ ])) (
+        "^"
+        + lib.escapeRegex "gen-aspects.guard: aspect `k`, include position 0, a static declaration: static-term: the include position holds a ReadFrom term"
+      );
+      test-static-reading-concat-refuses-as-static-term =
+        thrown
+          (staticTerm (
+            t.concat [
+              (t.lit "a")
+              (t.readCtx "host" [ ])
+            ]
+          ))
+          (
+            "^"
+            + lib.escapeRegex "gen-aspects.guard: aspect `k`, include position 0, a static declaration: static-term: the include position holds a Concat term"
+          );
+      test-static-term-in-carrier-refuses-by-name =
+        thrown
+          (aspects.graphFacts { } (
+            (mkSchemaEval {
+              modules = [
+                { config.aspects.k = g (has "host") { includes = [ (t.readCtx "host" [ ]) ]; }; }
+                { config.aspects.k.includes = [ (t.lit "s2") ]; }
+              ];
+            }).config.aspects
+          )).includeSitesOf.k
+          (
+            "^"
+            + lib.escapeRegex "gen-aspects.guard: aspect `k`, include position 0, a static declaration: static-term: the include position holds a Lit term"
+          );
       test-declaration-member-refuses-by-position = thrown (aspects.graphFacts { } tree).includesOf (
         "^"
         + lib.escapeRegex "gen-aspects.guard: aspect `neverFires`, include position 0, a declaration member resolved once at the declaration: former-operand-type: "

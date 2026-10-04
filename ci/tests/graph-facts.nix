@@ -1430,6 +1430,7 @@ in
         "declarationMemberRefusal"
         "includeSitesDepthRefusal"
         "memberKeyRefusal"
+        "staticTermRefusal"
       ];
     };
     expected = {
@@ -1438,12 +1439,14 @@ in
         "declarationMemberRefusal"
         "includeSitesDepthRefusal"
         "memberKeyRefusal"
+        "staticTermRefusal"
       ];
       covered = [
         "danglingIncludeRefusal"
         "declarationMemberRefusal"
         "includeSitesDepthRefusal"
         "memberKeyRefusal"
+        "staticTermRefusal"
       ];
     };
   };
