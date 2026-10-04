@@ -875,16 +875,31 @@ let
         # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
         # top container (`aspectsRoot`) re-roots the mount away, so `prefix` here is
         # CONTAINER-RELATIVE (2b, owner ruling): `[ apps media spicetify ]`, no mount segment.
-        # `name` is already `last prefix`; the chain is everything above it. Stamped here so `key`
-        # (= pathKey(chain ++ [name]) = pathKey(prefix), identity.nix `key`'s plain branch
-        # `pathKey (aspectPath a)`) is path-bearing AT MERGE, born in the type — never
-        # reconstructed downstream. Distinct paths ⇒ distinct keys (fixes the name-only collapse:
-        # hardware.cpu.intel ≠ hardware.gpu.intel). The relative chain UNIFIES with the guard
-        # branch (also loc-keyed and re-rooted, `aspectType`'s `__guard` branch),
-        # is origin-invariant (§3a: the container root is the proto-namespace root; an origin
-        # qualifier prepends additively), and byte-matches den-hoag's root-relative `__provider`.
-        # mkDefault so a caller-set meta.aspect-chain still wins.
-        config.meta.aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
+        # Stamped here as `meta.loc`, the DECLARED PATH and the one identity input (identity
+        # design §1): `identity.key` reads `pathKey meta.loc`, never `name` or `meta.aspect-chain`,
+        # so the key is path-bearing AT MERGE, born in the type and never reconstructed downstream.
+        # Distinct paths ⇒ distinct keys (fixes the name-only collapse: hardware.cpu.intel ≠
+        # hardware.gpu.intel). The relative path UNIFIES with the guard branch (also loc-keyed and
+        # re-rooted, `aspectType`'s `__guard` branch), is origin-invariant (§3a: the container root
+        # is the proto-namespace root; an origin qualifier prepends additively), and byte-matches
+        # den-hoag's root-relative `__provider`. `name` (`last prefix` by default) and
+        # `meta.aspect-chain` (`init prefix`) are its RENDERINGS: a caller may set `name`, which moves
+        # no identity, and a chain that contradicts the declared path refuses by name at `key`
+        # (identity design Q4). The stamps are mkDefault because a typed value carried by value (an
+        # include, an alias at a tree position) brings its own as definitions, and those win.
+        #
+        # No `meta.loc` at the container root (`prefix == [ ]`), which declares nothing, nor on an
+        # element written in an `includes` list: its prefix is its MERGE position
+        # (`[definition N-entry M]`), which moves with module order, while identity is the DECLARING
+        # position and reordering includes changes nothing (ADR-0034's den-module rider). Such an
+        # element keeps its field-keyed identity, the same `includes`-past-the-first test
+        # `facts.nix`' `isIncludeContent` reads.
+        config.meta = {
+          aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
+        }
+        // prelude.optionalAttrs (prefix != [ ] && !(builtins.elem "includes" (builtins.tail prefix))) {
+          loc = merge.mkDefault prefix;
+        };
 
         options = {
           name = merge.mkOption {

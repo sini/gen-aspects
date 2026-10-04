@@ -1164,4 +1164,40 @@ in
               " Its message: a host is named."
           );
     };
+
+  # A declaration's identity inputs (den-hoag-qseuh). A malformed declared path (`meta` is freeform,
+  # so a caller can write any `meta.loc`) refuses by name, naming the type and never the value; `"zz"`
+  # and `[ 1 ]` aborted the evaluator inside the key before. A chain that contradicts the declared path
+  # refuses by name (identity design Q4).
+  flake.testsError.identity-inputs =
+    let
+      keyOf =
+        def:
+        aspects.key
+          (mkSchemaEval {
+            modules = [ { config.aspects.x = def; } ];
+          }).config.aspects.x;
+      malformed =
+        got:
+        exactly (
+          "gen-aspects: identity: meta.loc is ${got}, expected the declared path: a non-empty list of strings. "
+          + "meta.loc is stamped by the aspect type from the position the aspect is declared at; remove the definition."
+        );
+      contradicts =
+        chain:
+        exactly (
+          "gen-aspects: identity: `x` sets meta.aspect-chain = ${chain}, which contradicts its declared path [ x ]. "
+          + "meta.aspect-chain is a rendering of the declared path and never an identity input; remove the definition."
+        );
+    in
+    {
+      test-loc-string = thrown (keyOf { meta.loc = "zz"; }) (malformed "a string");
+      test-loc-non-string = thrown (keyOf { meta.loc = [ 1 ]; }) (
+        malformed "a list holding a non-string"
+      );
+      test-loc-empty = thrown (keyOf { meta.loc = [ ]; }) (malformed "an empty list");
+      test-chain-contradicts = thrown (keyOf { meta.aspect-chain = [ "k" ]; }) (contradicts "[ k ]");
+      # A malformed chain is rendered by its type, never coerced: interpolating it aborted uncatchably.
+      test-chain-malformed = thrown (keyOf { meta.aspect-chain = [ 1 ]; }) (contradicts "a list");
+    };
 }
