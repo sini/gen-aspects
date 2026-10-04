@@ -599,26 +599,41 @@ rec {
       inherit sitesOfEntry instanceSites;
     };
 
-  # A non-empty dead-nested view is SAID, not only published (ADR-0025 item 1): the record warns once
-  # each time it is forced, so every reader of `graphFacts` sees it. `flatten` and `instancesFor` do
-  # not read this record and do not warn.
-  graphFacts = checkedEntry (
-    cnf: aspects:
+  # THE DEAD NESTED ASPECTS THE WARNING SAYS: the view less the nodes the caller DECLARED intended
+  # by listing their node ID in `cnf.freeformKeys`. A placeholder is an empty nested aspect, and a
+  # misspelt class key with no datum below it is the same value at the same kind of position, so no
+  # shape of the subtree separates them; only a declaration does. The declaration names the node
+  # (its origin-qualified walk key, the id `graphFacts` publishes), never its spelling: a spelling
+  # also names every same-named stray elsewhere (identity is not a spelling, ADR-0034), and an entry
+  # holding an id carries a `/`, which an ordinary attribute name does not, so it exempts no such name
+  # at the closed-key gate that reads the same list. The id, not an ancestor's: a typo below a listed placeholder is
+  # still said. The view itself is untouched (ADR-0012 clause 2: it is the filter over `deliversOf`).
+  warnedDeadNested =
+    cnf: facts: builtins.filter (id: !(builtins.elem id cnf.freeformKeys)) facts.deadNested;
+
+  deadNestedWarning =
+    ids:
+    "gen-aspects: nested aspect(s) ${
+      prelude.concatStringsSep ", " (map (id: "`${id}`") ids)
+    } deliver nothing (no declared class content, no includes, no delivering child). A misspelt "
+    + "class key is corrected at its spelling. Intended placeholder taxonomy is declared by listing "
+    + "its node id in `freeformKeys`, which silences this message for that node. A node id carries "
+    + "the `providerPrefix` of the cnf the facts are read with (`acme/hemline/facing`): list the ids "
+    + "of that cnf.";
+
+  # A non-empty warned subset of the dead-nested view is SAID, not only published (ADR-0025 item 1):
+  # the record warns once each time it is forced, so every reader of `graphFacts` sees it.
+  # `flatten` and `instancesFor` do not read this record and do not warn. The `warn` is a parameter
+  # so the CI can hand it a recorder: a real `builtins.warn` is a stderr effect nothing in a pure
+  # cell can read, and the line that chooses WHAT to say is the fix.
+  sayDeadNested =
+    warn': cnf: facts:
     let
-      inherit (graphCore cnf aspects) facts;
+      said = warnedDeadNested cnf facts;
     in
-    if facts.deadNested == [ ] then
-      facts
-    else
-      warn (
-        "gen-aspects: nested aspect(s) ${
-          prelude.concatStringsSep ", " (map (id: "`${id}`") facts.deadNested)
-        } deliver nothing (no declared class content, no includes, no delivering child). A misspelt "
-        + "class key is corrected at its spelling. Intended placeholder taxonomy has no silencing "
-        + "remedy, and the warning is expected for it: declaring the key would make it an option, "
-        + "not a node."
-      ) facts
-  );
+    if said == [ ] then facts else warn' (deadNestedWarning said) facts;
+
+  graphFacts = checkedEntry (cnf: aspects: sayDeadNested warn cnf (graphCore cnf aspects).facts);
 
   # `includeSitesOfEntry cnf aspects entry` → the include sites of any aspect value against this
   # tree, by the classification `graphFacts` publishes as `includeSitesOf` (one function, two
