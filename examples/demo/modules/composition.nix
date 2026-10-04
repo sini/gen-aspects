@@ -166,6 +166,10 @@ let
         # No import edges in this graph.
         imports = _self: _id: [ ];
 
+        # No boundary marks: the "neron" collection is a resolution, and every resolution reads
+        # `marks` at each scope it steps from (ADR-0026); `_: _: [ ]` states none.
+        marks = _self: _id: [ ];
+
         # Neron traverse: collect settings layers D > I > P (most-specific first).
         # `collectionAttr opts traverse extract`: the targets are chosen, then read.
         raw-settings = genScope.collectionAttr { } "neron" (
