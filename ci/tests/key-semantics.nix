@@ -66,12 +66,10 @@ let
     ];
   };
 
-  nixosEval = genMerge.evalModuleTree {
-    modules = [
-      { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
-      eval.config.aspects.svc.nixos
-    ];
-  };
+  nixosEval = genMerge.evalModuleTree { } [
+    { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
+    eval.config.aspects.svc.nixos
+  ];
 in
 {
   # (1) A channel value rides raw — it is NOT a nested aspect (no `name` identity field).

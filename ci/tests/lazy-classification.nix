@@ -40,12 +40,10 @@ let
     ];
   };
 
-  nixosEval = genMerge.evalModuleTree {
-    modules = [
-      { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
-      eval.config.aspects.web.nixos
-    ];
-  };
+  nixosEval = genMerge.evalModuleTree { } [
+    { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
+    eval.config.aspects.web.nixos
+  ];
 in
 {
   # `nixpkgs` is classified as a nested aspect (gets identity) WITHOUT forcing its

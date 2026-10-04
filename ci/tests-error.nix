@@ -87,13 +87,11 @@ in
   flake.testsError.key-semantics-lazy-refusal.test-carrier-bad-category = {
     expr =
       builtins.deepSeq
-        (genMerge.evalModuleTree {
-          modules = [
-            { options.schema = schemaBad.schemaOption; }
-            (schemaBad.mkAspectModule { })
-            { config.aspects.carrier.bad.x = 1; }
-          ];
-        }).config.aspects.carrier.bad
+        (genMerge.evalModuleTree { } [
+          { options.schema = schemaBad.schemaOption; }
+          (schemaBad.mkAspectModule { })
+          { config.aspects.carrier.bad.x = 1; }
+        ]).config.aspects.carrier.bad
         null;
     expectedError = {
       type = "ThrownError";
@@ -105,13 +103,11 @@ in
   flake.testsError.root-element-join-refusal.test-port-int =
     let
       rootWith = (aspects.aspectsRoot { keySemantics.a.category = "class"; }).functor.type;
-      res = genMerge.evalModuleTree {
-        modules = [
-          { options.p = genMerge.mkOption { type = rootWith lib.types.port; }; }
-          { options.p = genMerge.mkOption { type = rootWith lib.types.int; }; }
-          { p.a = 70000; }
-        ];
-      };
+      res = genMerge.evalModuleTree { } [
+        { options.p = genMerge.mkOption { type = rootWith lib.types.port; }; }
+        { options.p = genMerge.mkOption { type = rootWith lib.types.int; }; }
+        { p.a = 70000; }
+      ];
     in
     {
       expr = res.options.p.type.name;
@@ -322,12 +318,10 @@ in
       seg = (builtins.head (at { includes = [ { } ]; }).includes).name;
       show = genMerge.showOption;
       viaOption =
-        (genMerge.evalModuleTree {
-          modules = [
-            { options.aspects = (aspects.mkAspectSchema cnf).mkAspectOption { }; }
-            { config.aspects.hem.trim.x = 1; }
-          ];
-        }).config.aspects.hem;
+        (genMerge.evalModuleTree { } [
+          { options.aspects = (aspects.mkAspectSchema cnf).mkAspectOption { }; }
+          { config.aspects.hem.trim.x = 1; }
+        ]).config.aspects.hem;
     in
     {
       test-names-the-class-keys = thrown (at { nixso.boot.enable = true; }).nixso.boot.enable (

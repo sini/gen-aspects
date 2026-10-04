@@ -123,12 +123,10 @@ in
     expr =
       let
         classVal = classEval.config.aspects.myAspect.classOne;
-        classResult = genMerge.evalModuleTree {
-          modules = [
-            { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
-            classVal
-          ];
-        };
+        classResult = genMerge.evalModuleTree { } [
+          { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
+          classVal
+        ];
       in
       classResult.config.networking.hostName;
     expected = "test";

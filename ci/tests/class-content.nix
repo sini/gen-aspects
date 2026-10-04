@@ -29,12 +29,10 @@
   flake.tests.class-content.test-class-content-evaluates-cleanly =
     let
       eval = mkSchemaEval { modules = [ { config.aspects.myAspect.classOne.setting = "hello"; } ]; };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
-          eval.config.aspects.myAspect.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
+        eval.config.aspects.myAspect.classOne
+      ];
     in
     {
       expr = classEval.config.setting;
@@ -49,12 +47,10 @@
           { config.aspects.myAspect.classOne.names = [ "bob" ]; }
         ];
       };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          { options.names = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; }; }
-          eval.config.aspects.myAspect.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        { options.names = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; }; }
+        eval.config.aspects.myAspect.classOne
+      ];
     in
     {
       expr = lib.sort (a: b: a < b) classEval.config.names;
@@ -77,12 +73,10 @@
           }
         ];
       };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          { options.greeting = genMerge.mkOption { type = genMerge.types.str; }; }
-          eval.config.aspects.myAspect.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        { options.greeting = genMerge.mkOption { type = genMerge.types.str; }; }
+        eval.config.aspects.myAspect.classOne
+      ];
     in
     {
       expr = classEval.config.greeting;

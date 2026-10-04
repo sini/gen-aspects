@@ -91,42 +91,40 @@ let
         };
         run =
           knob:
-          (spiedDoored.evalModuleTree {
-            modules = [
-              (
-                { config, ... }:
-                {
-                  options.knob = spiedDoored.mkOption {
-                    type = st.bool;
-                    default = false;
-                  };
-                  options.hosts = gs.mkInstanceRegistry ntaSchema.host {
-                    extraModules =
-                      if config.knob then
-                        [
-                          {
-                            options.tag = spiedDoored.mkOption {
-                              type = st.str;
-                              default = "on";
-                            };
-                          }
-                        ]
-                      else
-                        [
-                          {
-                            options.tag = spiedDoored.mkOption {
-                              type = st.str;
-                              default = "off";
-                            };
-                          }
-                        ];
-                  };
-                  config.knob = knob;
-                  config.hosts.igloo.addr = "10.0.1.1";
-                }
-              )
-            ];
-          }).config.hosts.igloo.tag;
+          (spiedDoored.evalModuleTree { } [
+            (
+              { config, ... }:
+              {
+                options.knob = spiedDoored.mkOption {
+                  type = st.bool;
+                  default = false;
+                };
+                options.hosts = gs.mkInstanceRegistry ntaSchema.host {
+                  extraModules =
+                    if config.knob then
+                      [
+                        {
+                          options.tag = spiedDoored.mkOption {
+                            type = st.str;
+                            default = "on";
+                          };
+                        }
+                      ]
+                    else
+                      [
+                        {
+                          options.tag = spiedDoored.mkOption {
+                            type = st.str;
+                            default = "off";
+                          };
+                        }
+                      ];
+                };
+                config.knob = knob;
+                config.hosts.igloo.addr = "10.0.1.1";
+              }
+            )
+          ]).config.hosts.igloo.tag;
       in
       [
         (run true)
@@ -143,22 +141,20 @@ let
             classOne.category = "class";
           };
         };
-        c = spiedDoored.evalModuleTree {
-          modules = [
-            { options.schema = ntaSchema.schemaOption; }
-            (ntaSchema.mkAspectModule { })
-            {
-              config.schema.aspect.options.priority = spiedDoored.mkOption {
-                type = st.int;
-                default = 50;
-              };
-            }
-            {
-              config.aspects.networking.priority = 10;
-              config.aspects.desktop = { };
-            }
-          ];
-        };
+        c = spiedDoored.evalModuleTree { } [
+          { options.schema = ntaSchema.schemaOption; }
+          (ntaSchema.mkAspectModule { })
+          {
+            config.schema.aspect.options.priority = spiedDoored.mkOption {
+              type = st.int;
+              default = 50;
+            };
+          }
+          {
+            config.aspects.networking.priority = 10;
+            config.aspects.desktop = { };
+          }
+        ];
       in
       [
         c.config.aspects.networking.priority

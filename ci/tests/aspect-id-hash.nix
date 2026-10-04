@@ -99,13 +99,13 @@ let
         };
       };
     in
-    genMerge.evalModuleTree {
-      modules = [
+    genMerge.evalModuleTree { } (
+      [
         { options.schema = schema.schemaOption; }
         (schema.mkAspectModule { inherit providerPrefix; })
       ]
-      ++ modules;
-    };
+      ++ modules
+    );
   ppDefault = (mkEvalPP [ ] [ { config.aspects.foo.classOne = { }; } ]).config.aspects.foo;
   ppProv = (mkEvalPP [ "prov" ] [ { config.aspects.foo.classOne = { }; } ]).config.aspects.foo;
 in

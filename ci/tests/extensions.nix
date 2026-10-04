@@ -94,12 +94,10 @@ in
           };
         }
       ];
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
-          eval.config.aspects.foo.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        { options.setting = genMerge.mkOption { type = genMerge.types.str; }; }
+        eval.config.aspects.foo.classOne
+      ];
     in
     {
       expr = {

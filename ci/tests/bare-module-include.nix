@@ -26,12 +26,10 @@ let
       if inc.classOne == null then
         "<no class content>"
       else
-        (genMerge.evalModuleTree {
-          modules = [
-            { options.marker = genMerge.mkOption { type = genMerge.types.int; }; }
-            inc.classOne
-          ];
-        }).config.marker;
+        (genMerge.evalModuleTree { } [
+          { options.marker = genMerge.mkOption { type = genMerge.types.int; }; }
+          inc.classOne
+        ]).config.marker;
     importsKey = inc ? imports;
   };
   forceInc =

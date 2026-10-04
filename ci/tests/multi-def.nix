@@ -30,12 +30,10 @@ in
           { config.aspects.foo.classOne.names = [ "bob" ]; }
         ];
       };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          { options.names = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; }; }
-          eval.config.aspects.foo.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        { options.names = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; }; }
+        eval.config.aspects.foo.classOne
+      ];
     in
     {
       expr = lib.sort (a: b: a < b) classEval.config.names;
@@ -53,15 +51,13 @@ in
           { config.aspects.foo.classOne.y = "from-b"; }
         ];
       };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          {
-            options.x = genMerge.mkOption { type = genMerge.types.str; };
-            options.y = genMerge.mkOption { type = genMerge.types.str; };
-          }
-          eval.config.aspects.foo.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        {
+          options.x = genMerge.mkOption { type = genMerge.types.str; };
+          options.y = genMerge.mkOption { type = genMerge.types.str; };
+        }
+        eval.config.aspects.foo.classOne
+      ];
     in
     {
       expr = {

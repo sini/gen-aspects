@@ -58,9 +58,9 @@ let
   ev =
     tys: val:
     let
-      res = genMerge.evalModuleTree {
-        modules = map (ty: { options.p = genMerge.mkOption { type = ty; }; }) tys ++ [ { p = val; } ];
-      };
+      res = genMerge.evalModuleTree { } (
+        map (ty: { options.p = genMerge.mkOption { type = ty; }; }) tys ++ [ { p = val; } ]
+      );
       ty = builtins.tryEval (builtins.deepSeq res.options.p.type.name res.options.p.type.name);
       v = builtins.tryEval (builtins.deepSeq res.config.p res.config.p);
     in
@@ -240,26 +240,22 @@ in
           x: y:
           let
             foo =
-              (genMerge.evalModuleTree {
-                modules = [
-                  { options.aspects = genMerge.mkOption { type = aspects.aspectsRoot x; }; }
-                  { options.aspects = genMerge.mkOption { type = aspects.aspectsRoot y; }; }
-                  { aspects.foo = { }; }
-                ];
-              }).config.aspects.foo;
+              (genMerge.evalModuleTree { } [
+                { options.aspects = genMerge.mkOption { type = aspects.aspectsRoot x; }; }
+                { options.aspects = genMerge.mkOption { type = aspects.aspectsRoot y; }; }
+                { aspects.foo = { }; }
+              ]).config.aspects.foo;
           in
           read foo // { metaA = foo.meta.metaA or "ABSENT"; };
         p =
-          (genMerge.evalModuleTree {
-            modules = [
-              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule cA; }; }
-              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule cB; }; }
-              {
-                p.includes = [ { } ];
-                p.nested = { };
-              }
-            ];
-          }).config.p;
+          (genMerge.evalModuleTree { } [
+            { options.p = genMerge.mkOption { type = aspects.aspectSubmodule cA; }; }
+            { options.p = genMerge.mkOption { type = aspects.aspectSubmodule cB; }; }
+            {
+              p.includes = [ { } ];
+              p.nested = { };
+            }
+          ]).config.p;
         closed =
           c:
           c
@@ -268,13 +264,11 @@ in
             freeformKeys = [ "open" ];
           };
         gated =
-          (genMerge.evalModuleTree {
-            modules = [
-              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule (closed cA); }; }
-              { options.p = genMerge.mkOption { type = aspects.aspectSubmodule (closed cB); }; }
-              { p.open = { }; }
-            ];
-          }).config.p;
+          (genMerge.evalModuleTree { } [
+            { options.p = genMerge.mkOption { type = aspects.aspectSubmodule (closed cA); }; }
+            { options.p = genMerge.mkOption { type = aspects.aspectSubmodule (closed cB); }; }
+            { p.open = { }; }
+          ]).config.p;
         both = {
           extraA = "from-A";
           extraB = "from-B";
@@ -340,12 +334,13 @@ in
           decls:
           let
             foo =
-              (genMerge.evalModuleTree {
-                modules = decls ++ [
+              (genMerge.evalModuleTree { } (
+                decls
+                ++ [
                   extra
                   { aspects.foo = { }; }
-                ];
-              }).config.aspects.foo;
+                ]
+              )).config.aspects.foo;
             x = {
               A = foo.extraA or "ABSENT";
               B = foo.extraB or "ABSENT";
@@ -408,7 +403,7 @@ in
         decl =
           mods:
           let
-            r = genMerge.evalModuleTree { modules = mods ++ [ { aspects.foo = { }; } ]; };
+            r = genMerge.evalModuleTree { } (mods ++ [ { aspects.foo = { }; } ]);
             v = builtins.tryEval (builtins.deepSeq (builtins.attrNames r.config.aspects) true);
           in
           if v.success then "MERGED" else "REFUSED";
@@ -452,13 +447,11 @@ in
         decl =
           a: b: val:
           let
-            r = genMerge.evalModuleTree {
-              modules = [
-                { options.p = genMerge.mkOption { type = a; }; }
-                { options.p = genMerge.mkOption { type = b; }; }
-                { p = val; }
-              ];
-            };
+            r = genMerge.evalModuleTree { } [
+              { options.p = genMerge.mkOption { type = a; }; }
+              { options.p = genMerge.mkOption { type = b; }; }
+              { p = val; }
+            ];
             v = builtins.tryEval (builtins.deepSeq r.config.p true);
           in
           if v.success then "MERGED" else "REFUSED";

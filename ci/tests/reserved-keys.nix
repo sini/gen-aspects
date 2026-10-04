@@ -49,12 +49,10 @@ let
     }
   ];
 
-  nixosEval = genMerge.evalModuleTree {
-    modules = [
-      { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
-      eval.config.aspects.igloo.nixos
-    ];
-  };
+  nixosEval = genMerge.evalModuleTree { } [
+    { options.networking.hostName = genMerge.mkOption { type = genMerge.types.str; }; }
+    eval.config.aspects.igloo.nixos
+  ];
 
   # Contrast: WITHOUT declaring `settings`, the same key becomes a nested aspect
   # (parity with den's un-reserved dispatch — both require opt-in).

@@ -30,7 +30,7 @@ let
     }
   );
   ok = e: (builtins.tryEval (builtins.deepSeq e e)).success;
-  coldOf = mods: evalModuleTree { modules = mods; };
+  coldOf = mods: evalModuleTree { } mods;
   held =
     ty: v:
     let
@@ -55,10 +55,9 @@ let
       ];
       w =
         (evalModuleTree {
-          modules = base ++ edit;
           warmFrom = coldOf base;
           editedModules = edit;
-        }).config;
+        } (base ++ edit)).config;
     in
     ok w && builtins.toJSON w == builtins.toJSON (coldOf (base ++ edit)).config;
 in

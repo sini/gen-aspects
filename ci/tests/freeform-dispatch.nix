@@ -70,14 +70,12 @@
           { config.aspects.infra.networking.dns.classOne.nameservers = [ "1.1.1.1" ]; }
         ];
       };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          {
-            options.nameservers = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; };
-          }
-          eval.config.aspects.infra.networking.dns.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        {
+          options.nameservers = genMerge.mkOption { type = genMerge.types.listOf genMerge.types.str; };
+        }
+        eval.config.aspects.infra.networking.dns.classOne
+      ];
     in
     {
       # Class content clean at 3 levels deep — no structural keys

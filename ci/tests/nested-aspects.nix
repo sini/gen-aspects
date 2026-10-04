@@ -37,12 +37,10 @@
           { config.aspects.parent.child.classOne.foo = "bar"; }
         ];
       };
-      classEval = genMerge.evalModuleTree {
-        modules = [
-          { options.foo = genMerge.mkOption { type = genMerge.types.str; }; }
-          eval.config.aspects.parent.child.classOne
-        ];
-      };
+      classEval = genMerge.evalModuleTree { } [
+        { options.foo = genMerge.mkOption { type = genMerge.types.str; }; }
+        eval.config.aspects.parent.child.classOne
+      ];
     in
     {
       expr = classEval.config.foo;
