@@ -109,7 +109,7 @@ let
     let
       c = cnfConstruction cnf;
     in
-    schema.constructionRelation name (c // { minted = c.minted // minted; }) self;
+    schema.constructionRelation (c // { minted = c.minted // minted; }) name self;
   t = merge.types;
 
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.

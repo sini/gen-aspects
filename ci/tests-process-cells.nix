@@ -86,9 +86,9 @@ let
     # threads as a proper child rather than firing a standalone declaration-only evaluation.
     nta-extra-modules =
       let
-        ntaSchema = gs.evalSchema {
-          modules = [ { config.schema.host.options.addr = spiedDoored.mkOption { type = st.str; }; } ];
-        };
+        ntaSchema = gs.evalSchema { } [
+          { config.schema.host.options.addr = spiedDoored.mkOption { type = st.str; }; }
+        ];
         run =
           knob:
           (spiedDoored.evalModuleTree { } [
@@ -99,7 +99,7 @@ let
                   type = st.bool;
                   default = false;
                 };
-                options.hosts = gs.mkInstanceRegistry ntaSchema.host {
+                options.hosts = gs.mkInstanceRegistry {
                   extraModules =
                     if config.knob then
                       [
@@ -119,7 +119,7 @@ let
                           };
                         }
                       ];
-                };
+                } ntaSchema.host;
                 config.knob = knob;
                 config.hosts.igloo.addr = "10.0.1.1";
               }
