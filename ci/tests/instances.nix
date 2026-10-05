@@ -2,8 +2,8 @@
 # den-hoag-0cmbt spec §2.5 and §2.6, cells I-1 to I-7, R-1 to R-9, and
 # K-a/K-b through the mint). Every source is IDENTITY-shaped, minted here through gen-identity's
 # `hashIdentity` under the entity and argument-binding kinds, because the mint refuses a context value
-# and an aspect or instance identity as a source (the doors' cells are in ci/tests-error.nix,
-# `instance-doors`).
+# as a source (the doors' cells are in ci/tests-error.nix, `instance-doors`; the relation's source
+# door is ci/tests/source-door.nix).
 {
   aspects,
   genIdentity,

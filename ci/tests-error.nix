@@ -493,12 +493,12 @@ in
       );
     };
 
-  # The instance mint's doors (lib/instance.nix; den-hoag-0cmbt spec §2.5, cells I-6 and I-7, and the
-  # spec gate's C3). Each is a catchable throw naming `instanceOf`.
+  # The instance mint's doors (lib/instance.nix; den-hoag-0cmbt spec §2.5, cells I-6 and I-7). Each is a
+  # catchable throw naming `instanceOf`. The spec gate's C3, a source refused by its kind tag, retired
+  # with den-hoag-fkkzk: the mint now admits every identity-shaped source (ci/tests/source-door.nix).
   flake.testsError.instance-doors =
     let
       entity = n: genIdentity.hashIdentity "entity" [ "name" ] (_: n);
-      aid = aspects.aspectId [ "probe" ] { name = "p"; };
       t = (genAlgebra.term genIdentity.hashIdentity).term;
       p = aspects.guard (aspects.pred.has "host") {
         description = t.concat [
@@ -518,15 +518,6 @@ in
           inherit value context sources;
         };
       at = msg: exactly "gen-aspects.instanceOf: aspect `A` ${msg}";
-      byKind =
-        kind:
-        thrown (mint p { host = "h1"; } { host = genIdentity.hashIdentity kind [ "name" ] (_: "n"); }) (
-          at (
-            "was handed, for formal(s) `host`, the identity of a node of kind `${kind}`, which supplies "
-            + "no argument; hand the identity of the entity or argument binding that supplied it. An "
-            + "instance's reaching node is an edge, never a formal's source."
-          )
-        );
     in
     {
       # RED (without the door): `attempt to call something which is not a function but a set`, uncatchable.
@@ -561,19 +552,6 @@ in
       # reads the shape this door establishes.
       test-value-as-source = thrown (mint p { host = "h1"; } { host = "h1"; }) (
         at "was handed a source for formal(s) `host` that is not an identity (`<kind>:<sha256>`); hand the identity of the entity or argument binding that supplied it, never its value."
-      );
-      # C3: an identity of a kind that supplies no argument, each tag refused by name. RED (without the
-      # kind check): each mints at rc 0. `aspect` is the shape `aspectId` mints.
-      test-source-kind-aspect-instance = byKind "aspect-instance";
-      test-source-kind-aspect = byKind "aspect";
-      test-source-kind-include-site = byKind "include-site";
-      test-source-kind-named-value = byKind "named-value";
-      test-source-aspect-id = thrown (mint p { host = "h1"; } { host = aid; }) (
-        at (
-          "was handed, for formal(s) `host`, the identity of a node of kind `aspect`, which supplies "
-          + "no argument; hand the identity of the entity or argument binding that supplied it. An "
-          + "instance's reaching node is an edge, never a formal's source."
-        )
       );
       # The argument record and its field types. RED (without the doors): the extra field and the
       # non-string `aspect` are admitted silently and the cell's empty context refuses at the
@@ -650,6 +628,39 @@ in
         };
       rel = relWith sup;
       at = msg: exactly "gen-aspects.instancesFor (node 'a'): ${msg}";
+      # The source door (den-hoag-fkkzk arm (d)): `p`'s node id, and a vertex of this relation. The
+      # tree is PLACED, since an unchecked first-order guard has no identity to be a member by.
+      placed = (mkSchemaEval { modules = [ { config.aspects = tree; } ]; }).config.aspects;
+      pid = aspects.aspectId [ ] (aspects.graphFacts { } placed).nodeData.p;
+      vid = builtins.head (
+        builtins.attrNames
+          (aspects.instancesFor { } placed {
+            suppliers = sup;
+            scopes.a = ok;
+          }).vertices
+      );
+      ownRefused =
+        src:
+        thrown
+          (aspects.instancesFor { } placed {
+            suppliers = sup // {
+              ${src}.host = "h2";
+            };
+            scopes = {
+              a = ok;
+              b = ok // {
+                sources.host = src;
+              };
+            };
+          })
+          (
+            exactly (
+              "gen-aspects.instancesFor: aspect `${pid}` was handed, for formal(s) `host`, the identity of "
+              + "a node of this relation's own graph, which supplies no argument; hand the identity of the "
+              + "entity or argument binding that supplied it. An instance's reaching node is an edge, never "
+              + "a formal's source."
+            )
+          );
       atD = msg: exactly "gen-aspects.instancesFor (node 'a'), descendant 0: ${msg}";
       unsupplied =
         k:
@@ -736,6 +747,9 @@ in
           ];
         }
       )) (atD (unsupplied "user"));
+      # RED (the membership check removed): each mints at rc 0.
+      test-source-own-node-id = ownRefused pid;
+      test-source-own-vertex-id = ownRefused vid;
       test-descendants-not-a-list = thrown (rel (ok // { descendants = { }; })) (
         at "`descendants` must be a list of { sources; } records, not a set."
       );

@@ -32,12 +32,14 @@
 # - a source is not identity-shaped (`<kind>:<64 hex>`): the honest mistake of handing the context
 #   VALUE where its supplier's identity belongs (ADR-0016 r7, "a relatum must already be a minted
 #   node"; the minter holds no registry, so it checks the shape);
-# - a source is the identity of a node of a kind that supplies no argument: `aspect-instance`,
-#   `aspect`, `include-site`, `named-value`. The reaching instance is an edge, never a formal's
-#   source (design §3), and an instance id as a source is a same-pass relatum, which r7 forbids.
-# ITS BOUND, enumerated (ADR-0025 item 1). A source that is the instance's OWN id is a let-bound
+# A source is never refused by its kind tag: a framework names its own entity kinds (ADR-0035), so a
+# kind spelled `aspect` or `aspect-instance` supplies arguments like any other. Whether a source is a
+# node that supplies no argument is decided by GRAPH MEMBERSHIP, and only `instancesFor` holds a graph
+# (its door, below; den-hoag-fkkzk, owner-ruled arm (d)).
+# ITS BOUNDS, enumerated (ADR-0025 item 1). A source that is the instance's OWN id is a let-bound
 # fixpoint: no door can read it before forcing it, so it aborts with `infinite recursion`,
-# uncatchably.
+# uncatchably. Holding no registry, the mint refuses no identity-shaped source: an aspect's id or an
+# instance's id handed here mints.
 # THE CALLER'S OBLIGATION. Each source must be the supplier of the value the context carries under its
 # key. The id reads only the sources, and the minter holds no registry to check them against the
 # context, so a mismatch is not refused: two contexts with one source and different values mint ONE id
@@ -80,13 +82,6 @@ let
     "sources"
   ];
   names = prelude.concatStringsSep ", ";
-  # The kinds gen mints for nodes that supply no argument (spec §2.9's tags beside the two aspect tags).
-  nonSupplier = [
-    "aspect-instance"
-    "aspect"
-    "include-site"
-    "named-value"
-  ];
   kindOf = s: if builtins.isString s then builtins.match "([^:]+):[0-9a-f]{64}" s else null;
   # The mint over a constructed `cnf`; `instanceOf` is it behind `checkedEntry`.
   mint =
@@ -126,9 +121,6 @@ let
           );
       missing = builtins.filter (k: !(sources ? ${k})) received;
       notIdentity = builtins.filter (k: kindOf sources.${k} == null) received;
-      foreign = builtins.filter (
-        k: builtins.elem (builtins.head (kindOf sources.${k})) nonSupplier
-      ) received;
       formals = prelude.genAttrs received (k: sources.${k});
       refuse = msg: throw "${door}: aspect `${aspect}` ${msg}";
     in
@@ -146,12 +138,6 @@ let
       refuse "reads formal(s) `${names missing}` with no known supplier; the sources map carries: ${names (builtins.attrNames sources)}."
     else if notIdentity != [ ] then
       refuse "was handed a source for formal(s) `${names notIdentity}` that is not an identity (`<kind>:<sha256>`); hand the identity of the entity or argument binding that supplied it, never its value."
-    else if foreign != [ ] then
-      refuse "was handed, for formal(s) ${
-        names (map (k: "`${k}`") foreign)
-      }, the identity of a node of kind ${
-        names (map (k: "`${builtins.head (kindOf sources.${k})}`") foreign)
-      }, which supplies no argument; hand the identity of the entity or argument binding that supplied it. An instance's reaching node is an edge, never a formal's source."
     else
       let
         fired = applyGuardScoped { inherit context sources scope; } value;
@@ -259,10 +245,23 @@ in
   # context (`GT.holds`), keyed on its derived reads (den-hoag-lwbb1). A sealed or foreign include site
   # is not walked.
   #
+  # THE SOURCE DOOR (den-hoag-fkkzk, owner-ruled 2026-10-05, arm (d)). A source is refused iff it is
+  # a node id of THIS relation's own graph: an aspect node's id (`aspectIdOf`) or one of its vertices.
+  # Such a node supplies no argument: the reaching instance is an edge, never a formal's source
+  # (design §3), and a vertex id as a source is a same-pass relatum, which r7 forbids. Every other id is
+  # admitted, whatever its kind tag spells (ADR-0035): membership is by the exact id string, so an
+  # honest framework kind `aspect` is never taken for a node, and only an identical preimage, the
+  # forger's case, matches. STATED DIVERGENCES (ADR-0025 item 1), the limbs the retired spelling list
+  # covered and membership cannot: an instance id minted by an EARLIER relation, not a vertex of this
+  # one, is admitted; and `instanceOf` alone holds no graph, so it refuses no source by kind.
+  # Checked once over the final vertices, so a vertex is minted before its source is read against them.
+  #
   # WHAT IT FORCES. Reading any field forces every pass: each reached instance is applied once (its
-  # body decides the next pass) and hashed once, so a mint refusal (a non-identity source, a
-  # non-supplier kind) or the supplier door fires on any read, shared by every node, as `realize`'s
-  # `_contentCheck` already shares it.
+  # body decides the next pass) and hashed once, so a mint refusal (a non-identity source), the source
+  # door or the supplier door fires on any read, shared by every node, as `realize`'s `_contentCheck`
+  # already shares it. The source door forces every node's `aspectIdOf`, once per relation that
+  # mints a vertex with a formal, so a node with no identity (an unchecked first-order guard, never
+  # placed at an aspect position) refuses the relation even where no scope reaches it.
   #
   # ONE ID, SEVERAL CONTRIBUTIONS. Equal ids from several reaching identifiers (nodes, or parent
   # vertices) are one vertex, whose content is the contribution of the earliest pass and, within a
@@ -530,7 +529,21 @@ in
           handled = builtins.mapAttrs (_: set) p0;
           edges = m0;
         };
-      final = step start;
+      final =
+        let
+          f = step start;
+          own = set (builtins.attrValues aspectIdOf);
+          isOwn = s: own ? ${s} || f.seen ? ${s};
+          bad = builtins.filter (id: builtins.any isOwn (builtins.attrValues f.seen.${id}.formals)) (
+            builtins.attrNames f.seen
+          );
+          m = f.seen.${builtins.head bad};
+          ks = builtins.filter (k: isOwn m.formals.${k}) (builtins.attrNames m.formals);
+        in
+        if bad == [ ] then
+          f
+        else
+          throw "${rdoor}: aspect `${aspectIdOf.${m.aspect}}` was handed, for formal(s) ${names (map (k: "`${k}`") ks)}, the identity of a node of this relation's own graph, which supplies no argument; hand the identity of the entity or argument binding that supplied it. An instance's reaching node is an edge, never a formal's source.";
       # Each id at its first occurrence, in minting order: `listToAttrs` keeps a name's first index, as
       # in `index`. At a node scope one `atNode` call mints a (node, aspect) list, in `descendants` order.
       firstOf =
