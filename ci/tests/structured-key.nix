@@ -61,6 +61,7 @@ let
       instanceVertices = builtins.length (
         builtins.attrNames
           (aspects.instancesFor gCnf a {
+            containment = { };
             suppliers.${entity "h1"}.host = "h1";
             scopes.n = {
               members = [

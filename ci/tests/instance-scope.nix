@@ -195,6 +195,7 @@ in
               }
             )).config.aspects;
           r = a.instancesFor (cnfOf 2 false) tree {
+            containment = { };
             suppliers.${src "h0"}.thimble = "h0";
             scopes.n = {
               members = [ "o" ];

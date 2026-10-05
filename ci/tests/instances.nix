@@ -170,22 +170,50 @@ let
     // (if user == null then { } else { user = entity user; });
   };
   relScope =
-    host: users: members:
-    tuple host null
+    host: user: members:
+    tuple host user
     // {
       inherit members;
-      descendants = map (tuple host) users;
     };
+  # One containment (den-hoag-8g2rn): each host declares the `flavor` binding, which its users inherit,
+  # so a node's tuple and its descendants' coordinates name one source for it. c binds h1's user u3
+  # itself, so it fans out over nothing, while a and g, on h1, fan over u1, u2 and u3.
+  rec0 = parent: key: x: bindings: {
+    inherit parent key bindings;
+    identity = entity x;
+    marked = false;
+  };
+  hostRec = h: rec0 null "host" h { flavor = binding "flavor"; };
+  relContainment = {
+    h1 = hostRec "h1";
+    h2 = hostRec "h2";
+    h3 = hostRec "h3";
+    h4 = hostRec "h4";
+    h5 = hostRec "h5";
+    h6 = hostRec "h6";
+    h7 = hostRec "h7";
+    u1 = rec0 "h1" "user" "u1" { };
+    u2 = rec0 "h1" "user" "u2" { };
+    u3 = rec0 "h1" "user" "u3" { };
+    u5 = rec0 "h5" "user" "u5" { };
+    u6 = rec0 "h6" "user" "u6" { };
+  };
   relScopes = {
-    a = relScope "h1" [ "u1" "u2" ] [ "w" ];
-    c = relScope "h1" [ "u3" ] [ "w" ];
-    b = relScope "h2" [ ] [ "e" "s" ];
-    d = relScope "h3" [ ] [ "e2" ];
-    f = relScope "h4" [ ] [ "w" ];
-    g = relScope "h1" [ ] [ "w" "q" ];
-    i = relScope "h5" [ "u5" ] [ "e3" ];
-    j = relScope "h6" [ "u6" ] [ "eu" ];
-    k = relScope "h7" [ ] [ "wc" ];
+    a = relScope "h1" null [ "w" ];
+    c = relScope "h1" "u3" [ "w" ];
+    b = relScope "h2" null [
+      "e"
+      "s"
+    ];
+    d = relScope "h3" null [ "e2" ];
+    f = relScope "h4" null [ "w" ];
+    g = relScope "h1" null [
+      "w"
+      "q"
+    ];
+    i = relScope "h5" null [ "e3" ];
+    j = relScope "h6" null [ "eu" ];
+    k = relScope "h7" null [ "wc" ];
   };
   # Written as a literal: one value per (source, key) by construction, and a repeated name aborts.
   relSuppliers = {
@@ -206,6 +234,7 @@ let
   r = aspects.instancesFor { } rel {
     suppliers = relSuppliers;
     scopes = relScopes;
+    containment = relContainment;
   };
   desc = id: r.vertices.${id}.entry.description;
   descs = map desc;
@@ -247,6 +276,7 @@ let
     aspects.instancesFor idCnf tree {
       suppliers = idSuppliers;
       inherit scopes;
+      containment = { };
     };
   vertexCount = rr: builtins.length (builtins.attrNames rr.vertices);
   marksAt =
@@ -427,8 +457,8 @@ in
     # scope): `same` false.
     test-nested-and-node-edge = {
       expr = {
-        qDesc = map (eid: descs r.nested.${eid}.q) r.reaches.a.e;
-        same = r.reaches.g.q == builtins.concatMap (eid: r.nested.${eid}.q) r.reaches.g.e;
+        qDesc = map (eid: descs r.nestedAt.a.${eid}.q) r.reaches.a.e;
+        same = r.reaches.g.q == builtins.concatMap (eid: r.nestedAt.g.${eid}.q) r.reaches.g.e;
         gSharesE = r.reaches.g.e == r.reaches.a.e;
       };
       expected = {
@@ -442,7 +472,7 @@ in
     test-static-node-rule = {
       expr = {
         node = descs (r.reaches.d.q or [ ]);
-        nested = builtins.any (eid: r.nested.${eid} ? q) r.reaches.d.e2;
+        nested = builtins.any (eid: r.nestedAt.d.${eid} ? q) r.reaches.d.e2;
       };
       expected = {
         node = [ "q-h3" ];
@@ -450,20 +480,21 @@ in
       };
     };
     # R-5. An unsuppliable reached pair has no edge and no throw: f reaches `u` with no tuple carrying
-    # `user`; eu's vertex at h6 includes `u` and its tuple lacks `user` (O3: no nested fan-out). RED
-    # (minted regardless): the guard's `has user` condition never holds, so a mint would refuse on
-    # any read.
+    # `user` (h4 contains no user). eu's vertex at h6 includes `u`; its tuple lacks `user`, so `u` fans
+    # out at the meet of the vertex and node j over h6's user u6 (den-hoag-8g2rn S3c), a nested edge
+    # and never a node one. RED (minted regardless): the guard's `has user` condition never holds, so a
+    # mint would refuse on any read.
     test-unsuppliable-no-edge = {
       expr = {
         fHasE = r.reaches.f ? e;
         fHasU = r.reaches.f ? u;
-        nestedU = map (eid: r.nested.${eid} ? u) r.reaches.j.eu;
+        nestedU = map (eid: descs (r.nestedAt.j.${eid}.u or [ ])) r.reaches.j.eu;
         jHasU = r.reaches.j ? u;
       };
       expected = {
         fHasE = true;
         fHasU = false;
-        nestedU = [ false ];
+        nestedU = [ [ "u-u6" ] ];
         jHasU = false;
       };
     };
@@ -484,11 +515,11 @@ in
         ];
       };
     };
-    # R-7. Fan-out: at a (users u1, u2) `u` has two ids, `e` one; c (one user) one; b (none) no edge.
-    # RED (the first descendant tuple taken): one id, [ "u-u1" ].
+    # R-7. Fan-out: at a (h1, users u1, u2, u3) `u` has three ids, `e` one; c (binding u3) one; b (h2,
+    # no user) no edge. RED (the first descendant tuple taken): one id, [ "u-u1" ].
     test-fan-out = {
       expr = {
-        # membership only; the order is test-fan-out-declared-order's
+        # membership only; the order is test-fan-out-canonical-order's
         uA = builtins.sort builtins.lessThan (descs r.reaches.a.u);
         eCountA = builtins.length r.reaches.a.e;
         uC = descs r.reaches.c.u;
@@ -498,48 +529,51 @@ in
         uA = [
           "u-u1"
           "u-u2"
+          "u-u3"
         ];
         eCountA = 1;
         uC = [ "u-u3" ];
         bHasU = false;
       };
     };
-    # A1 (den-hoag-htfv3 U3a). Fan-out siblings follow the scope's `descendants`, in both orders, never
-    # the ids' (ADR-0016 r5). RED (ascending id, the descendant order ignored): one arm differs.
-    test-fan-out-declared-order = {
-      expr =
-        map
-          (
-            users:
-            let
-              rr = aspects.instancesFor { } rel {
-                suppliers = relSuppliers;
-                scopes.a = relScope "h1" users [ "w" ];
-              };
-            in
-            map (id: rr.vertices.${id}.formals.user) rr.reaches.a.u
-          )
-          [
-            [
-              "u1"
-              "u2"
-            ]
-            [
-              "u2"
-              "u1"
-            ]
+    # A1 (den-hoag-8g2rn, ruling 13). Fan-out siblings are in canonical order, the descendant
+    # entities' IDENTIFIERS (`containment`'s attribute names), never their identities' or the
+    # instance ids' (ADR-0016 r5). Renaming u1's identifier to z1, its identity fixed, moves it last;
+    # the instance ids are not in sibling order, so an id-ordered list would differ. RED (`seed-idorder`,
+    # siblings by identity; `seed-iid`, siblings by instance id): `canonical` or `renamed` differs.
+    test-fan-out-canonical-order =
+      let
+        relWith =
+          cont:
+          aspects.instancesFor { } rel {
+            suppliers = relSuppliers;
+            scopes.a = relScope "h1" null [ "w" ];
+            containment = cont;
+          };
+        users = rr: map (id: rr.vertices.${id}.formals.user) rr.reaches.a.u;
+        canonical = relWith relContainment;
+        renamed = relWith (removeAttrs relContainment [ "u1" ] // { z1 = relContainment.u1; });
+      in
+      {
+        expr = {
+          canonical = users canonical;
+          renamed = users renamed;
+          idsInSiblingOrder = canonical.reaches.a.u == builtins.sort builtins.lessThan canonical.reaches.a.u;
+        };
+        expected = {
+          canonical = [
+            (entity "u1")
+            (entity "u2")
+            (entity "u3")
           ];
-      expected = [
-        [
-          (entity "u1")
-          (entity "u2")
-        ]
-        [
-          (entity "u2")
-          (entity "u1")
-        ]
-      ];
-    };
+          renamed = [
+            (entity "u2")
+            (entity "u3")
+            (entity "u1")
+          ];
+          idsInSiblingOrder = false;
+        };
+      };
     # R-8 (structure). a and c hold one `e` id, read from one `vertices` cell, whose nested `q` is one
     # id. This gates the structure that gives value sharing, not the application count (spec §3b G2).
     # RED (the id keyed per reaching node): two ids, two cells.
@@ -553,7 +587,7 @@ in
           cells = builtins.length (
             builtins.filter (id: r.vertices ? ${id}) (builtins.attrNames (builtins.groupBy (x: x) ids))
           );
-          nestedQ = builtins.length (builtins.concatMap (eid: r.nested.${eid}.q) r.reaches.a.e);
+          nestedQ = builtins.length (builtins.concatMap (eid: r.nestedAt.a.${eid}.q) r.reaches.a.e);
         };
       expected = {
         distinct = 1;
@@ -566,7 +600,7 @@ in
     # RED (a top-level-only body walk): no nested `q`, no `u`.
     test-inline-content-in-body = {
       expr = {
-        nestedQ = map (eid: descs (r.nested.${eid}.q or [ ])) r.reaches.i.e3;
+        nestedQ = map (eid: descs (r.nestedAt.i.${eid}.q or [ ])) r.reaches.i.e3;
         nodeU = descs (r.reaches.i.u or [ ]);
       };
       expected = {
@@ -643,11 +677,14 @@ in
         };
       };
     # A static node's inline content is walked at depth 0, and a guard record (O1) is a leaf with no
-    # edge, never a refusal. `nested` is total over `vertices`.
+    # edge, never a refusal. `nestedAt` is total over `vertices`: every vertex has its nested edges at
+    # each node that reaches it.
     test-content-walked-guard-record-no-edge = {
       expr = {
         k = builtins.attrNames r.reaches.k;
-        total = builtins.attrNames r.nested == builtins.attrNames r.vertices;
+        total =
+          builtins.attrNames (builtins.foldl' (a: b: a // b) { } (builtins.attrValues r.nestedAt))
+          == builtins.attrNames r.vertices;
       };
       expected = {
         k = [ "e" ];
@@ -662,12 +699,13 @@ in
         rA = aspects.instancesFor { } rel {
           suppliers = relSuppliers;
           scopes = { inherit (relScopes) a; };
+          containment = relContainment;
         };
         # an id the other relation lacks reads null, so a mismatch is a false cell, never an abort
         slice =
           rr:
           builtins.mapAttrs (
-            id: _: if rr.vertices ? ${id} then rr.vertices.${id} // { nested = rr.nested.${id}; } else null
+            id: _: if rr.vertices ? ${id} then rr.vertices.${id} // { nested = rr.nestedAt.a.${id}; } else null
           ) rA.vertices;
       in
       {
@@ -924,6 +962,7 @@ in
         };
         rr = aspects.instancesFor { } rel {
           suppliers = sup;
+          containment = { };
           scopes = builtins.mapAttrs (_: s: {
             members = [ "e" ];
             sources.host = s;
@@ -936,7 +975,7 @@ in
           read = builtins.mapAttrs (n: _: read n) src;
           agrees = builtins.all (n: read n == [ "e-${sup.${src.${n}}.host}" ]) (builtins.attrNames src);
           nestedW = map (
-            eid: map (id: rr.vertices.${id}.entry.description) rr.nested.${eid}.q
+            eid: map (id: rr.vertices.${id}.entry.description) rr.nestedAt.w.${eid}.q
           ) rr.reaches.w.e;
         };
         expected = {
@@ -950,10 +989,11 @@ in
         };
       };
     # n8wb5: the relation publishes its DECISION per handed scope. `declined.reaches.<node>` and
-    # `declined.nested.<iid>` list the walked first-order guards whose condition RESOLVED FALSE at every
+    # `declined.nestedAt.<node>.<iid>` list the walked first-order guards whose condition RESOLVED FALSE at every
     # tuple tried. An edge is never declined; under the open world `has` over an absent coordinate is
     # refused (R), so the guard is in neither. `n`: `d` (eq FALSE) and `u` (reached through static `st` inside `o`'s
-    # body, at node scope); `m` nested in `o`'s vertex. `nu`: `u` fans out to the user descendant.
+    # body, at node scope); `m` nested in `o`'s vertex. `nu`: `u` fans out to h2's user u1 (h contains
+    # no user, so n's tuple and its meets have no descendant).
     # RED (declined = walked minus edges, reading R as FALSE): `openN` = [ d u ], `openNested` = [ m ].
     test-declined-decision =
       let
@@ -977,7 +1017,13 @@ in
             {
               suppliers = {
                 ${entity "h"}.host = "h";
+                ${entity "h2"}.host = "h2";
                 ${entity "u1"}.user = "u1";
+              };
+              containment = {
+                h = rec0 null "host" "h" { };
+                h2 = rec0 null "host" "h2" { };
+                u1 = rec0 "h2" "user" "u1" { };
               };
               scopes = {
                 n = {
@@ -989,8 +1035,7 @@ in
                 };
                 nu = {
                   members = [ "o" ];
-                  sources.host = entity "h";
-                  descendants = [ { sources.user = entity "u1"; } ];
+                  sources.host = entity "h2";
                 };
                 omit = {
                   members = [ ];
@@ -1015,12 +1060,12 @@ in
       {
         expr = {
           closedN = rc.declined.reaches.n;
-          closedNested = rc.declined.nested.${oAt rc};
+          closedNested = rc.declined.nestedAt.n.${oAt rc};
           closedNu = rc.declined.reaches.nu;
           nuReachesU = rc.reaches.nu ? u;
           omit = rc.declined.reaches.omit;
           openN = ro.declined.reaches.n;
-          openNested = ro.declined.nested.${oAt ro};
+          openNested = ro.declined.nestedAt.n.${oAt ro};
           disjoint = disjoint rc && disjoint ro;
         };
         expected = {

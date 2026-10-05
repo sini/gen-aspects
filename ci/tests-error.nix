@@ -620,14 +620,36 @@ in
         members = [ "w" ];
         sources.host = entity "h1";
       };
-      relWith =
-        suppliers: scope:
+      relC =
+        suppliers: containment: scope:
         aspects.instancesFor { } tree {
-          inherit suppliers;
+          inherit suppliers containment;
           scopes.a = scope;
         };
+      relWith = suppliers: relC suppliers { };
       rel = relWith sup;
       at = msg: exactly "gen-aspects.instancesFor (node 'a'): ${msg}";
+      # The containment doors (den-hoag-8g2rn §2.6): h1 ⊃ u1.
+      rec0 = parent: key: x: {
+        inherit parent key;
+        identity = entity x;
+        marked = false;
+        bindings = { };
+      };
+      cont = {
+        h1 = rec0 null "host" "h1";
+        u1 = rec0 "h1" "user" "u1";
+      };
+      supC = sup // {
+        ${entity "kx"}.user = "kx";
+        ${entity "kf"}.flavor = "kf";
+        ${entity "kf2"}.flavor = "kf2";
+      };
+      relCont = c: relC supC c ok;
+      atE = x: msg: exactly "gen-aspects.instancesFor (containment '${x}'): ${msg}";
+      repeated =
+        k: y: z:
+        "entity key `${k}` is bound by '${y}' and again by its ancestor '${z}'; an entity key is bound once along containment (an argument binding re-declared there shadows).";
       # The source door (den-hoag-fkkzk arm (d)): `p`'s node id, and a vertex of this relation. The
       # tree is PLACED, since an unchecked first-order guard has no identity to be a member by.
       placed = (mkSchemaEval { modules = [ { config.aspects = tree; } ]; }).config.aspects;
@@ -637,12 +659,14 @@ in
           (aspects.instancesFor { } placed {
             suppliers = sup;
             scopes.a = ok;
+            containment = { };
           }).vertices
       );
       ownRefused =
         src:
         thrown
           (aspects.instancesFor { } placed {
+            containment = { };
             suppliers = sup // {
               ${src}.host = "h2";
             };
@@ -661,7 +685,6 @@ in
               + "a formal's source."
             )
           );
-      atD = msg: exactly "gen-aspects.instancesFor (node 'a'), descendant 0: ${msg}";
       unsupplied =
         k:
         "key(s) '${k}' name a source that `suppliers` holds no value for under that key; a context value is supplied as `suppliers.<source>.<key>`, never beside the scope.";
@@ -669,17 +692,18 @@ in
     {
       # The previous surface's call (scopes in the input's place) names the new field.
       test-input-missing-suppliers = thrown (aspects.instancesFor { } tree { a = ok; }) (
-        exactly "gen-aspects.instancesFor: required field 'suppliers' is missing (required: 'suppliers', 'scopes') (in prelude.checkRequired)"
+        exactly "gen-aspects.instancesFor: required field 'suppliers' is missing (required: 'suppliers', 'scopes', 'containment') (in prelude.checkRequired)"
       );
       test-input-unknown-field =
         thrown
           (aspects.instancesFor { } tree {
             suppliers = sup;
             scopes = { };
+            containment = { };
             extra = 1;
           })
           (
-            exactly "gen-aspects.instancesFor: 'extra' is not an option of this door; the options are closed (accepted: 'suppliers', 'scopes') (in prelude.checkOptions)"
+            exactly "gen-aspects.instancesFor: 'extra' is not an option of this door; the options are closed (accepted: 'suppliers', 'scopes', 'containment') (in prelude.checkOptions)"
           );
       test-suppliers-not-attrs = thrown (relWith [ ] ok) (
         exactly "gen-aspects.instancesFor: `suppliers` must be an attrset `<source identity>.<key> = <value>`, not a list."
@@ -687,6 +711,7 @@ in
       test-scopes-not-attrs = thrown (aspects.instancesFor { } tree {
         suppliers = sup;
         scopes = [ ];
+        containment = { };
       }) (exactly "gen-aspects.instancesFor: `scopes` must be an attrset of node scopes, not a list.");
       # C-B. RED (without the door): `attribute '<member>' missing`, uncatchable.
       test-member-not-a-node = thrown (rel (ok // { members = [ "absent" ]; })) (
@@ -702,29 +727,13 @@ in
         exactly "gen-aspects.instancesFor (node 'a'): required field 'sources' is missing (required: 'members', 'sources') (in prelude.checkRequired)"
       );
       test-scope-unknown-field = thrown (rel (ok // { extra = 1; })) (
-        exactly "gen-aspects.instancesFor (node 'a'): 'extra' is not an option of this door; the options are closed (accepted: 'members', 'sources', 'descendants') (in prelude.checkOptions)"
+        exactly "gen-aspects.instancesFor (node 'a'): 'extra' is not an option of this door; the options are closed (accepted: 'members', 'sources') (in prelude.checkOptions)"
       );
       # R-10. The retired per-tuple `context` refuses through the closed-field door, with no tombstone.
       # RED (at bcc1329): `context` is accepted beside `sources`.
       test-scope-context-retired = thrown (rel (ok // { context.host = "h1"; })) (
-        exactly "gen-aspects.instancesFor (node 'a'): 'context' is not an option of this door; the options are closed (accepted: 'members', 'sources', 'descendants') (in prelude.checkOptions)"
+        exactly "gen-aspects.instancesFor (node 'a'): 'context' is not an option of this door; the options are closed (accepted: 'members', 'sources') (in prelude.checkOptions)"
       );
-      test-descendant-context-retired =
-        thrown
-          (rel (
-            ok
-            // {
-              descendants = [
-                {
-                  context.user = "u1";
-                  sources.user = entity "u1";
-                }
-              ];
-            }
-          ))
-          (
-            atD "'context' is not an option of this door; the options are closed (accepted: 'sources') (in prelude.checkOptions)"
-          );
       # R-10. The supplier door: a source with no `suppliers` entry, an entry lacking the key, and a
       # source that is not a string, each named. RED (the door removed): an uncatchable missing attribute.
       test-source-not-supplied = thrown (rel (ok // { sources.host = entity "h9"; })) (
@@ -734,32 +743,228 @@ in
         at (unsupplied "host")
       );
       test-source-not-a-string = thrown (rel (ok // { sources.host = 1; })) (at (unsupplied "host"));
-      test-descendant-source-not-supplied = thrown (rel (
-        ok
-        // {
-          descendants = [
-            {
-              sources = {
-                host = entity "h1";
-                user = entity "u9";
-              };
-            }
-          ];
-        }
-      )) (atD (unsupplied "user"));
       # RED (the membership check removed): each mints at rc 0.
       test-source-own-node-id = ownRefused pid;
       test-source-own-vertex-id = ownRefused vid;
-      test-descendants-not-a-list = thrown (rel (ok // { descendants = { }; })) (
-        at "`descendants` must be a list of { sources; } records, not a set."
+      # den-hoag-8g2rn §2.6. The retired per-scope `descendants` refuses through the closed-field door
+      # (LEGACY), and so does a handed transitive view beside `containment`.
+      test-scope-descendants-retired = thrown (rel (ok // { descendants = [ ]; })) (
+        exactly "gen-aspects.instancesFor (node 'a'): 'descendants' is not an option of this door; the options are closed (accepted: 'members', 'sources') (in prelude.checkOptions)"
       );
-      test-descendant-missing-sources = thrown (rel (ok // { descendants = [ { } ]; })) (
-        atD "required field 'sources' is missing (required: 'sources') (in prelude.checkRequired)"
-      );
-      test-descendant-sources-not-attrs =
-        thrown (rel (ok // { descendants = [ { sources = "u1"; } ]; }))
+      test-descendants-of-view-refused =
+        thrown
+          (aspects.instancesFor { } tree {
+            suppliers = sup;
+            scopes.a = ok;
+            containment = { };
+            descendantsOf = { };
+          })
           (
-            atD "`sources` must be an attrset mapping each context key to its supplier's identity, not a string."
+            exactly "gen-aspects.instancesFor: 'descendantsOf' is not an option of this door; the options are closed (accepted: 'suppliers', 'scopes', 'containment') (in prelude.checkOptions)"
+          );
+      # OMIT: `containment` is required (`{ }` when there is none).
+      test-containment-missing =
+        thrown
+          (aspects.instancesFor { } tree {
+            suppliers = sup;
+            scopes.a = ok;
+          })
+          (
+            exactly "gen-aspects.instancesFor: required field 'containment' is missing (required: 'suppliers', 'scopes', 'containment') (in prelude.checkRequired)"
+          );
+      test-containment-not-attrs = thrown (relCont [ ]) (
+        exactly "gen-aspects.instancesFor: `containment` must be an attrset `<identifier> = { parent; key; identity; marked; bindings; }`, not a list."
+      );
+      # BADREC: the record is exactly its five fields, each of its type.
+      test-containment-record-missing-bindings =
+        thrown (relCont (cont // { u1 = removeAttrs cont.u1 [ "bindings" ]; }))
+          (
+            atE "u1" "required field 'bindings' is missing (required: 'parent', 'key', 'identity', 'marked', 'bindings') (in prelude.checkRequired)"
+          );
+      test-containment-record-unknown-field =
+        thrown
+          (relCont (
+            cont
+            // {
+              u1 = cont.u1 // {
+                extra = 1;
+              };
+            }
+          ))
+          (
+            atE "u1" "'extra' is not an option of this door; the options are closed (accepted: 'parent', 'key', 'identity', 'marked', 'bindings') (in prelude.checkOptions)"
+          );
+      test-containment-key-not-a-string = thrown (relCont (
+        cont
+        // {
+          u1 = cont.u1 // {
+            key = 1;
+          };
+        }
+      )) (atE "u1" "`key` must be the coordinate the entity binds, a string, not a int.");
+      test-containment-bindings-not-attrs =
+        thrown
+          (relCont (
+            cont
+            // {
+              u1 = cont.u1 // {
+                bindings = [ ];
+              };
+            }
+          ))
+          (
+            atE "u1" "`bindings` must be an attrset `<key> = <source>` of the argument bindings declared at this entity, not a list."
+          );
+      test-containment-marked-not-bool = thrown (relCont (
+        cont
+        // {
+          u1 = cont.u1 // {
+            marked = "yes";
+          };
+        }
+      )) (atE "u1" "`marked` must be a bool, not a string.");
+      # DANGLING and CYCLE.
+      test-containment-dangling-parent = thrown (relCont (
+        cont
+        // {
+          u1 = cont.u1 // {
+            parent = "h9";
+          };
+        }
+      )) (atE "u1" "`parent` must be null (a root) or the identifier of an entity of `containment`.");
+      test-containment-cycle = thrown (relCont (
+        cont
+        // {
+          h1 = cont.h1 // {
+            parent = "u1";
+          };
+        }
+      )) (atE "h1" "its parent chain is a cycle through 'h1'; containment is a forest.");
+      # REPKEY: an entity key bound twice along a chain, in both directions (an ancestor's argument
+      # binding named like a descendant's entity key too), and in a subtree no node reaches (the door's
+      # totality, gate C2). RED (the fold checking only the entity's own key): `-arg` admits; (the
+      # chains forced only where a neighbourhood reads them, v1.1): `-unreached` admits.
+      test-containment-repeated-entity-key = thrown (relCont (cont // { h2 = rec0 "h1" "host" "h2"; })) (
+        atE "h2" (repeated "host" "h2" "h1")
+      );
+      test-containment-repeated-entity-key-arg = thrown (relCont (
+        cont
+        // {
+          h1 = cont.h1 // {
+            bindings.user = entity "kx";
+          };
+        }
+      )) (atE "u1" (repeated "user" "u1" "h1"));
+      test-containment-repeated-entity-key-unreached = thrown (relC
+        (
+          supC
+          // {
+            ${entity "h3"}.host = "h3";
+            ${entity "h4"}.host = "h4";
+          }
+        )
+        (
+          cont
+          // {
+            h3 = rec0 null "host" "h3";
+            h4 = rec0 "h3" "host" "h4";
+          }
+        )
+        ok
+      ) (atE "h4" (repeated "host" "h4" "h3"));
+      # A containment entity's coordinate naming a source `suppliers` lacks refuses at every call,
+      # reached or not (gate C2). RED (v1.1): admitted while no neighbourhood reads u9.
+      test-containment-coordinate-not-supplied-unreached = thrown (relCont (
+        cont
+        // {
+          u9 = rec0 "h9" "user" "u9" // {
+            parent = null;
+          };
+        }
+      )) (atE "u9" (unsupplied "user"));
+      # ALIAS-dupid and SELFKEY (P1).
+      test-containment-one-identity-two-identifiers = thrown (relCont (cont // { u1b = cont.u1; })) (
+        exactly "gen-aspects.instancesFor: containment entities 'u1', 'u1b' carry one identity; an entity has one identifier."
+      );
+      # ... with no node scope at all too. RED (v1.1, the identity index forced only by a node's
+      # tuple): admitted.
+      test-containment-one-identity-two-identifiers-no-scope =
+        thrown
+          (aspects.instancesFor { } tree {
+            suppliers = supC;
+            scopes = { };
+            containment = cont // {
+              x1 = rec0 null "host" "q";
+              x2 = rec0 null "host" "q";
+            };
+          })
+          (
+            exactly "gen-aspects.instancesFor: containment entities 'x1', 'x2' carry one identity; an entity has one identifier."
+          );
+      test-containment-keyed-by-identity =
+        thrown
+          (relCont {
+            ${entity "h1"} = rec0 null "host" "h1";
+          })
+          (
+            atE (entity "h1") "is keyed by its own identity; key it by the entity's identifier, which orders siblings (an identity is a hash, and no order may depend on it, ADR-0016 r5)."
+          );
+      # MISKEY: a node binding an entity under another key than its own.
+      test-node-binds-entity-under-another-key = thrown (relC
+        (
+          supC
+          // {
+            ${entity "u1"} = {
+              user = "u1";
+              host = "u1h";
+            };
+          }
+        )
+        cont
+        (ok // { sources.host = entity "u1"; })
+      ) (at "binds `host` to containment entity 'u1', whose key is `user`.");
+      # PLANT-node: a descendant rebinding an entity key the node binds to another source.
+      test-node-descendant-rebinds =
+        thrown
+          (relC supC cont (
+            ok
+            // {
+              sources = {
+                host = entity "h1";
+                user = entity "kx";
+              };
+            }
+          ))
+          (
+            at "a descendant of the tuple binds `user` to another source than the tuple does; a descendant extends its ancestor's bindings and never rebinds one."
+          );
+      # THE NODE DOOR (gate C3): a node binding an argument against the coordinate of an entity it binds;
+      # the override belongs on the containment record, where it shadows. RED (v1.1, no node door):
+      # admitted at rc 0 whenever no member fans out.
+      test-node-overrides-an-inherited-binding =
+        thrown
+          (relC supC
+            (
+              cont
+              // {
+                h1 = cont.h1 // {
+                  bindings.flavor = entity "kf";
+                };
+              }
+            )
+            (
+              ok
+              // {
+                sources = {
+                  host = entity "h1";
+                  user = entity "u1";
+                  flavor = entity "kf2";
+                };
+              }
+            )
+          )
+          (
+            at "binds `flavor` to another source than the containment coordinate of an entity it binds; a node reads its entities' coordinates, and a binding is overridden only on a containment record, where it shadows."
           );
     };
 
@@ -1024,6 +1229,7 @@ in
         }).config.aspects;
       src = "entity:" + builtins.hashString "sha256" "h1";
       r = aspects.instancesFor { } tree {
+        containment = { };
         suppliers.${src}.host = "h1";
         scopes.n = {
           members = [ "lazy" ];
