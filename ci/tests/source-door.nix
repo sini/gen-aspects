@@ -54,6 +54,27 @@ let
   instanceId = builtins.head (
     builtins.attrNames (relOf { n1 = scopeAt (entityOf "entity"); }).vertices
   );
+  # A tree whose reached node `p` is a checked guard and whose UNREACHED node `u` is the same guard
+  # unchecked (never placed at an aspect position, so it has no identity).
+  rawTree = {
+    p =
+      (aspects.aspectType { }).merge
+        [ "p" ]
+        [
+          {
+            file = "<p>";
+            value = q;
+          }
+        ];
+    u = q;
+  };
+  rawRel = aspects.instancesFor { } rawTree {
+    suppliers.${entityOf "entity"}.host = "h1";
+    scopes.n1 = {
+      members = [ "p" ];
+      sources.host = entityOf "entity";
+    };
+  };
   mintAdmits =
     src:
     (builtins.tryEval (
@@ -144,6 +165,26 @@ in
     test-instance-id-shape = {
       expr = builtins.substring 0 16 instanceId;
       expected = "aspect-instance:";
+    };
+    # den-hoag-biefe PINS TODAY'S BEHAVIOUR, a strictness regression filed to fix or argue: the door
+    # forces every node's `aspectId`, so an UNREACHED unchecked guard refuses the relation. RED (at
+    # bc295e4, before the door): admitted. A fix that stops forcing unreached nodes flips this cell.
+    test-biefe-unreached-unchecked-guard-refuses = {
+      expr = admittedBy rawRel;
+      expected = false;
+    };
+    # Its control: the reached node alone mints, so the refusal above is `u`'s.
+    test-biefe-control-reached-alone-admitted = {
+      expr = admittedBy (
+        aspects.instancesFor { } (removeAttrs rawTree [ "u" ]) {
+          suppliers.${entityOf "entity"}.host = "h1";
+          scopes.n1 = {
+            members = [ "p" ];
+            sources.host = entityOf "entity";
+          };
+        }
+      );
+      expected = true;
     };
   };
 }
