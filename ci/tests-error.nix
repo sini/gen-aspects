@@ -931,9 +931,10 @@ in
           + "framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a "
           + "guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result of a module "
           + "function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), the "
-          + "framework's surface does not reach it: the lowering does not enter a module function's result, so the "
-          + "closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
-          + "of the module function's arguments can be written beside the function instead of inside it."
+          + "lowering reaches it only where the framework mounts gen-rules' registration table inside the aspect "
+          + "submodule (`cnf.aspectModules`); "
+          + "without that mount the closure arrives here unlowered. A closure that reads none of the module function's "
+          + "arguments can also be written beside the function instead of inside it."
         );
       retired =
         name:

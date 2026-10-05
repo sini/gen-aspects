@@ -409,10 +409,10 @@ let
         };
       };
       # Design Section 3: a context closure handed to gen-aspects is refused by name, naming the gen-rules
-      # door and the remedy (ADR-0025). gen-aspects holds terms only. The last sentence states what
-      # happened to a closure inside an aspect-position module function's result, which the lowering
-      # does not enter, so the first remedy does not reach it (alhfc gate X1); which route serves that
-      # shape is an open owner reading, and this text recommends none.
+      # door and the remedy (ADR-0025). gen-aspects holds terms only. The last sentences state when a
+      # closure inside an aspect-position module function's result is lowered: only where the framework
+      # mounts gen-rules' registration table in the aspect submodule (S1 arm (a), den-hoag-lwbb1). The
+      # text names the mount by gen-aspects' own vocabulary, never by a gen-rules parameter.
       bareClosureRefusal =
         loc:
         "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a context closure reached a gen-aspects-typed "
@@ -420,9 +420,10 @@ let
         + "aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, "
         + "or write it as a guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result "
         + "of a module function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), "
-        + "the framework's surface does not reach it: the lowering does not enter a module function's result, so "
-        + "the closure arrived here unlowered, and no first-order route reaches it there. A closure that reads none "
-        + "of the module function's arguments can be written beside the function instead of inside it.";
+        + "the lowering reaches it only where the framework mounts gen-rules' registration table inside the aspect "
+        + "submodule (`cnf.aspectModules`); "
+        + "without that mount the closure arrives here unlowered. A closure that reads none of the module function's "
+        + "arguments can also be written beside the function instead of inside it.";
       # A refusal VALUE of a value-regime library (ADR-0025 item 1), forwarded unread to an aspect
       # position (den-hoag-3sk7j). Recognised by each live encoding's EXACT shape, never by a mark: a
       # refusal mints nothing (ADR-0034). `null`, or `{ kind; code; message; }`. Each test leads with
