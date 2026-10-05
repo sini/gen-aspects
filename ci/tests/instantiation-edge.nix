@@ -75,11 +75,17 @@ let
     sources.host = entity h;
     inherit members;
   };
-  rOf = scopes: aspects.instancesFor { } tree { inherit suppliers scopes; };
-  r = rOf {
+  rOf =
+    scopes:
+    aspects.instancesFor { } tree {
+      inherit suppliers scopes;
+      containment = { };
+    };
+  rScopes = {
     n1 = at "h1" [ "s" ];
     n2 = at "h2" [ "s" ];
   };
+  r = rOf rScopes;
   facts = aspects.graphFacts { } tree;
   e1 = builtins.head r.reaches.n1.e;
   # one node on h1 reaching `which`: the relation and that instance's vertex
@@ -98,9 +104,9 @@ let
   # C3 / D3: path consistency along every nested edge — the child's substitution restricts its
   # parent's (keys a subset, equal on shared keys) — and its liveness count. `qu` reads `user`, which
   # its parent `pe` does not read and the scope DOES supply. A read must be covered by the condition
-  # (`unsafe-read`), so `qu` holds only where `user` is in its context: at `pe`'s tuple, narrowed to
-  # `pe`'s formals, it does not, and it has no nested edge. Handed the tuple unnarrowed, it would be
-  # minted with a `user` formal its parent lacks.
+  # (`unsafe-read`), so `qu` holds only where `user` is in its context. `pe`'s tuple, narrowed to its
+  # formals, lacks it; the MEET of that tuple and the reading node's (den-hoag-8g2rn S3c) supplies it,
+  # so `qu` is a nested edge of `pe` at node n, minted at the meet and never at `pe`'s tuple alone.
   pathTree = place {
     pe = g (has "host") {
       description = t.readCtx "host" [ ];
@@ -115,28 +121,35 @@ let
       (has "user")
     ]) { who = t.readCtx "user" [ ]; };
   };
+  pathScopes.n = {
+    members = [ "pe" ];
+    sources = {
+      host = entity "h1";
+      user = entity "u1";
+    };
+  };
   pathRel = aspects.instancesFor { } pathTree {
+    containment = { };
     suppliers = {
       ${entity "h1"}.host = "h1";
       ${entity "u1"}.user = "u1";
     };
-    scopes.n = {
-      members = [ "pe" ];
-      sources = {
-        host = entity "h1";
-        user = entity "u1";
-      };
-    };
+    scopes = pathScopes;
   };
+  # every nested edge at every reading node, with the MEET it was minted at: the node's sources
+  # overridden by the parent vertex's formals (den-hoag-8g2rn S3c)
   nestedPairs =
-    rel:
+    rel: scopes:
     builtins.concatMap (
-      p:
-      map (c: {
-        pf = rel.vertices.${p}.formals;
-        cf = rel.vertices.${c}.formals;
-      }) (builtins.concatLists (builtins.attrValues rel.nested.${p}))
-    ) (builtins.attrNames rel.nested);
+      n:
+      builtins.concatMap (
+        p:
+        map (c: {
+          pf = scopes.${n}.sources // rel.vertices.${p}.formals;
+          cf = rel.vertices.${c}.formals;
+        }) (builtins.concatLists (builtins.attrValues rel.nestedAt.${n}.${p}))
+      ) (builtins.attrNames rel.nestedAt.${n})
+    ) (builtins.attrNames rel.nestedAt);
   consistent =
     x: builtins.intersectAttrs x.pf x.cf == x.cf && builtins.intersectAttrs x.cf x.pf == x.cf;
 
@@ -151,6 +164,7 @@ let
         modules = [ { config.aspects.p = p; } ];
       }).config.aspects
       {
+        containment = { };
         suppliers.${entity "server"}.host = "server";
         scopes.server = {
           members = [ "p" ];
@@ -173,7 +187,7 @@ in
         fine = (one "lazy").v.entry.fine;
         badRefuses = refuses (one "lazy").v.entry.bad;
         reaches = builtins.attrNames (one "lazy").x.reaches.n;
-        nestedQ = builtins.length (one "lazy").x.nested.${(one "lazy").id}.q;
+        nestedQ = builtins.length (one "lazy").x.nestedAt.n.${(one "lazy").id}.q;
         ctl = {
           inherit ((one "lazyCtl").v.entry) fine alsoFine;
         };
@@ -264,9 +278,9 @@ in
           inherit (facts.unresolvedIncludesOf) dynRead dynMixed dynIf;
         };
         dynReadIncludes = (one "dynRead").v.entry.includes;
-        dynMixedNested = builtins.attrNames (one "dynMixed").x.nested.${(one "dynMixed").id};
-        dynIfNested = builtins.attrNames (one "dynIf").x.nested.${(one "dynIf").id};
-        dynIfAtH2 = builtins.attrValues (rOf { n = at "h2" [ "dynIf" ]; }).nested;
+        dynMixedNested = builtins.attrNames (one "dynMixed").x.nestedAt.n.${(one "dynMixed").id};
+        dynIfNested = builtins.attrNames (one "dynIf").x.nestedAt.n.${(one "dynIf").id};
+        dynIfAtH2 = builtins.attrValues (rOf { n = at "h2" [ "dynIf" ]; }).nestedAt.n;
       };
       expected = {
         dynRead = [ "deferred" ];
@@ -305,7 +319,7 @@ in
         fields = [
           "declined"
           "instantiates"
-          "nested"
+          "nestedAt"
           "reaches"
           "vertices"
         ];
@@ -337,22 +351,23 @@ in
       };
     };
     # A9 / C3. Clause 4 is vacuous because along every nested edge the child's substitution restricts
-    # its parent's. Live: nested edges exist (`count`), one of them to `qu`, which reads `user`, a
-    # coordinate the scope supplies and its parent does not read. RED: a nested rebind of the parent's
-    # source (spec plant `plant-c4.diff`) and an unnarrowed child tuple (gate plant 2) each read
+    # its parent's meet with the reading node (den-hoag-8g2rn §2.5). Live: nested edges exist (`count`),
+    # one of them to `qu`, which reads `user`, a coordinate the scope supplies and its parent does not
+    # read. RED: a nested rebind of the parent's source (spec plant `plant-c4.diff`) reads
     # `consistent = false`.
     test-path-consistency =
       let
-        pairs = nestedPairs pathRel;
+        pairs = nestedPairs pathRel pathScopes;
       in
       {
         expr = {
           count = builtins.length pairs;
-          quNested = builtins.attrNames pathRel.nested.${builtins.head pathRel.reaches.n.pe};
+          quNested = builtins.attrNames pathRel.nestedAt.n.${builtins.head pathRel.reaches.n.pe};
           # the scope reaches `qu` itself, with `user` (control: it is admissible where supplied)
           quAtNode =
             let
               x = aspects.instancesFor { } pathTree {
+                containment = { };
                 suppliers = {
                   ${entity "h1"}.host = "h1";
                   ${entity "u1"}.user = "u1";
@@ -368,12 +383,15 @@ in
             in
             map (i: x.vertices.${i}.entry.who) x.reaches.n.qu;
           consistent = builtins.all consistent pairs;
-          also = builtins.all consistent (nestedPairs r);
-          alsoCount = builtins.length (nestedPairs r);
+          also = builtins.all consistent (nestedPairs r rScopes);
+          alsoCount = builtins.length (nestedPairs r rScopes);
         };
         expected = {
-          count = 1;
-          quNested = [ "pq" ];
+          count = 2;
+          quNested = [
+            "pq"
+            "qu"
+          ];
           quAtNode = [ "u1" ];
           consistent = true;
           also = true;

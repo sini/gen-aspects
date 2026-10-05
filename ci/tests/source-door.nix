@@ -28,6 +28,7 @@ let
   relOf =
     scopes:
     aspects.instancesFor cnf tree {
+      containment = { };
       suppliers = builtins.mapAttrs (_: s: { host = "h-${s.sources.host}"; }) (
         builtins.listToAttrs (
           map (s: {
@@ -71,6 +72,7 @@ let
   rawRelAt =
     src:
     aspects.instancesFor { } rawTree {
+      containment = { };
       suppliers.${src}.host = "h1";
       scopes.n1 = {
         members = [ "p" ];
@@ -185,6 +187,7 @@ in
     test-biefe-control-reached-alone-admitted = {
       expr = admittedBy (
         aspects.instancesFor { } (removeAttrs rawTree [ "u" ]) {
+          containment = { };
           suppliers.${entityOf "entity"}.host = "h1";
           scopes.n1 = {
             members = [ "p" ];

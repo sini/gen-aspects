@@ -433,6 +433,7 @@ let
             inherit tuck;
           };
           r = a.instancesFor { } aspects {
+            containment = { };
             suppliers = {
               ${src "pewter"}.thimble = "pewter";
               ${src "none"}.bobbin = "b";

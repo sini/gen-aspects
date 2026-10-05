@@ -88,33 +88,43 @@ The id reads only the sources, so a mismatch mints one id with two different ent
 cannot be handed that input, since it derives each context from one `suppliers` map.
 Tests: `ci/tests/instances.nix`, `ci/tests/instance-scope.nix`; `instance-doors.*` and `instance-scope.*` in `ci/tests-error.nix`.
 
-`instancesFor cnf aspects { suppliers; scopes; }` → `{ vertices; instantiates; reaches; nested; declined; }` is the
-instance relation (0cmbt spec §2.6), with `suppliers.<source>.<key> = <value>` and
-`scopes.<node> = { members; sources; descendants ? [ { sources; } ]; }`. A tuple's context is derived,
+`instancesFor cnf aspects { suppliers; scopes; containment; }` → `{ vertices; instantiates; reaches; nestedAt; declined; }` is the
+instance relation (0cmbt spec §2.6; den-hoag-8g2rn), with `suppliers.<source>.<key> = <value>`,
+`scopes.<node> = { members; sources; }` and the entity graph's one-step containment
+`containment.<identifier> = { parent; key; identity; marked; bindings; }` (required, `{ }` when there is none). A tuple's context is derived,
 `mapAttrs (k: src: suppliers.${src}.${k}) sources`, so one source names one value per key and one scope
 never reads another's content.
 `vertices.<iid> = { formals; entry; scope; }` holds one cell per `instanceOf` id, and
 `instantiates.<iid> = [ <aspect> ]` is its `I` edge to its declaration, the parametric node's facts id
-(ADR-0010 §4(a); an adjacency map `id → [ids]`); `reaches.<node>.<aspect>` and `nested.<iid>.<aspect>`
-are ascending id lists grouped by aspect (`id → aspect → [ids]`). `declined.reaches.<node>` and `declined.nested.<iid>` list, ascending and per handed scope or vertex,
+(ADR-0010 §4(a); an adjacency map `id → [ids]`); `reaches.<node>.<aspect>` and `nestedAt.<node>.<iid>.<aspect>`
+are id lists grouped by aspect (`id → aspect → [ids]`), a fan-out's siblings in the descendants' identifier order
+(ruling 13: canonical, never an id's). `declined.reaches.<node>` and `declined.nestedAt.<node>.<iid>` list, ascending and per handed scope or (node, vertex),
 the walked first-order guards with no edge whose condition was decided FALSE at every tuple tried (`GT.decide`);
 a condition the evaluator refuses (R: `has` over an absent coordinate under the open world) and a never-walked
 guard are in neither set (den-hoag-n8wb5). A reader uses `declined` only to choose "no edge" over "refuse". `entry` resolves each field where it
 is read (gen-algebra `resolveFields`): a refusing member refuses at its own read, named by aspect and
 field, and its siblings and the relation's edges still answer. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
 nodes and inline content. A node mints at its own tuple when the guard's condition holds there,
-otherwise at each descendant tuple where it holds (`admits`, its one site in `lib/instance.nix`); a
-nested instance never fans out (`mintOne`'s `children`), and a pair no tuple supplies has no edge. A vertex's members are read through its edge: its declaration's
+otherwise at each descendant's coordinate where it holds and whose crossed levels, below the entities the
+reading node binds, the instance takes (`admits`, `crosses`; ruling 7, T1); a nested include fans out the
+same way at the MEET of its vertex's tuple and the reading node's (S3c), and a pair no tuple supplies has no
+edge. Descendants are derived from `containment`: an entity's coordinate is its key and bindings and every
+ancestor's, an argument binding re-declared below SHADOWS the ancestor's (a new binding id), and an entity key
+is bound once along a chain. A vertex's members are read through its edge: its declaration's
 `includeSitesOf` (`graphCore`'s `instanceSites`), each `deferred` site classified at its own position of
 the fired `includes` (the whole field where the declaration is `whole`), so the members are classified
 once per declaration; a body's static targets resolve at node
 scope. A first-order guard mints where its condition holds at the tuple's context (`holds`; an
 absent coordinate under the open world reads FALSE, as a missing required formal gives no edge).
 Reading any field forces every pass. Refused by
-name: the input not `{ suppliers; scopes; }`; `suppliers` or `scopes` not an attrset; a scope not
-`{ members; sources; descendants? }` (a retired `context` is an unknown field); a member that is not a
-node id; a non-attrset `sources`; malformed `descendants`; a tuple key whose source `suppliers` holds no
-value for under that key; a minted formal whose source is a node id of this relation's own graph (an
+name: the input not `{ suppliers; scopes; containment; }`; `suppliers`, `scopes` or `containment` not an
+attrset; a scope not `{ members; sources; }` (a retired `context` or `descendants` is an unknown field); a
+member that is not a node id; a non-attrset `sources`; a containment record not exactly its five fields, of
+their types, a dangling parent, a cycle, a record keyed by its own identity, two identifiers with one identity,
+an entity key bound twice along a chain; a node binding an entity under another key, or a key against the
+coordinate of an entity it binds; a descendant rebinding an entity key a node or meet binds; a tuple key
+whose source `suppliers` holds no value for under that key (the containment doors and this one over every
+coordinate refuse at every call, reached or not); a minted formal whose source is a node id of this relation's own graph (an
 aspect node's `aspectId` or one of its vertices), which supplies no argument. That source door decides
 by GRAPH MEMBERSHIP, by exact id string, never by kind tag (den-hoag-fkkzk, owner-ruled arm (d);
 ADR-0035), so a framework kind spelled like a gen tag is admitted. Stated divergence (ADR-0025 item 1):
