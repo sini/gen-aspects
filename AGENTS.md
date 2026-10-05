@@ -77,9 +77,12 @@ fragments' reads). A door node fires through `cnf.ref` with the sources beside t
 `sources` entry is the identity of the entity or K1 argument binding that supplied the key: the
 sources reach the mint beside the context, and the functor keeps its arity (design K3's "hands over an
 instance it minted" arm). Refused by name: a non-parametric value; a received key with no source
-(a first-order guard's read included); a source that is not `<kind>:<64 hex>`; a
-source of kind `aspect-instance`, `aspect`, `include-site` or `named-value`, which supply no argument.
-Enumerated, not refused: a source that is the instance's own id aborts with `infinite recursion`.
+(a first-order guard's read included); a source that is not `<kind>:<64 hex>`. No source is refused
+by its kind tag: a framework names its own kinds (ADR-0035), so an entity kind spelled `aspect` or
+`aspect-instance` is admitted. Enumerated, not refused: a source that is the instance's own id aborts
+with `infinite recursion`; and, holding no graph, the mint admits an aspect's or an instance's id as a
+source (stated divergence, den-hoag-fkkzk: the retired tag list refused both; `instancesFor` refuses
+its own nodes').
 The caller's obligation, unchecked: each source supplies the value the context carries under its key.
 The id reads only the sources, so a mismatch mints one id with two different entries; `instancesFor`
 cannot be handed that input, since it derives each context from one `suppliers` map.
@@ -111,7 +114,13 @@ Reading any field forces every pass. Refused by
 name: the input not `{ suppliers; scopes; }`; `suppliers` or `scopes` not an attrset; a scope not
 `{ members; sources; descendants? }` (a retired `context` is an unknown field); a member that is not a
 node id; a non-attrset `sources`; malformed `descendants`; a tuple key whose source `suppliers` holds no
-value for under that key.
+value for under that key; a minted formal whose source is a node id of this relation's own graph (an
+aspect node's `aspectId` or one of its vertices), which supplies no argument. That source door decides
+by GRAPH MEMBERSHIP, by exact id string, never by kind tag (den-hoag-fkkzk, owner-ruled arm (d);
+ADR-0035), so a framework kind spelled like a gen tag is admitted. Stated divergence (ADR-0025 item 1):
+an instance id minted by an EARLIER relation, no vertex of this one, is admitted. The door forces every
+node's `aspectId`, so a node with no identity (an unchecked first-order guard) refuses the relation even
+unreached. Tests: `ci/tests/source-door.nix`; `instance-relation-doors.test-source-own-*`.
 `includeSitesOfEntry cnf aspects entry` is `graphFacts`' `includeSitesOf` classification over any
 aspect value (a node's value, or an applied instance body), one rule for both: a key-less attrset that
 is not a guard leaf is content (den-hoag-lwbb1 OQ-U2.9 arm (B)).
