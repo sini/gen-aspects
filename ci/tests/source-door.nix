@@ -68,13 +68,15 @@ let
         ];
     u = q;
   };
-  rawRel = aspects.instancesFor { } rawTree {
-    suppliers.${entityOf "entity"}.host = "h1";
-    scopes.n1 = {
-      members = [ "p" ];
-      sources.host = entityOf "entity";
+  rawRelAt =
+    src:
+    aspects.instancesFor { } rawTree {
+      suppliers.${src}.host = "h1";
+      scopes.n1 = {
+        members = [ "p" ];
+        sources.host = src;
+      };
     };
-  };
   mintAdmits =
     src:
     (builtins.tryEval (
@@ -166,11 +168,17 @@ in
       expr = builtins.substring 0 16 instanceId;
       expected = "aspect-instance:";
     };
-    # den-hoag-biefe PINS TODAY'S BEHAVIOUR, a strictness regression filed to fix or argue: the door
-    # forces every node's `aspectId`, so an UNREACHED unchecked guard refuses the relation. RED (at
-    # bc295e4, before the door): admitted. A fix that stops forcing unreached nodes flips this cell.
-    test-biefe-unreached-unchecked-guard-refuses = {
-      expr = admittedBy rawRel;
+    # den-hoag-biefe: the door forces no unreached node for a source of a kind other than `aspect`, so
+    # an UNREACHED unchecked guard stays unread and the relation mints, as at bc295e4. RED (at
+    # 09cb440, which forced every node's `aspectId`): refused.
+    test-biefe-unreached-unchecked-guard-admitted = {
+      expr = admittedBy (rawRelAt (entityOf "entity"));
+      expected = true;
+    };
+    # ITS BOUND (ADR-0025 item 1, stated in lib/instance.nix): a source of kind `aspect` can be shown
+    # to be no node only by minting every node's id, so there the unchecked guard refuses.
+    test-biefe-bound-aspect-kind-source-forces-every-node = {
+      expr = admittedBy (rawRelAt (entityOf "aspect"));
       expected = false;
     };
     # Its control: the reached node alone mints, so the refusal above is `u`'s.

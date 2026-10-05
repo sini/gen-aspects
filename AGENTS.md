@@ -118,9 +118,11 @@ value for under that key; a minted formal whose source is a node id of this rela
 aspect node's `aspectId` or one of its vertices), which supplies no argument. That source door decides
 by GRAPH MEMBERSHIP, by exact id string, never by kind tag (den-hoag-fkkzk, owner-ruled arm (d);
 ADR-0035), so a framework kind spelled like a gen tag is admitted. Stated divergence (ADR-0025 item 1):
-an instance id minted by an EARLIER relation, no vertex of this one, is admitted. The door forces every
-node's `aspectId`, so a node with no identity (an unchecked first-order guard) refuses the relation even
-unreached. Tests: `ci/tests/source-door.nix`; `instance-relation-doors.test-source-own-*`.
+an instance id minted by an EARLIER relation, no vertex of this one, is admitted. The kind tag only
+excludes (every node id is minted under `aspect`), so a source of another kind reads no node id; a
+source of kind `aspect` forces every node's `aspectId` (a digest is one-way), and there a node with no
+identity (an unchecked first-order guard) refuses the relation even unreached (den-hoag-biefe, stated
+bound). Tests: `ci/tests/source-door.nix`; `instance-relation-doors.test-source-own-*`.
 `includeSitesOfEntry cnf aspects entry` is `graphFacts`' `includeSitesOf` classification over any
 aspect value (a node's value, or an applied instance body), one rule for both: a key-less attrset that
 is not a guard leaf is content (den-hoag-lwbb1 OQ-U2.9 arm (B)).

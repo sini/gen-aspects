@@ -255,13 +255,19 @@ in
   # covered and membership cannot: an instance id minted by an EARLIER relation, not a vertex of this
   # one, is admitted; and `instanceOf` alone holds no graph, so it refuses no source by kind.
   # Checked once over the final vertices, so a vertex is minted before its source is read against them.
+  # The kind tag only EXCLUDES: `aspectId` mints every node id under the kind `aspect`, so a source of
+  # another kind cannot be one and is admitted without reading the node ids, while a source of kind
+  # `aspect` is admitted or refused by membership alone.
   #
   # WHAT IT FORCES. Reading any field forces every pass: each reached instance is applied once (its
   # body decides the next pass) and hashed once, so a mint refusal (a non-identity source), the source
   # door or the supplier door fires on any read, shared by every node, as `realize`'s `_contentCheck`
-  # already shares it. The source door forces every node's `aspectIdOf`, once per relation that
-  # mints a vertex with a formal, so a node with no identity (an unchecked first-order guard, never
-  # placed at an aspect position) refuses the relation even where no scope reaches it.
+  # already shares it. The source door forces no unreached node unless a minted formal's source is
+  # of kind `aspect` (den-hoag-biefe). Only then does it force every node's `aspectIdOf`, once per
+  # relation, because a digest is one-way: a source can be shown to differ from a node's id only by
+  # minting that id. ITS BOUND, enumerated (ADR-0025 item 1): with such a source, a node with no
+  # identity (an unchecked first-order guard, never placed at an aspect position) refuses the
+  # relation even where no scope reaches it.
   #
   # ONE ID, SEVERAL CONTRIBUTIONS. Equal ids from several reaching identifiers (nodes, or parent
   # vertices) are one vertex, whose content is the contribution of the earliest pass and, within a
@@ -533,7 +539,9 @@ in
         let
           f = step start;
           own = set (builtins.attrValues aspectIdOf);
-          isOwn = s: own ? ${s} || f.seen ? ${s};
+          # `aspectId` mints under the one kind `aspect`, so a source minted under any other kind is
+          # no node id, and `own`, which forces every node's id, is read only for an `aspect` source.
+          isOwn = s: f.seen ? ${s} || (builtins.head (kindOf s) == "aspect" && own ? ${s});
           bad = builtins.filter (id: builtins.any isOwn (builtins.attrValues f.seen.${id}.formals)) (
             builtins.attrNames f.seen
           );
