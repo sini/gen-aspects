@@ -1135,7 +1135,7 @@ in
           + "holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the "
           + "framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a "
           + "guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result of a module "
-          + "function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), the "
+          + "function written at an aspect position (`{ config, ... }: { includes = [ ({ thimble, ... }: …) ]; }`), the "
           + "lowering reaches it only where the framework mounts gen-rules' registration table inside the aspect "
           + "submodule (`cnf.aspectModules`); "
           + "without that mount the closure arrives here unlowered. A closure that reads none of the module function's "
@@ -1523,8 +1523,8 @@ in
 
   # A functor-form module function at an aspect position is refused by name at every site that reads a
   # definition: single def, multi def, a guard-bearing multi def and an include element (den-hoag-a3eys).
-  # The structure half, beside its lambda twin and den v1's unchanged `__functor` aspect form, is
-  # `ci/tests` `functor-module-refusal`.
+  # The structure half, beside its lambda twin and the functor context closure, is `ci/tests`
+  # `functor-module-refusal`.
   flake.testsError.functor-module-refusal =
     let
       fm = {
@@ -1551,6 +1551,22 @@ in
           + "`setFunctionArgs` builds) reached an aspect position. A submodule reads an attrset definition as "
           + "config, never as a module, so its `__functor` key would be kept as an aspect attribute and nothing "
           + "would be delivered. Write it as a lambda: `{ config, ... }: { ... }`."
+        );
+      fc = {
+        __functor =
+          _:
+          { thimble, ... }:
+          {
+            description = thimble;
+          };
+      };
+      fcMsg =
+        loc:
+        exactly (
+          "gen-aspects: aspect `${loc}`: an attrset whose `__functor` yields a context closure reached an aspect "
+          + "position. A submodule reads an attrset definition as config, so nothing would be delivered, and "
+          + "gen-rules' lowering does not lower a functor at an aspect position. Write it as a lambda closure "
+          + "(`{ thimble, ... }: { ... }`), or have the framework lower its own form first."
         );
     in
     {
@@ -1618,5 +1634,11 @@ in
           ]).nixos;
         expected = null;
       };
+      # A functor whose `__functor` yields a context closure is refused by name (den-hoag-iy9qh), as an
+      # unlowered lambda closure is; the structure half is `ci/tests` `functor-module-refusal`.
+      test-functor-closure-single = thrown (place [ fc ]).nixos (fcMsg "x");
+      test-functor-closure-element = thrown (place [ { includes = [ fc ]; } ]).includes (
+        fcMsg "x.includes.[definition 1-entry 1]"
+      );
     };
 }

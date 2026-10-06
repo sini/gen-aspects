@@ -365,11 +365,33 @@ let
       # A FUNCTOR-FORM MODULE FUNCTION (an attrset with `__functor`, as `lib.setFunctionArgs` builds it,
       # whose formals are satisfiable by `cnf.moduleArgs`). The submodule reads an attrset def as CONFIG,
       # so a functor's `__functor`/`__functionArgs` land in the freeform slot and the class value stays
-      # null. Told from den v1's `__functor` aspect form (a context closure, carried unlowered by
-      # gen-rules) by `isModuleFn`, exactly as a lambda module function is told from a closure.
+      # null. Told from a functor context closure (`isFunctorClosureDef`, carried unlowered by gen-rules)
+      # by `isModuleFn`, exactly as a lambda module function is told from a closure.
       # A malformed `__functionArgs` is not a formals declaration: `isModuleFn` is total on it (false), so
       # it is left to the freeform read as before.
       isFunctorModuleDef = d: builtins.isAttrs d.value && d.value ? __functor && isModuleFn d.value;
+      # A functor CONTEXT closure: an attrset whose `__functor` yields a closure that is not a module function.
+      # gen-rules' lowering carries it unlowered (design open item 9: lowering it is the framework's), so here
+      # it is refused by name as an unlowered lambda closure is, never read as config.
+      isFunctorClosureDef =
+        d:
+        builtins.isAttrs d.value
+        && d.value ? __functor
+        && prelude.isFunction d.value
+        && !(isModuleFn d.value)
+        # a malformed `__functionArgs` declares no formals: left to the freeform read, as for a module function
+        && (
+          let
+            a = prelude.functionArgs d.value;
+          in
+          builtins.isAttrs a && builtins.all builtins.isBool (builtins.attrValues a)
+        );
+      functorClosureRefusal =
+        loc:
+        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: an attrset whose `__functor` yields a context "
+        + "closure reached an aspect position. A submodule reads an attrset definition as config, so nothing would be "
+        + "delivered, and gen-rules' lowering does not lower a functor at an aspect position. Write it as a lambda "
+        + "closure (`{ thimble, ... }: { ... }`), or have the framework lower its own form first.";
       functorModuleRefusal =
         loc:
         "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a functor-form module function (an attrset with "
@@ -500,7 +522,7 @@ let
         + "position. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the "
         + "aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, "
         + "or write it as a guard term (`guard (pred.has <coordinate>) <body>`). If the closure sits in the result "
-        + "of a module function written at an aspect position (`{ config, ... }: { includes = [ ({ host, ... }: …) ]; }`), "
+        + "of a module function written at an aspect position (`{ config, ... }: { includes = [ ({ thimble, ... }: …) ]; }`), "
         + "the lowering reaches it only where the framework mounts gen-rules' registration table inside the aspect "
         + "submodule (`cnf.aspectModules`); "
         + "without that mount the closure arrives here unlowered. A closure that reads none of the module function's "
@@ -590,6 +612,8 @@ let
         loc: defs:
         if builtins.any isFunctorModuleDef defs then
           { value = throw (functorModuleRefusal loc); }
+        else if builtins.any isFunctorClosureDef defs then
+          { value = throw (functorClosureRefusal loc); }
         else if builtins.any isClosureDef defs then
           { value = throw (bareClosureRefusal loc); }
         else if builtins.any (d: refusalOf d.value != null) defs then

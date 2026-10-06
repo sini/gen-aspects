@@ -1,8 +1,9 @@
 # A functor-form module function at an aspect position is refused by name (den-hoag-a3eys; spec
 # specs/2026-10-06-gen-aspects-functor-module-refusal-spec.md §3a). A submodule reads an attrset definition
 # as config, so `{ __functor; __functionArgs; }` once landed in the freeform slot and the class value read
-# null. Each cell holds the refusal and its lambda twin; den v1's `__functor` aspect form (a context closure)
-# is the unchanged control. The message is pinned on the error plane (`ci/tests-error.nix`).
+# null. Each cell holds the refusal and its lambda twin. A functor whose `__functor` yields a context closure
+# is refused too (den-hoag-iy9qh), as an unlowered lambda closure is. The messages are pinned on the error
+# plane (`ci/tests-error.nix`).
 { mkSchemaEval, ... }:
 let
   ok = v: (builtins.tryEval (builtins.deepSeq v true)).success;
@@ -82,10 +83,10 @@ in
       expr = ok (map (i: i.nixos or null) (place [ { includes = [ (lm body) ]; } ]).includes);
       expected = true;
     };
-    # den v1's functor aspect form is a context closure: neither refused here nor served, as before
-    test-v1-functor-read-is-unchanged = {
-      expr = read [ v1 ];
-      expected = null;
+    # a functor context closure is refused by name, never read as config (den-hoag-iy9qh)
+    test-v1-functor-closure-refused = {
+      expr = ok (read [ v1 ]);
+      expected = false;
     };
   };
 }
