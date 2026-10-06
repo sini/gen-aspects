@@ -473,6 +473,63 @@ in
       };
     };
 
+  # A6 over a bare-module element (`{ imports = [ … ]; }`, read as a module): it is declared at its
+  # address like every unnamed element, so a reorder of keyed modules moves no id, and its imported
+  # content nests under it. RED (the element keeps its merge position): `[definition 1-entry 1]`
+  # names the unmarked element in one order and the `q` element in the other.
+  flake.tests.anonymous-nodes.test-bare-module-element-is-its-declaration =
+    let
+      inc = {
+        includes = [ (marked "p") ];
+      };
+      mA = {
+        key = "mA";
+        config.aspects.a.includes = [ { imports = [ inc ]; } ];
+      };
+      mB = {
+        key = "mB";
+        config.aspects.a.includes = [
+          {
+            imports = [ inc ];
+            T.marks = [ "q" ];
+          }
+        ];
+      };
+      byMarks =
+        f:
+        builtins.listToAttrs (
+          map (n: {
+            name = n;
+            value = marksOf f n;
+          }) (anonOf f)
+        );
+      ab = facts [
+        mA
+        mB
+      ];
+      ba = facts [
+        mB
+        mA
+      ];
+    in
+    {
+      expr = {
+        invariant = byMarks ab == byMarks ba;
+        positional = builtins.filter (lib.hasInfix "[definition") (anonOf ab ++ anonOf ba);
+        q = builtins.filter (n: marksOf ab n == [ "q" ]) (anonOf ab);
+        parentOfP = map (n: ab.parentOf.${n}) (builtins.filter (n: marksOf ab n == [ "p" ]) (anonOf ab));
+      };
+      expected = {
+        invariant = true;
+        positional = [ ];
+        q = [ "a/includes/[\"kmB\",\"aspects\",\"a\",\"includes\",0]" ];
+        parentOfP = [
+          "a/includes/[\"kmA\",\"aspects\",\"a\",\"includes\",0]"
+          "a/includes/[\"kmB\",\"aspects\",\"a\",\"includes\",0]"
+        ];
+      };
+    };
+
   # C1. A typed content value placed at a second position is re-declared there: its own node, keyed by
   # its own inclusion site, its content unchanged (identity design Q1; ADR-0016 r5). Routes: an edited
   # same-tree copy, an unedited one, and a copy from another evaluation. RED (the copy keeps its
