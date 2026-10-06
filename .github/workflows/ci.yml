@@ -12,7 +12,7 @@ jobs:
   # gen-harness rev locked in ci/flake.lock, so one harness identity governs the run; `relock`
   # rewrites it when that lock moves.
   evaluators:
-    uses: sini/gen-harness/.github/workflows/evaluators.yml@4bd112be5d2e1645b2b44e95725ecb626ee691fc
+    uses: sini/gen-harness/.github/workflows/evaluators.yml@c0ea2734feb04ac64802270a4ba481029e4f5e2b
     with:
       # The `cnf` vocabulary is total in BOTH directions. `lib/cnf.nix` gives read → declaration:
       # every read is `cnf.<key>` with no fallback, so reading an undeclared key aborts. This gives
