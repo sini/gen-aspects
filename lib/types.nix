@@ -381,16 +381,6 @@ let
               inherit (g) condition body __mint;
             }
           )
-        else if builtins.isFunction d.value then
-          # A module function among guard-shaped siblings keeps today's `includes` coercion
-          # (F4(b): guard functions join the carrier, module functions do not) — riding beside
-          # the guarded fragments as an UNCONDITIONAL one, exactly as a plain attrset def would.
-          {
-            kind = "unconditional";
-            body = {
-              includes = [ d.value ];
-            };
-          }
         else
           # Plain attrset or primitive def alongside a guard-shaped sibling: an UNCONDITIONAL
           # fragment, condition ≡ true, riding beside the guarded ones (F4(a)'s dissolution made
@@ -399,9 +389,86 @@ let
             kind = "unconditional";
             body = d.value;
           };
-      mkGuardCarrier = loc: defs: {
+      # A module function among guard-shaped siblings keeps today's `includes` coercion (F4(b): guard
+      # functions join the carrier, module functions do not), and is applied once, in this evaluation,
+      # as `coerced` applies it beside a plain second definition: each in its own element of the
+      # carrier's `includes`, so its tables are that element's and the root reaches them (S1;
+      # den-hoag-cgobz). Every other definition (the guard records, the plain fragments, held raw)
+      # contributes nothing at this position.
+      carrierCoerced = entryCoerced carrierSub (
+        d:
+        d
+        // {
+          value = if builtins.isFunction d.value then { includes = [ d.value ]; } else { };
+        }
+      );
+      # The position its module functions are applied at declares `includes` alone, typed as every
+      # aspect's is, and imports no aspect module, so the coerced definitions are the list's only
+      # contributors and each adds exactly one element, in definition order (den-hoag-cgobz C1). A
+      # carrier is not an aspect submodule (F4(a): its fragments' bodies are held raw), so an aspect
+      # module's content reaches no carrier, as before; each element is a full include element, so
+      # the aspect modules apply inside it, as they do to T4's.
+      carrierSub = merge.submodule {
+        options.includes = merge.mkOption {
+          type = t.listOf (includesElemType cnf);
+          default = includesDefault;
+        };
+      };
+      # The carrier's member. Its one position, adding no step, holds its module functions under
+      # `carrierCoerced`, so gen-merge evaluates their elements in this evaluation (a nested tree is a
+      # child of the one evaluation that holds it, selected by its fold's split).
+      carrierType = merge.types.defineType {
+        name = "aspectGuardCarrier";
+        split = loc: defs: [
+          {
+            step = [ ];
+            inherit loc defs;
+            type = carrierCoerced;
+          }
+        ];
+        mergeDefs = {
+          __functor =
+            _: loc: defs:
+            mkGuardCarrier (m: m.mergeDefs loc) loc defs;
+          threaded =
+            ev: loc: defs:
+            mkGuardCarrier (m: m.mergeDefs.threaded ev loc) loc defs;
+        };
+      };
+      # Each definition becomes a fragment, in order; the n-th module function's is UNCONDITIONAL,
+      # marked `coerced`, and holds the n-th applied element in place of the function.
+      mkGuardCarrier = fold: loc: defs: {
         __guard = true;
-        fragments = map toFragment defs;
+        fragments =
+          let
+            applied = (fold carrierCoerced defs).includes;
+          in
+          (builtins.foldl'
+            (
+              acc: d:
+              if builtins.isFunction d.value then
+                {
+                  n = acc.n + 1;
+                  fs = acc.fs ++ [
+                    {
+                      kind = "unconditional";
+                      coerced = true;
+                      body.includes = [ (builtins.elemAt applied acc.n) ];
+                    }
+                  ];
+                }
+              else
+                {
+                  inherit (acc) n;
+                  fs = acc.fs ++ [ (toFragment d) ];
+                }
+            )
+            {
+              n = 0;
+              fs = [ ];
+            }
+            defs
+          ).fs;
         name = prelude.last loc;
         meta = {
           inherit loc;
@@ -521,7 +588,7 @@ let
           if builtins.all (d: !(builtins.isAttrs d.value) && !(builtins.isFunction d.value)) defs then
             { value = orphanLeaf loc (merge.mergeDefaultOption loc defs); }
           else if builtins.any isGuardRecordDef defs then
-            { value = mkGuardCarrier loc defs; }
+            { member = carrierType; }
           else
             { member = coerced; }
         else

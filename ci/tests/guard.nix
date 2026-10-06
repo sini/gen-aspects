@@ -790,4 +790,148 @@ in
         nonFiringDoesNotConflict = "a";
       };
     };
+
+  # den-hoag-cgobz: a module function written beside a guard record at one key is applied once, in
+  # this evaluation, as `coerced` applies it beside a plain second definition (the T4 shape): its
+  # fragment is UNCONDITIONAL, marked `coerced`, and holds the applied `includes` element in place of
+  # the function. RED (measured at gen-aspects 6c9ea4e): the fragment held the raw function, so no
+  # fragment was `coerced` (GA1 read `[ ]`) and firing the carrier handed the function onward.
+  flake.tests.guard.test-guard-multidef-module-function-is-one-applied-element =
+    let
+      gv = aspects.mkGuardVocab { };
+      # gen-aspects' `isTypedAspect` is not exported; the predicate is stated here.
+      isApplied = v: builtins.isAttrs v && v ? id_hash && v ? key && !(v.__guard or false);
+      carrier =
+        (mkSchemaEval {
+          modules = [
+            { config.aspects.main = gv.vocab.always { description = "G"; }; }
+            {
+              config.aspects.main =
+                { config, ... }:
+                {
+                  description = "Y";
+                  includes = [ { description = "T"; } ];
+                };
+            }
+          ];
+        }).config.aspects.main;
+    in
+    {
+      expr = map (f: builtins.length f.body.includes == 1 && builtins.all isApplied f.body.includes) (
+        builtins.filter (f: f.coerced or false) carrier.fragments
+      );
+      expected = [ true ];
+    };
+
+  # GA2 and GA3 (den-hoag-cgobz): the carrier's applied element equals the element the T4 shape (the
+  # same function beside a plain definition, no carrier) produces, read as its description and its own
+  # includes' descriptions. A framework aspect module writing `includes` at `main` reaches no carrier
+  # (F4(a): a carrier is not an aspect submodule) and applies INSIDE each element, as in T4; so the
+  # elements stay the functions' own, in definition order, under `mkIf`, `mkBefore` and `mkAfter`.
+  # RED for the `mkIf` and `mkBefore` rows: a carrier position evaluated as a whole aspect submodule,
+  # whose `includes` the aspect module also writes, indexes COMMON as the function's element.
+  flake.tests.guard.test-guard-multidef-module-function-element-equals-t4 =
+    let
+      gv = aspects.mkGuardVocab { };
+      y = d: {
+        config.aspects.main =
+          { config, ... }:
+          {
+            description = d;
+            includes = [ { description = "T-${d}"; } ];
+          };
+      };
+      x.config.aspects.main = gv.vocab.always { description = "G"; };
+      p.config.aspects.main.description = "P";
+      common = wrap: { name, ... }: {
+        includes = genMerge.mkIf (name == "main") (wrap [ { description = "COMMON"; } ]);
+      };
+      eval =
+        extra: modules:
+        (mkSchemaEval {
+          inherit modules;
+          aspectModules = extra;
+        }).config.aspects.main;
+      view = e: [ e.description ] ++ map (i: i.description) e.includes;
+      carrierEls =
+        a:
+        map view (builtins.concatMap (f: if f.coerced or false then f.body.includes else [ ]) a.fragments);
+      t4Els =
+        a:
+        map view (
+          builtins.filter (
+            e:
+            builtins.elem e.description [
+              "Y"
+              "Y2"
+            ]
+          ) a.includes
+        );
+      row = extra: {
+        carrier = carrierEls (
+          eval extra [
+            x
+            (y "Y")
+          ]
+        );
+        t4 = t4Els (
+          eval extra [
+            p
+            (y "Y")
+          ]
+        );
+      };
+      fired = gv.applyGuard { } (eval [ ] [ x (y "Y") ]);
+    in
+    {
+      expr = {
+        # GA2: firing the carrier hands the applied element onward, beside the record's body
+        firedDescription = fired.description;
+        fired = map view fired.includes;
+        firedT4 = t4Els (eval [ ] [ p (y "Y") ]);
+        # GA3
+        mkIf = row [ (common (l: l)) ];
+        mkBefore = row [ (common genMerge.mkBefore) ];
+        mkAfter = row [ (common genMerge.mkAfter) ];
+        twoFunctions = {
+          carrier = carrierEls (eval [ (common (l: l)) ] [ x (y "Y") (y "Y2") ]);
+          t4 = t4Els (eval [ (common (l: l)) ] [ p (y "Y") (y "Y2") ]);
+        };
+      };
+      expected =
+        let
+          one = [
+            [
+              "Y"
+              "T-Y"
+            ]
+          ];
+          both = {
+            carrier = one;
+            t4 = one;
+          };
+        in
+        {
+          firedDescription = "G";
+          fired = one;
+          firedT4 = one;
+          mkIf = both;
+          mkBefore = both;
+          mkAfter = both;
+          twoFunctions = {
+            carrier = one ++ [
+              [
+                "Y2"
+                "T-Y2"
+              ]
+            ];
+            t4 = one ++ [
+              [
+                "Y2"
+                "T-Y2"
+              ]
+            ];
+          };
+        };
+    };
 }
