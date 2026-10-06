@@ -1520,4 +1520,72 @@ in
         meta.loc = [ "q" ];
       })) (elementWrites "meta.loc");
     };
+
+  # A functor-form module function at an aspect position is refused by name at every site that reads a
+  # definition: single def, multi def, a guard-bearing multi def and an include element (den-hoag-a3eys).
+  # The structure half, beside its lambda twin and den v1's unchanged `__functor` aspect form, is
+  # `ci/tests` `functor-module-refusal`.
+  flake.testsError.functor-module-refusal =
+    let
+      fm = {
+        __functionArgs = {
+          config = false;
+        };
+        __functor =
+          _:
+          { config, ... }:
+          { };
+      };
+      place =
+        defs:
+        (mkSchemaEval {
+          keySemantics.nixos.category = "class";
+          modules = map (d: { config.aspects.x = d; }) defs;
+        }).config.aspects.x;
+      other.description = "o";
+      guarded = gv.vocab.whenEq [ "host" ] "nope" { description = "g"; };
+      msg =
+        loc:
+        exactly (
+          "gen-aspects: aspect `${loc}`: a functor-form module function (an attrset with `__functor`, as "
+          + "`setFunctionArgs` builds) reached an aspect position. A submodule reads an attrset definition as "
+          + "config, never as a module, so its `__functor` key would be kept as an aspect attribute and nothing "
+          + "would be delivered. Write it as a lambda: `{ config, ... }: { ... }`."
+        );
+    in
+    {
+      test-single = thrown (place [ fm ]).nixos (msg "x");
+      test-multi =
+        thrown
+          (place [
+            fm
+            other
+          ]).nixos
+          (msg "x");
+      test-guard-sibling =
+        thrown
+          (place [
+            fm
+            guarded
+          ]).nixos
+          (msg "x");
+      test-element = thrown (place [ { includes = [ fm ]; } ]).includes (
+        msg "x.includes.[definition 1-entry 1]"
+      );
+      # A functor whose `__functionArgs` is not an attrset is not a module function: it must neither
+      # abort the interpreter uncatchably nor be refused as one.
+      test-malformed-functionargs-is-not-an-abort = {
+        expr =
+          (place [
+            {
+              __functionArgs = 5;
+              __functor =
+                _:
+                { config, ... }:
+                { };
+            }
+          ]).nixos;
+        expected = null;
+      };
+    };
 }

@@ -362,6 +362,25 @@ let
       # refused by name at any arity (`bareClosureRefusal`, below).
       isGuardRecordDef = d: builtins.isAttrs d.value && (d.value.__guard or false);
       isClosureDef = d: builtins.isFunction d.value && !(isModuleFn d.value);
+      # A FUNCTOR-FORM MODULE FUNCTION (an attrset with `__functor`, as `lib.setFunctionArgs` builds it,
+      # whose formals are satisfiable by `cnf.moduleArgs`). The submodule reads an attrset def as CONFIG,
+      # so a functor's `__functor`/`__functionArgs` land in the freeform slot and the class value stays
+      # null. Told from den v1's `__functor` aspect form (a context closure, carried unlowered by
+      # gen-rules) by `isModuleFn`, exactly as a lambda module function is told from a closure.
+      # A non-attrset `__functionArgs` is not a formals declaration; `isModuleFn` would abort reading it, so
+      # it is left to the freeform read as before.
+      isFunctorModuleDef =
+        d:
+        builtins.isAttrs d.value
+        && d.value ? __functor
+        && builtins.isAttrs (d.value.__functionArgs or { })
+        && isModuleFn d.value;
+      functorModuleRefusal =
+        loc:
+        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a functor-form module function (an attrset with "
+        + "`__functor`, as `setFunctionArgs` builds) reached an aspect position. A submodule reads an attrset "
+        + "definition as config, never as a module, so its `__functor` key would be kept as an aspect attribute and "
+        + "nothing would be delivered. Write it as a lambda: `{ config, ... }: { ... }`.";
       # Every definition at a guard-bearing multi-def key becomes a FRAGMENT — nothing rejected,
       # nothing shredded (spec §2 Arm B, table). `__guard = true` here is a literal Boolean, not
       # the unresolved gen-merge marker witness 1 produces, so `walk.nix`'s `isGuardLeaf` already
@@ -507,7 +526,9 @@ let
         + "so that gen-rules' lowering turns the closure into a door node, or write it as a guard term.";
       dispatch =
         loc: defs:
-        if builtins.any isClosureDef defs then
+        if builtins.any isFunctorModuleDef defs then
+          { value = throw (functorModuleRefusal loc); }
+        else if builtins.any isClosureDef defs then
           { value = throw (bareClosureRefusal loc); }
         else if builtins.any (d: refusalOf d.value != null) defs then
           {
