@@ -566,7 +566,7 @@ in
         };
       };
     # A12. The declaration's sites agree with each instance's entry where nothing defers: the shared
-    # route (`instanceSites`) and `includeSitesOfEntry` over the fired entry classify alike. RED
+    # route (`instanceSites`) and `includeSitesOfInstance` over the fired entry classify alike. RED
     # (members reached only by firing): the declaration `[ ]` against the entry's `[ q s2 ]`.
     test-declaration-sites-equal-entry-sites = {
       expr = builtins.all (
@@ -574,7 +574,7 @@ in
         let
           d = builtins.head r.instantiates.${i};
         in
-        facts.includeSitesOf.${d} == aspects.includeSitesOfEntry { } tree r.vertices.${i}.entry
+        facts.includeSitesOf.${d} == aspects.includeSitesOfInstance { } tree i r.vertices.${i}.entry
       ) (builtins.attrNames r.vertices);
       expected = true;
     };

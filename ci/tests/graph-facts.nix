@@ -726,7 +726,9 @@ in
   # advice is "undo a feature you were invited to use".
   flake.tests.graph-facts.test-inline-include-content-is-published-not-refused = {
     expr = {
-      # Deferred shapes, aspect literals and a guard record, none of them an edge…
+      # The module function and the unnamed literal are anonymous nodes, so each is an edge to its
+      # node; the named literal (a position, not yet a node), the guard leaf and the guard record
+      # are not…
       edges = inlineFacts.includesOf."app";
       # …and every one of their positions is stated rather than lost.
       unresolvedPositions = inlineFacts.unresolvedIncludesOf."app";
@@ -741,12 +743,13 @@ in
       declaredCount = builtins.length inlineEval.config.aspects.app.includes;
     };
     expected = {
-      edges = [ ];
+      edges = [
+        "app/includes/[\"a:2\",\"aspects\",\"app\",\"includes\",0]"
+        "app/includes/[\"a:2\",\"aspects\",\"app\",\"includes\",3]"
+      ];
       unresolvedPositions = [
-        0
         1
         2
-        3
         4
       ];
       relationEvaluates = true;
@@ -975,14 +978,17 @@ in
       includesOfRefuses = "REFUSED";
       foreignIncludesOfRefuses = "REFUSED";
       parentOfStillReads = null;
+      # The inline literal beside the refusing site is its own node, and still reads (A2).
       nodesStillRead = [
         "app"
+        "app/includes/[\"a:3\",\"aspects\",\"app\",\"includes\",0]"
         "lib"
         "lib/base"
       ];
       otherTreeNodes = [
         "elsewhere"
         "elsewhere/box"
+        "elsewhere/box/includes/[\"a:2\",\"aspects\",\"elsewhere\",\"box\",\"includes\",0]"
         "elsewhere/renamed"
         "elsewhere/thing"
       ];
@@ -1113,10 +1119,11 @@ in
   };
 
   # ★ CONTENT IS STILL CONTENT, however it was merged or copied. The same record is the control for
-  # the refusal above: every row here carries a key, reaches the new branch, and must publish its
-  # positions. Multi-definition lists, `mkMerge`, `mkBefore`, an `mkIf`-false drop and `name` all
-  # move an element's merge position off its merged index; copied lists keep the key and chain of
-  # where they were written.
+  # the refusal above: every row here carries a key, reaches the new branch, and is published: an
+  # anonymous literal as an edge to its own node (`edgeCounts`), a named literal and a guard record as
+  # an unresolved position. Multi-definition lists, `mkMerge`, `mkBefore`, an `mkIf`-false drop and
+  # `name` all move an element's merge position off its merged index; a copied list is re-declared at
+  # its inclusion site.
   flake.tests.graph-facts.test-inline-content-is-content-across-definitions-and-copies = {
     expr = {
       single = declRead { } [ (one [ (lit "a") ]) ];
@@ -1187,6 +1194,20 @@ in
         (one [ (lit "a") ])
         (one [ (lit "b") ])
       ];
+      # The content is not lost from the published relations: each anonymous literal is an edge to its
+      # node (single, twoDefs, nestedLiteral, copiedOtherTree).
+      edgeCounts =
+        map
+          (mods: builtins.length (aspects.graphFacts { } (declEval { } mods).config.aspects).includesOf.app)
+          [
+            [ (one [ (lit "a") ]) ]
+            [
+              (one [ (lit "a") ])
+              (one [ (lit "b") ])
+            ]
+            [ (one [ { includes = [ (lit "inner") ]; } ]) ]
+            [ (one oa.elsewhere.box.includes) ]
+          ];
       # A hand key INSIDE the include-position space is a caller write of an identity input, and the
       # aspect type, its one writer, refuses it (den-hoag-gywcg).
       forgedOwnPosition = declRead { } [
@@ -1199,33 +1220,30 @@ in
       ];
     };
     expected = {
+      edgeCounts = [
+        1
+        2
+        1
+        1
+      ];
       single = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       twoDefs = {
-        u = [
-          0
-          1
-        ];
+        u = [ ];
         n = 2;
       };
       mkMerge = {
-        u = [
-          0
-          1
-        ];
+        u = [ ];
         n = 2;
       };
       mkIfDrop = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       mkBefore = {
-        u = [
-          0
-          1
-        ];
+        u = [ ];
         n = 2;
       };
       named = {
@@ -1233,19 +1251,19 @@ in
         n = 1;
       };
       described = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       copiedSibling = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       copiedOtherTree = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       nestedLiteral = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       guardDefault = {
@@ -1254,11 +1272,8 @@ in
       };
       shapesTwoDefs = {
         u = [
-          0
           1
-          2
           3
-          4
           5
         ];
         n = 6;
@@ -1266,19 +1281,13 @@ in
       shapesTwoDefsNested = {
         u = [
           0
-          1
           2
-          3
           4
-          5
         ];
         n = 6;
       };
       twoDefsUnderOrigin = {
-        u = [
-          0
-          1
-        ];
+        u = [ ];
         n = 2;
       };
       forgedOwnPosition = {
@@ -1316,8 +1325,11 @@ in
       };
     expected = {
       memberSecondDef = {
-        edges = [ "lib/base" ];
-        unresolved = [ 0 ];
+        edges = [
+          "app/includes/[\"a:3\",\"aspects\",\"app\",\"includes\",0]"
+          "lib/base"
+        ];
+        unresolved = [ ];
       };
       rootNamedIncludes = {
         edges = [ "includes" ];
@@ -1657,6 +1669,7 @@ in
           }
           {
             kind = "content";
+            target = "a/includes/[\"a:2\",\"aspects\",\"a\",\"includes\",2]";
             sites = [
               {
                 kind = "local";
@@ -1664,6 +1677,7 @@ in
               }
               {
                 kind = "content";
+                target = "a/includes/[\"a:2\",\"aspects\",\"a\",\"includes\",2,\"imports\",0,\"includes\",1]";
                 sites = [ ];
               }
             ];
@@ -1733,6 +1747,7 @@ in
         splitConfigFn = [
           {
             kind = "content";
+            target = "p/includes/[\"a:4\",\"aspects\",\"p\",\"includes\",0]";
             sites = [
               {
                 kind = "local";
@@ -1776,15 +1791,23 @@ in
         nestedRefuses = !(caught (builtins.deepSeq site.sites null));
         kindEvaluates = caught (builtins.deepSeq site.kind null);
         topLevelRelationsEvaluate = caught (
-          builtins.deepSeq [ f.includesOf f.foreignIncludesOf f.unresolvedIncludesOf ] null
+          builtins.deepSeq [ f.includesOf.a f.foreignIncludesOf.a f.unresolvedIncludesOf.a ] null
         );
+        # The literal is its own node: the dangling reference is ITS include site, so its relations
+        # refuse, and the node set and the parent edge still read (A2).
+        contentRelationsRefuse = !(caught (builtins.deepSeq f.includesOf.${site.target} null));
+        nodesEvaluate = caught (builtins.deepSeq [ f.nodes f.parentOf ] null);
+        edges = f.includesOf.a;
         unresolved = f.unresolvedIncludesOf.a;
       };
       expected = {
         nestedRefuses = true;
         kindEvaluates = true;
         topLevelRelationsEvaluate = true;
-        unresolved = [ 0 ];
+        contentRelationsRefuse = true;
+        nodesEvaluate = true;
+        edges = [ "a/includes/[\"a:2\",\"aspects\",\"a\",\"includes\",0]" ];
+        unresolved = [ ];
       };
     };
 
@@ -1829,7 +1852,7 @@ in
       expected = {
         cyclicRefuses = true;
         finiteDepth = 3;
-        cyclicUnresolved = [ 0 ];
+        cyclicUnresolved = [ ];
         budget = 256;
         messageNamesTheNode = true;
         messageNamesThePosition = true;

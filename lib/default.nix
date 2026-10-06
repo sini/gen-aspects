@@ -137,10 +137,11 @@ in
   # are BOTH the node's walk position, so a disagreement between them is inexpressible — see
   # lib/facts.nix for the measurement that makes one source a correctness requirement.
   inherit (factsModule) graphFacts;
-  # `includeSitesOfEntry cnf aspects entry` — `graphFacts`' include-site classification over any
-  # aspect value: a node's value gives its `includeSitesOf`, an applied instance body the sites its
-  # consumer descends. One function for both, so the relation and its reader cannot disagree.
-  inherit (factsModule) includeSitesOfEntry;
+  # `includeSitesOfInstance cnf aspects iid entry` — `graphFacts`' include-site classification over
+  # any aspect value, its anonymous content keyed under `iid`: an applied instance body gives the
+  # sites its consumer descends, and a node's value under its own id its `includeSitesOf`. One
+  # function for both, so the relation and its reader cannot disagree.
+  inherit (factsModule) includeSitesOfInstance;
   inherit (guardModule)
     mkGuardVocab
     pred
