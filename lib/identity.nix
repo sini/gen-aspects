@@ -234,14 +234,17 @@ let
   # fragments is inert first-order structure, so it mints structurally over its ordered fragment
   # list, exactly as a single guard record mints over its body (ADR-0034/ADR-0016 ruling 5: one
   # mint, and what the mint cannot take gets no identity at all — a total tagged field and a
-  # named refusal when identity is demanded). A carrier holding ANY function-bodied fragment — or
-  # any fragment whose body itself fails `bodyKey` — is a sealed site: the same `guardLocFallback`
+  # named refusal when identity is demanded). A carrier holding ANY coerced fragment (a module
+  # function's applied element, den-hoag-cgobz) — or any fragment whose body itself fails
+  # `bodyKey` — is a sealed site: the same `guardLocFallback`
   # a single opaque-bodied guard already falls back to, now for the whole carrier rather than one
   # fragment, because a partial mint is not a mint (R-2, the fragment-order-in-preimage question,
   # is carried separately and NOT settled by this — see the spec's §4).
   fragmentToken =
     f:
-    if f.kind == "fn" then
+    # A module function's applied element (den-hoag-cgobz) is opaque, as the function was: no token,
+    # and nothing below it is read, so identity forces no condition in the function's result.
+    if f.coerced or false then
       null
     else if f.kind == "record" then
       { guard = termGuardId f; }
