@@ -1150,7 +1150,8 @@ let
   # A union (above) over its nesting members: the element reading a bare module AS a module; the
   # aspect member, which stamps an unnamed element's declared site (`stampUnnamed`); a named element,
   # stamped at its `name` (`stampIncludeSite`); and a typed content COPY, re-declared at this site
-  # (`restampCopy`). The last three read the seed's declaration address (`includeEntryCoerced`). A
+  # (`restampCopy`). Every member reads the seed's declaration address (`includeEntryCoerced`), the
+  # bare module stamped as a module (`stampUnnamed`). A
   # node's value is a reference and passes through as itself.
   includesElemType =
     cnf:
@@ -1158,8 +1159,9 @@ let
       # Default OFF: the bare module is absorbed AS A MODULE. The aspect submodule reads an
       # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
       # `imports` a freeform key and drop the imported content, so the def is handed over as a
-      # function module, which the submodule reads as a module.
-      (entryCoerced (aspectSubmodule cnf) (d: d // { value = _: d.value; }))
+      # function module, which the submodule reads as a module. It is an unnamed declaration like
+      # any other, so it is stamped at its declared site (`stampUnnamed`'s module arm).
+      (includeEntryCoerced (aspectSubmodule cnf) (d: stampUnnamed (d // { value = _: d.value; })))
       (includeAspectOrFn cnf)
       (includeEntryCoerced (aspectSubmodule cnf) stampIncludeSite)
       (includeEntryCoerced (aspectSubmodule cnf) restampCopy)
