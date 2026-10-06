@@ -41,17 +41,44 @@ let
   # `name` attribute and the name). A named attrset element is declared at
   # `<owner> includes <name>@<line>:<column>:<file>`, so two elements sharing a name at two positions
   # are two declarations, and module order moves neither (ADR-0034's rider: the declaring position,
-  # never the merged one). An element with no positioned string `name` keeps its merge position
-  # (`[definition N-entry M]`), the §1 anonymous rule's remaining gap: its module and definition
-  # ordinal need gen-merge. `@` is escaped in the name, so the segment is injective, and `path.nix`
+  # never the merged one). `@` is escaped in the name, so the segment is injective, and `path.nix`
   # escapes the file's `/` where the path is rendered.
-  includeSite =
-    v: prefix:
+  #
+  # An element with no positioned string `name` is declared at its DECLARATION ADDRESS (gen-merge's
+  # `declAt` on the seed definition: the declaring module's anchor and the structural path to the
+  # element, identity design §1), rendered injectively as one segment: its JSON with `%` and `@`
+  # escaped, so it never holds the raw `@` a named site's segment holds, and never starts `[d` as the
+  # merge position does. Never minted (7gp66 OQ4 (b′)). Outside an evaluation, where no tree hands an
+  # address, it keeps its merge position (`[definition N-entry M]`).
+  declSegment = declAt: builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] (builtins.toJSON declAt);
+  # The segment is the whole declaration address, so it names the element alone: the loc is the
+  # OWNER (the walk node whose `includes` the outermost element sits in) and `includes` and that
+  # segment, never the merge positions of the enclosing elements `prefix` still spells.
+  ownerOf =
+    prefix:
     let
+      go =
+        i: if i >= builtins.length prefix || builtins.elemAt prefix i == "includes" then i else go (i + 1);
+    in
+    builtins.genList (builtins.elemAt prefix) (go 1);
+  unnamedSite =
+    d: prefix:
+    if d ? declAt then
+      ownerOf prefix
+      ++ [
+        "includes"
+        (declSegment d.declAt)
+      ]
+    else
+      prefix;
+  includeSite =
+    d: prefix:
+    let
+      v = d.value;
       pos = if v ? name && builtins.isString v.name then builtins.unsafeGetAttrPos "name" v else null;
     in
     if pos == null then
-      prefix
+      unnamedSite d prefix
     else
       prelude.init prefix
       ++ [
@@ -74,7 +101,7 @@ let
         ++ prelude.optional (builtins.isAttrs (d.value.meta or null) && d.value.meta ? loc) "meta.loc";
     in
     if written != [ ] then
-      throw "gen-aspects: an include element named `${d.value.name}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
+      throw "gen-aspects: an include element named `${d.value.name or "<unnamed>"}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
     else
       d
       // {
@@ -85,9 +112,115 @@ let
           }:
           {
             imports = [ d.value ];
-            config.meta.loc = includeSite d.value prefix;
+            config.meta = rec {
+              loc = includeSite d prefix;
+              aspect-chain = merge.mkOverride 900 (prelude.init loc);
+            };
           };
       };
+  # A typed value that is inline CONTENT (its chain has an `includes` segment past the first, the key
+  # space `facts.nix`' `isIncludeContent` reads) placed at an include position is
+  # a COPY of another site's anonymous declaration. Its own identity is this site (identity design
+  # Q1: one anonymous value at two places is two nodes), so the type re-declares it here: the
+  # identity fields the type writes are dropped and the value is merged at this position like a
+  # literal, its own content unchanged. A named node's value at an include stays a reference.
+  isContentCopy =
+    v:
+    let
+      chain = v.meta.aspect-chain or null;
+    in
+    builtins.isList chain && chain != [ ] && builtins.elem "includes" (builtins.tail chain);
+  restampCopy =
+    d:
+    let
+      v = d.value;
+      body =
+        builtins.removeAttrs v [
+          "key"
+          "id_hash"
+        ]
+        // prelude.optionalAttrs (builtins.isAttrs (v.meta or null)) {
+          meta = builtins.removeAttrs v.meta [
+            "loc"
+            "aspect-chain"
+          ];
+        };
+    in
+    d
+    // {
+      value =
+        {
+          prefix ? [ ],
+          ...
+        }:
+        {
+          imports = [ body ];
+          config.meta = rec {
+            loc = unnamedSite d prefix;
+            aspect-chain = merge.mkOverride 900 (prelude.init loc);
+          };
+        };
+    };
+  # An UNNAMED attrset element keeps its own module (no `imports` wrap, so its refusal paths are
+  # today's: a top-level `key` stays the caller write the type refuses) and gains its declared site
+  # beside its own fields. An authored `meta.loc` refuses by name at the element, as
+  # `stampIncludeSite`'s does: the stamp is merged with `//`, so a caller's loc would otherwise stand
+  # in for the declared one and forge a sibling's key.
+  stampUnnamed =
+    d:
+    let
+      v = d.value;
+    in
+    if
+      d ? declAt
+      && builtins.isAttrs v
+      && !(v ? config || v ? options || v ? _type)
+      && builtins.isAttrs (v.meta or null)
+      && v.meta ? loc
+    then
+      throw "gen-aspects: an unnamed include element writes `meta.loc', which the aspect type writes; remove the definition."
+    else if d ? declAt && builtins.isAttrs v && !(v ? config || v ? options || v ? _type) then
+      d
+      // {
+        value =
+          {
+            prefix ? [ ],
+            ...
+          }:
+          {
+            # The submodule reads an attrset definition as CONFIG; so does this, field for field.
+            config = v // {
+              meta = (if builtins.isAttrs (v.meta or null) then v.meta else { }) // rec {
+                loc = unnamedSite d prefix;
+                aspect-chain = merge.mkOverride 900 (prelude.init loc);
+              };
+            };
+          };
+      }
+    else if
+      d ? declAt
+      && (builtins.isFunction v || (builtins.isAttrs v && (v ? config || v ? options) && !(v ? _type)))
+    then
+      # A module element (a module function, or a `config`/`options` module) is already read as a
+      # module, so wrapping it in `imports` changes none of its own paths; the stamp is a sibling
+      # definition, and an authored `meta.loc` conflicts with it at merge.
+      d
+      // {
+        value =
+          {
+            prefix ? [ ],
+            ...
+          }:
+          {
+            imports = [ v ];
+            config.meta = rec {
+              loc = unnamedSite d prefix;
+              aspect-chain = merge.mkOverride 900 (prelude.init loc);
+            };
+          };
+      }
+    else
+      d;
   inherit (import ./cnf.nix)
     extendCnf
     checkedEntry
@@ -287,13 +420,20 @@ let
   # addresses the fold was handed, never values built from them: a threaded fold names its tree by
   # position and the tree reads its own definitions. The called fold is the submodule's own over the
   # coerced definitions, as the union's fold made it before the port.
-  entryCoerced =
-    sub: coerce:
+  entryCoerced = entryCoercedWith { };
+  # The same member at an include position: its tree is handed each seed's declaration address
+  # (gen-merge `nests.declAt`), which the site stamps below read.
+  includeEntryCoerced = entryCoercedWith { declAt = true; };
+  entryCoercedWith =
+    flags: sub: coerce:
     let
       n = sub.nests;
-      nests = n // {
-        entry = d: n.entry (coerce d);
-      };
+      nests =
+        n
+        // flags
+        // {
+          entry = d: n.entry (coerce d);
+        };
     in
     merge.types.defineType (
       sub
@@ -901,6 +1041,27 @@ let
 
   # Recursion-safe binding: either doesn't force subtypes during construction.
   aspectOrFn = cnf: merge.either (aspectType cnf) (aspectSubmodule cnf);
+  # The same member at an include position, its submodule stamping the declared site.
+  includeAspectOrFn =
+    cnf:
+    let
+      sub = includeEntryCoerced (aspectSubmodule cnf) stampUnnamed;
+    in
+    merge.either (aspectTypeOver cnf null [
+      sub
+      (entryCoerced sub (
+        d:
+        if builtins.isFunction d.value then
+          d
+          // {
+            value = {
+              includes = [ d.value ];
+            };
+          }
+        else
+          d
+      ))
+    ]) (aspectSubmodule cnf);
 
   # Closed-key typo-gate (design decision 2, opt-in). With `cnf.closedKeys` on, an UNDECLARED aspect key
   # (declared class/channel/facet/structural keys are handled by the submodule `options` and never reach
@@ -983,13 +1144,14 @@ let
     else
       e.category;
 
-  # An `includes` element is EITHER a by-value aspect (aspectOrFn — unchanged) OR a keyRef (an
-  # origin-qualified reference to a node possibly outside the local fixpoint, §Kernel fixes / decision
-  # 6). keyRef is detected by its `__keyRef` marker and passed through opaquely (gen-link resolves it
-  # against the merged graph); everything else routes through aspectOrFn EXACTLY as before, so by-value
-  # includes are byte-unchanged.
-  # A union (above) over its two nesting-capable members: the element reading a bare module AS a
-  # module, and `aspectOrFn`. A keyRef passes through as itself.
+  # An `includes` element is EITHER a by-value aspect OR a keyRef (an origin-qualified reference to a
+  # node possibly outside the local fixpoint, §Kernel fixes / decision 6). keyRef is detected by its
+  # `__keyRef` marker and passed through opaquely (gen-link resolves it against the merged graph).
+  # A union (above) over its nesting members: the element reading a bare module AS a module; the
+  # aspect member, which stamps an unnamed element's declared site (`stampUnnamed`); a named element,
+  # stamped at its `name` (`stampIncludeSite`); and a typed content COPY, re-declared at this site
+  # (`restampCopy`). The last three read the seed's declaration address (`includeEntryCoerced`). A
+  # node's value is a reference and passes through as itself.
   includesElemType =
     cnf:
     includesElemTypeOver cnf [
@@ -998,8 +1160,9 @@ let
       # `imports` a freeform key and drop the imported content, so the def is handed over as a
       # function module, which the submodule reads as a module.
       (entryCoerced (aspectSubmodule cnf) (d: d // { value = _: d.value; }))
-      (aspectOrFn cnf)
-      (entryCoerced (aspectSubmodule cnf) stampIncludeSite)
+      (includeAspectOrFn cnf)
+      (includeEntryCoerced (aspectSubmodule cnf) stampIncludeSite)
+      (includeEntryCoerced (aspectSubmodule cnf) restampCopy)
     ];
   includesElemTypeOver =
     cnf: alternatives:
@@ -1019,6 +1182,8 @@ let
         in
         if builtins.length defs == 1 && builtins.isAttrs v && (v.__keyRef or false) then
           { value = v; }
+        else if builtins.length defs == 1 && isTypedAspect v && isContentCopy v then
+          { member = builtins.elemAt alternatives 3; }
         else if cnf.rejectBareModuleInclude && builtins.length defs == 1 && isBareModuleInclude then
           {
             value = throw (

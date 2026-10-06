@@ -498,14 +498,14 @@ in
         jHasU = false;
       };
     };
-    # R-6. One classifier, two callers: `includeSitesOfEntry` over each node's value is that node's
-    # `includeSitesOf`, inline content included (`wc`). RED (a top-level-only classifier): false.
+    # R-6. One classifier, two callers: `includeSitesOfInstance` over each node's value under its own
+    # id is that node's `includeSitesOf`, inline content included (`wc`). RED (a top-level-only classifier): false.
     test-include-sites-of-entry = {
       expr = {
         same = builtins.all (
-          id: aspects.includeSitesOfEntry { } rel facts.nodeData.${id} == facts.includeSitesOf.${id}
+          id: aspects.includeSitesOfInstance { } rel id facts.nodeData.${id} == facts.includeSitesOf.${id}
         ) facts.nodes;
-        wc = map (x: x.kind) (aspects.includeSitesOfEntry { } rel facts.nodeData.wc);
+        wc = map (x: x.kind) (aspects.includeSitesOfInstance { } rel "wc" facts.nodeData.wc);
       };
       expected = {
         same = true;
@@ -630,7 +630,7 @@ in
                 }
               ];
             }).config.aspects.fired;
-        kinds = map (x: x.kind) (aspects.includeSitesOfEntry { } rel body);
+        kinds = map (x: x.kind) (aspects.includeSitesOfInstance { } rel "fired" body);
       in
       {
         expr = {
@@ -662,7 +662,7 @@ in
                 { config.aspects.fired = aspects.guard aspects.pred.always { includes = [ elem ]; }; }
               ];
             }).config.aspects.fired;
-        kinds = body: map (x: x.kind) (aspects.includeSitesOfEntry { } rel body);
+        kinds = body: map (x: x.kind) (aspects.includeSitesOfInstance { } rel "fired" body);
       in
       {
         expr = {

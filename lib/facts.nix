@@ -139,6 +139,23 @@ let
     + "almost always CYCLIC, a literal that includes itself, and a reader following it would never "
     + "finish, so the include sites refuse by name here instead. Name the repeated content as an "
     + "aspect and include it by reference: a cycle between named aspects is well defined.";
+
+  # Two anonymous declarations rendered one identifier. Named for the first such id and both hosts,
+  # so the reader finds the two inclusion sites. Unreachable by any input this library admits, so it
+  # is not exported for a message assertion: its planted violation is a deferred guarantee.
+  anonymousDuplicateRefusal =
+    anonList:
+    let
+      byId = builtins.groupBy (x: x.name) anonList;
+      dup = builtins.head (builtins.filter (n: builtins.length byId.${n} > 1) (builtins.attrNames byId));
+      hosts = map (
+        x:
+        "'${x.value.host}' at include position ${prelude.concatStringsSep "." (map toString x.value.pos)}"
+      ) byId.${dup};
+    in
+    "gen-aspects: two inline include declarations render one anonymous node id '${dup}' (${prelude.concatStringsSep ", " hosts}). "
+    + "Each inclusion site is its own declaration and its own node, so this is a defect in the declaration key, "
+    + "not in the declarations; the node set refuses rather than keep one and drop the other.";
 in
 rec {
   # Exported for the CI's message assertions, NOT re-exported from `lib/default.nix`: a consumer
@@ -188,7 +205,8 @@ rec {
 
       entries = walk aspects;
 
-      nodes = map (e: idOf e.path) entries;
+      walkNodes = map (e: idOf e.path) entries;
+      nodes = builtins.attrNames nodeData;
       # The registry the include references resolve against: the tree's own nodes by their
       # container-relative walk key, which is what a by-value element's `.key` and a bare identifier
       # spell. Local-only by construction: the origin qualifies the id afterwards (`qualify`).
@@ -234,39 +252,42 @@ rec {
           kind = "local";
           target = qualify k;
         };
-      nodeData = builtins.listToAttrs (
+      walkNodeData = builtins.listToAttrs (
         map (e: {
           name = idOf e.path;
           inherit (e) value;
         }) entries
       );
+      nodeData = walkNodeData // builtins.mapAttrs (_: s: s.value) anon;
 
       # THE PARENT EDGE, taken from the walk position the entry already carries. `null` means ROOT
       # and nothing else: a one-segment walk path IS a root of this container, so the value cannot
       # stand in for an absence the way a `meta` read could. Totality holds by construction, which
       # is why no refusal guards this — `test-parent-closure-is-a-construction` pins the walk
       # property the construction rests on instead.
-      parentOf = builtins.listToAttrs (
-        map (e: {
-          name = idOf e.path;
-          value = if builtins.length e.path <= 1 then null else idOf (prelude.init e.path);
-        }) entries
-      );
+      parentOf =
+        builtins.listToAttrs (
+          map (e: {
+            name = idOf e.path;
+            value = if builtins.length e.path <= 1 then null else idOf (prelude.init e.path);
+          }) entries
+        )
+        // builtins.mapAttrs (_: s: s.parent) anon;
 
       # ── the INCLUDE edges ──────────────────────────────────────────────────────────────────────
       #
       # ★ THE DISPATCH IS ON WHETHER THE ELEMENT NAMES A NODE, NOT ON THE ELEMENT'S SHAPE. Reading
       # the shape is what produces a refusal on shapes this library ships and tests — a guard
-      # record at an include position — and a fabricated id for the inline `{ … }` aspect literal,
-      # whose `.key` is its MERGE position under `includes` rather than a walk position. An `includes` list holds two
-      # different kinds of thing and only one of them is an edge:
+      # record at an include position. An `includes` list holds two different kinds of thing:
       #
       #   REFERENCE — a `keyRef`, or a by-value aspect whose key IS a node. It has a target.
-      #   INLINE    — content written AT the include position: a guard record, an aspect literal. The walk never descends
-      #               into `includes`, so no node exists for an edge to reach. This is not a broken
-      #               reference; it is not a reference at all.
+      #   INLINE    — content written AT the include position: a guard record, an aspect literal. This
+      #               is not a broken reference; it is not a reference at all. An anonymous literal is
+      #               its OWN node, keyed by its declaration (THE ANONYMOUS DECLARATIONS, below), and
+      #               its site's `target` names it.
       #
-      # An inline element is neither refused nor dropped: its POSITION is published in
+      # An inline element is neither refused nor dropped: a content site that names its node is an
+      # edge in `includesOf`, and every other inline POSITION is published in
       # `unresolvedIncludesOf`, so a consumer needing the element indexes back into
       # `nodeData.<id>.includes` and nothing about the declaration goes unsaid. Inline elements are
       # of two kinds, and `includeSitesOf` publishes which: CONTENT, a keyed aspect literal that
@@ -344,8 +365,8 @@ rec {
       # its merge position under `includes` is PER DEFINITION (see AGENTS.md, "An `includes` list
       # holds REFERENCES and INLINE CONTENT"), so the test reads which key SPACE it is in and never
       # compares an index; a key set by hand outside that space is a claim to name a node, and it
-      # refuses when none exists. Content copied from another aspect or another tree keeps the
-      # chain and key of where it was written, so it stays content: it denotes no node anywhere.
+      # refuses when none exists. Content copied from another aspect or another tree is re-declared
+      # at its inclusion site by the type (`types.nix` `restampCopy`), so it stays content, its own node.
       isIncludeContent =
         door: elem:
         let
@@ -370,7 +391,10 @@ rec {
       #
       #   { kind = "local";   target = <id>; }
       #   { kind = "foreign"; ref = { origin; path; key; }; }
-      #   { kind = "content"; sites = [ site … ]; }   the element's OWN includes, by this same rule
+      #   { kind = "content"; target = <id>; sites = [ site … ]; }
+      #                                                    the element's OWN includes, by this same
+      #                                                    rule; `target` is absent where the content
+      #                                                    is no node (THE ANONYMOUS DECLARATIONS)
       #   { kind = "sealed"; }
       #   { kind = "deferred"; }                          a parametric declaration's context-dependent
       #                                                    element (`declSites`), classified per instance
@@ -381,23 +405,42 @@ rec {
       # site's `sites` is a thunk: a dangling reference inside inline content refuses only for a
       # reader that descends into it, and the depth budget above bounds that descent.
       siteAt =
-        id: p: elem:
+        id: parent: p: elem:
         let
           at = prelude.concatStringsSep "." (map toString p);
           r = resolve id at elem;
+          # An anonymous declaration's site names its node (`anon`, below): under a parent that has an
+          # identifier, within the depth budget, and not a named element (`isNamedContent`).
+          targeted = parent != null && builtins.length p < includeSitesMaxDepth && !(isNamedContent elem);
+          target = contentId parent p elem;
         in
         if r.kind == "content" then
-          {
+          prelude.optionalAttrs targeted { inherit target; }
+          // {
             kind = "content";
             sites =
               if builtins.length p >= includeSitesMaxDepth then
                 throw (includeSitesDepthRefusal id at)
               else
-                sitesOf id p (expectList (includesDoor id at) "includes" (elem.includes or includesDefault));
+                sitesOf id (if targeted then target else null) p (
+                  expectList (includesDoor id at) "includes" (elem.includes or includesDefault)
+                );
           }
         else
           r;
-      sitesOf = id: pos: prelude.imap0 (i: siteAt id (pos ++ [ i ]));
+      # An anonymous node's identifier (7gp66 OQ4 (b′): an injective rendering of its declaration key,
+      # never the mint). Typed content: the key the type wrote from the inclusion site's declaration
+      # address (`types.nix` `unnamedSite`), so one writer. Key-less content (an applied body, a raw
+      # tree): its parent's identifier, `includes`, and its index.
+      contentId =
+        parent: p: elem:
+        if builtins.isAttrs elem && elem ? key then
+          qualify elem.key
+        else
+          "${parent}/includes/${toString (builtins.elemAt p (builtins.length p - 1))}";
+      sitesOf =
+        id: parent: pos:
+        prelude.imap0 (i: siteAt id parent (pos ++ [ i ]));
 
       # ── a PARAMETRIC DECLARATION'S MEMBERS, published without firing it (ADR-0010 §4(a) clause 2) ──
       #
@@ -454,7 +497,7 @@ rec {
             records = builtins.filter (f: f.kind == "record") v.fragments;
             # The unconditional fragments' members are static whichever arm is taken, so they are classified
             # here, and a term among them refuses at the declaration, never only when an instance fires.
-            unconditional = sitesOf id [ ] (
+            unconditional = sitesOf id null [ ] (
               builtins.concatMap (f: if builtins.isAttrs f.body then f.body.includes or [ ] else [ ]) (
                 builtins.filter (f: f.kind != "record") v.fragments
               )
@@ -476,19 +519,23 @@ rec {
               if dependent x then
                 { kind = "deferred"; }
               else
-                siteAt id [ i ] (declValue id v "include position ${toString i}" x)
+                siteAt id null [ i ] (declValue id v "include position ${toString i}" x)
             ) inc.items
           )
         else if dependent inc then
           wholeDeferred
         else
-          split (sitesOf id [ ] (expectList (memberDoor id) "includes" (declValue id v "`includes`" inc)));
-      declOf = builtins.mapAttrs declInfo (prelude.filterAttrs (_: isGuardLeaf) nodeData);
+          split (
+            sitesOf id null [ ] (expectList (memberDoor id) "includes" (declValue id v "`includes`" inc))
+          );
+      declOf = builtins.mapAttrs declInfo (prelude.filterAttrs (_: isGuardLeaf) walkNodeData);
 
       # A whole value's include sites: a node's, or an applied instance body's (`includeSitesOfEntry`).
       # `id` names the value in a refusal only. A guard leaf's are its declaration's members.
-      sitesOfEntry =
-        id: v: if isGuardLeaf v then (declInfo id v).sites else sitesOf id [ ] (includesOfValue id v);
+      sitesOfEntry = id: v: sitesOfEntryAt id id v;
+      sitesOfEntryAt =
+        id: parent: v:
+        if isGuardLeaf v then (declInfo id v).sites else sitesOf id parent [ ] (includesOfValue id v);
 
       # AN INSTANCE'S SITES, read through its `instantiates` edge: the declaration's members, with each
       # `deferred` one classified at its own position of the instance's fired `includes` (only that
@@ -500,14 +547,17 @@ rec {
           key = entry.key or a;
         in
         if d.whole then
-          sitesOf key [ ] (includesOfValue key entry)
+          sitesOf key key [ ] (includesOfValue key entry)
         else
           prelude.imap0 (
             i: s:
-            if s.kind == "deferred" then siteAt key [ i ] (builtins.elemAt (includesOfValue key entry) i) else s
+            if s.kind == "deferred" then
+              siteAt key key [ i ] (builtins.elemAt (includesOfValue key entry) i)
+            else
+              s
           ) d.sites;
 
-      includeSitesOf = builtins.listToAttrs (
+      walkSitesOf = builtins.listToAttrs (
         map (
           e:
           let
@@ -520,6 +570,111 @@ rec {
         ) entries
       );
 
+      # ── THE ANONYMOUS DECLARATIONS (identity design §1, §2; ADR-0012: one node notion) ────────────
+      #
+      # Every inline content element reached from a walk node's `includes`, recursively through
+      # content, is a node: it enters `nodeData`, `parentOf` (its declaring host or enclosing anonymous
+      # node) and `includeSitesOf` like every node, and its site gains the `target` naming it. They are
+      # enumerated by a TOTAL predicate that resolves no reference and catches a key or an element the
+      # type refuses, so a refusal at a site stays at that site and `nodes` still reads.
+      #
+      # Three kinds of content are NOT nodes, and their sites stay target-less positions:
+      #   * a NAMED element (a raw value with a positioned `name`). Its §2 site is the position of its
+      #     `name`, which is not injective: one named value included twice, a factory applied twice,
+      #     or one value from two modules give two declarations one site. Keying them is §2's class
+      #     keying, its own unit; until it lands they are positions, and their nested content with them.
+      #   * content at the depth budget or past it (identity design §4 row 1, "it stays lazy"): a
+      #     cyclic literal is 256 nodes, and its sites refuse only for a reader descending past them.
+      #   * a guard leaf's declaration members, whose content exists per instance
+      #     (`includeSitesOfInstance`).
+      isNamedContent =
+        elem:
+        builtins.isAttrs elem
+        && builtins.isString (elem.key or null)
+        && builtins.match ".*@[^/]*" elem.key != null;
+      isContentElem =
+        elem:
+        let
+          r = builtins.tryEval (isContentElem' elem);
+        in
+        r.success && r.value;
+      isContentElem' =
+        elem:
+        builtins.isAttrs elem
+        && !(T.isTerm elem)
+        && !(elem.__keyRef or false)
+        && (
+          if elem ? key then
+            # A key the type refuses (a caller's forged write) is no node; its site refuses when read.
+            let
+              r = builtins.tryEval (
+                builtins.isString elem.key
+                && builtins.isList (elem.meta.aspect-chain or null)
+                && isIncludeContent "" elem
+                && !(isNamedContent elem)
+              );
+            in
+            r.success && r.value
+          else
+            !(isGuardLeaf elem)
+        );
+      listOr = v: if builtins.isList v then v else [ ];
+      anonFrom =
+        host: parent: p: elems:
+        builtins.concatLists (
+          prelude.imap0 (
+            i: elem:
+            let
+              q = p ++ [ i ];
+              t = contentId parent q elem;
+            in
+            if !(isContentElem elem) then
+              [ ]
+            else if builtins.length q >= includeSitesMaxDepth then
+              [ ]
+            else
+              [
+                {
+                  name = t;
+                  value = {
+                    inherit host parent;
+                    pos = q;
+                    value = elem;
+                  };
+                }
+              ]
+              ++ anonFrom host t q (listOr (elem.includes or includesDefault))
+          ) elems
+        );
+      anonList = (
+        builtins.concatMap (
+          id:
+          let
+            v = walkNodeData.${id};
+          in
+          if isGuardLeaf v then [ ] else anonFrom id id [ ] (listOr (v.includes or includesDefault))
+        ) walkNodes
+      );
+      # The backstop: `listToAttrs` keeps the first of two equal names silently, so a duplicate id
+      # (none is reachable once named content is excluded and an authored `meta.loc` refuses) is a
+      # refusal by name, never a substitution.
+      anon0 = builtins.listToAttrs anonList;
+      anon =
+        if builtins.length anonList == builtins.length (builtins.attrNames anon0) then
+          anon0
+        else
+          throw (anonymousDuplicateRefusal anonList);
+      includeSitesOf =
+        walkSitesOf
+        // builtins.mapAttrs (
+          t: a:
+          sitesOf a.host t a.pos (
+            expectList (includesDoor a.host (prelude.concatStringsSep "." (map toString a.pos))) "includes" (
+              a.value.includes or includesDefault
+            )
+          )
+        ) anon;
+
       # The top-level sites with their positions, which is what each projection selects over.
       topSites =
         kinds: id:
@@ -528,7 +683,11 @@ rec {
         );
       project = f: builtins.mapAttrs (id: _: f id) includeSitesOf;
 
-      includesOf = project (id: map (x: x.s.target) (topSites [ "local" ] id));
+      # A content site is an edge exactly when it names its node; a target-less one (named, past the
+      # budget, or a declaration member) is a position, published in `unresolvedIncludesOf`.
+      targetedSites =
+        id: builtins.filter (x: x.s.kind == "local" || x.s ? target) (topSites [ "local" "content" ] id);
+      includesOf = project (id: map (x: x.s.target) (targetedSites id));
 
       # THE REFERENCES THIS LIBRARY COULD NOT CHECK, published apart from the ones it could. A
       # foreign keyRef names a node in a fixpoint gen-aspects does not hold, so its target is not a
@@ -547,11 +706,13 @@ rec {
       unresolvedIncludesOf = project (
         id:
         map (x: x.i) (
-          topSites [
-            "content"
-            "sealed"
-            "deferred"
-          ] id
+          builtins.filter (x: x.s.kind != "content" || !(x.s ? target)) (
+            topSites [
+              "content"
+              "sealed"
+              "deferred"
+            ] id
+          )
         )
       );
 
@@ -579,7 +740,7 @@ rec {
       ) nodeData;
       # The dead-nested view (ADR-0012 clause 2: a view has a name and a defining query): the nested
       # aspects whose subtree delivers nothing.
-      deadNested = builtins.filter (id: parentOf.${id} != null && !deliversOf.${id}) nodes;
+      deadNested = builtins.filter (id: parentOf.${id} != null && !deliversOf.${id}) walkNodes;
     in
     {
       facts = {
@@ -596,7 +757,7 @@ rec {
           deadNested
           ;
       };
-      inherit sitesOfEntry instanceSites;
+      inherit sitesOfEntry sitesOfEntryAt instanceSites;
     };
 
   # THE DEAD NESTED ASPECTS THE WARNING SAYS: the view less the nodes the caller DECLARED intended
@@ -635,16 +796,17 @@ rec {
 
   graphFacts = checkedEntry (cnf: aspects: sayDeadNested warn cnf (graphCore cnf aspects).facts);
 
-  # `includeSitesOfEntry cnf aspects entry` → the include sites of any aspect value against this
-  # tree, by the classification `graphFacts` publishes as `includeSitesOf` (one function, two
-  # callers): a node's value gives its `includeSitesOf` entry, and an applied instance body gives
-  # the sites its consumer descends (htfv3 spec gate K1, arm (A)). Partially applied to `cnf` and
-  # `aspects`, the registry it resolves against is built once.
-  includeSitesOfEntry = checkedEntry (
+  # `includeSitesOfInstance cnf aspects iid entry` → an applied instance body's include sites, by the
+  # classification `graphFacts` publishes as `includeSitesOf` (one function, two callers: a node's
+  # value under its own id gives its `includeSitesOf` entry). Its anonymous content is keyed under the
+  # instance: each content site's `target` is `<iid>/includes/<i>`, recursively, an identifier and no
+  # mint (identity design §3; 7gp66 OQ4 (b′)). Partially applied to `cnf` and `aspects`, the registry
+  # it resolves against is built once.
+  includeSitesOfInstance = checkedEntry (
     cnf: aspects:
     let
-      inherit (graphCore cnf aspects) sitesOfEntry;
+      inherit (graphCore cnf aspects) sitesOfEntryAt;
     in
-    entry: sitesOfEntry (entry.key or "<entry>") entry
+    iid: entry: sitesOfEntryAt (entry.key or "<entry>") iid entry
   );
 }
