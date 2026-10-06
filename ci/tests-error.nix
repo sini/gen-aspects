@@ -1587,5 +1587,36 @@ in
           ]).nixos;
         expected = null;
       };
+      # Nor does formals whose values are not Booleans (`setFunctionArgs` takes Booleans only).
+      test-nonbool-functionargs-is-not-an-abort = {
+        expr =
+          (place [
+            {
+              __functionArgs = {
+                config = 5;
+              };
+              __functor =
+                _:
+                { config, ... }:
+                { };
+            }
+          ]).nixos;
+        expected = null;
+      };
+      test-string-functionargs-is-not-an-abort = {
+        expr =
+          (place [
+            {
+              __functionArgs = {
+                config = "x";
+              };
+              __functor =
+                _:
+                { config, ... }:
+                { };
+            }
+          ]).nixos;
+        expected = null;
+      };
     };
 }

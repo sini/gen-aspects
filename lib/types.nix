@@ -367,14 +367,9 @@ let
       # so a functor's `__functor`/`__functionArgs` land in the freeform slot and the class value stays
       # null. Told from den v1's `__functor` aspect form (a context closure, carried unlowered by
       # gen-rules) by `isModuleFn`, exactly as a lambda module function is told from a closure.
-      # A non-attrset `__functionArgs` is not a formals declaration; `isModuleFn` would abort reading it, so
+      # A malformed `__functionArgs` is not a formals declaration: `isModuleFn` is total on it (false), so
       # it is left to the freeform read as before.
-      isFunctorModuleDef =
-        d:
-        builtins.isAttrs d.value
-        && d.value ? __functor
-        && builtins.isAttrs (d.value.__functionArgs or { })
-        && isModuleFn d.value;
+      isFunctorModuleDef = d: builtins.isAttrs d.value && d.value ? __functor && isModuleFn d.value;
       functorModuleRefusal =
         loc:
         "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a functor-form module function (an attrset with "
