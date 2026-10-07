@@ -495,6 +495,25 @@ in
         imports = [ (genMerge.mkIf true { providerPrefix = [ "x" ]; }) ];
       } (cnfText "providerPrefix");
 
+      # A def carrying its own `__reservedKeys` beside an imports-route formal does not void the
+      # reservation: the wrapper's record is read first (den-hoag-r05lc, record-first precedence).
+      # The forged marker with an ordinary import is read as before (the cell's control).
+      test-def-forging-its-own-reservation-still-refuses-by-name = {
+        expr =
+          assert controls;
+          assert
+            (barWith {
+              __reservedKeys.names = { };
+              options.priority = int0;
+              imports = [ { priority = 7; } ];
+            }).priority == 7;
+          builtins.attrNames (barWith {
+            __reservedKeys.names = { };
+            imports = [ { providerPrefix = [ "x" ]; } ];
+          });
+        expectedError = owned (cnfText "providerPrefix");
+      };
+
       # Over a gen-merge that does not read a functor module's record, the reservation would be
       # dropped silently; a kind whose entry imports a module refuses by name, naming the protocol it
       # requires (den-hoag-r05lc).

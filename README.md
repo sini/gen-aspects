@@ -228,7 +228,13 @@ a formal to `mkAspectSchema`; an aspect field of the same name is written on the
 The refusal covers every route into the entry: a formal at the top level of a module the entry
 imports (nested `imports`, `require`, a function or path module, a whole-module `mkIf`) is refused by
 gen-merge's collector with the same text, saying it was written in a module the kind entry imports and
-naming the module.
+naming the module. The reservation rides on the record of a functor module wrapping each def that
+imports anything, so `config.schema.aspect` mounted in a nixpkgs `lib.evalModules` carries no marker,
+and a def writing its own `__reservedKeys` beside an imported formal is still refused (the record is
+read first). Over a gen-merge whose `moduleSyntax.functorRecord` does not list `__reservedKeys` the
+kind refuses by name; that guard sees only the gen-merge gen-aspects is built with, so a kind value
+evaluated by another, older gen-merge in the same evaluation never reads the record, and an imported
+formal lands there silently.
 
 ## Flat Registry
 

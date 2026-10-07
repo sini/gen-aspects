@@ -19,6 +19,12 @@ let
   t = merge.types;
   inherit (import ./cnf.nix) extendCnf checkedEntry cnfKeys;
   checkedOpts = door: prelude.checkOptions "gen-aspects.mkAspectSchema.${door}";
+  # The entry reservation rides on a functor's record (den-hoag-r05lc), which only a gen-merge
+  # publishing it in `moduleSyntax.functorRecord` reads; any other would drop it silently. Bound
+  # once, as gen-schema binds its own pairing test.
+  mergeReadsRecordReservation = builtins.elem "__reservedKeys" (
+    merge.moduleSyntax.functorRecord or [ ]
+  );
 
   # Bound ONCE, outside the per-cnf function: it reads no cnf, and gen-schema's entry type compares
   # it as a sealed component by value, so a per-call lambda would make two schemas over one cnf two
@@ -62,7 +68,7 @@ let
                   __functionArgs = { };
                   __functor =
                     _: _:
-                    if !(builtins.elem "__reservedKeys" (merge.moduleSyntax.functorRecord or [ ])) then
+                    if !mergeReadsRecordReservation then
                       throw "gen-aspects: kind '${kind}' reserves its construction formals in every module its entry imports, on the record of the module it wraps each definition in (`__reservedKeys'), and the gen-merge it is evaluated with does not read that record (its `moduleSyntax.functorRecord' does not list `__reservedKeys'). gen-aspects requires a gen-merge reading the reservation off a functor module's record; update the gen-merge input gen-aspects is built with."
                     else if d.value ? __functor || !(builtins.isAttrs d.value) then
                       { imports = [ d.value ]; }

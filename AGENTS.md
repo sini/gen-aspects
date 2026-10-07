@@ -199,7 +199,8 @@ gen-schema refuses its own formals first (`collections`, `keySemantics` are in b
 reads DIRECT defs; a formal inside a module a def imports refuses at gen-merge's collector, because
 `mkType` marks the instance modules it builds with gen-merge's `__reservedKeys` (binding
 `reservation`: `cnfKeys` ∪ gen-schema's exported `entryReservation kind`, gen-schema's text winning on
-shared names; a functor def is wrapped; `den-hoag-8x97u`). Tests: `construction-formal-refusals.*` and
+shared names; `den-hoag-8x97u`), carried on the record of a functor module wrapping each def that
+imports anything, never in a module nixpkgs collects (`den-hoag-r05lc`). Tests: `construction-formal-refusals.*` and
 `imports-route-refusals.*` in `ci/tests-error.nix`, `ci/tests/construction-formals.nix`.
 
 **`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset:
