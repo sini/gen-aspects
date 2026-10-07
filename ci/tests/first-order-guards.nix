@@ -255,6 +255,16 @@ let
         declared = "p";
       };
     };
+    # The guard mint's DECISION site answers off the minted arm (den-hoag-dg8d1): a guard over a term
+    # with no identity still checks, and its tagged sum, read through gen-algebra's `identityOf`, is
+    # the unmintable arm, an answer and not an abort.
+    test-guard-over-an-unmintable-term-answers-unmintable = {
+      expr = genAlgebra.regimeTagOf (
+        genAlgebra.identityOf
+          (place { } { p = a.guard (a.pred.eq [ "p" ] ./first-order-guards.nix) "y"; }).p
+      );
+      expected = "s";
+    };
     # UC1: a door-registration `ref` only as the whole body.
     test-ref-position = {
       expr = {
