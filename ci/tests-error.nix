@@ -488,7 +488,8 @@ in
       } (cnfText "providerPrefix");
 
       # Over a gen-merge that does not read a functor module's record, the reservation would be
-      # dropped silently; the kind refuses by name, naming the protocol it requires (den-hoag-r05lc).
+      # dropped silently; a kind whose entry imports a module refuses by name, naming the protocol it
+      # requires (den-hoag-r05lc).
       test-gen-merge-without-the-record-carrier-refused-by-name =
         let
           withoutRecord = genMerge // {
@@ -511,7 +512,10 @@ in
                 { options.schema = schema.schemaOption; }
                 (schema.mkAspectModule { })
                 {
-                  config.schema.aspect.options.priority = int0;
+                  config.schema.aspect = {
+                    options.priority = int0;
+                    imports = [ { options.weight = int0; } ];
+                  };
                   config.aspects.bar = { };
                 }
               ]).config.aspects.bar;
