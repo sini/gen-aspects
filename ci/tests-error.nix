@@ -1673,5 +1673,35 @@ in
             + "attribute and nothing would be delivered. Write it as a lambda: `{ config, ... }: { ... }`."
           )
         );
+
+    # den-hoag-3849t C1: a functor CONTEXT closure at a nested key of a plain definition beside a guard
+    # record is coerced as a functor module function is, so the typed element refuses it by name, as T4's
+    # does (den-hoag-iy9qh). RED (before the edit): it was held raw at rc 0 and served as nothing.
+    test-a-functor-context-closure-at-a-nested-key-is-refused-by-name =
+      thrown
+        (mkSchemaEval {
+          modules = [
+            { config.aspects.main = gv.vocab.always { description = "G"; }; }
+            {
+              config.aspects.main.sub = {
+                __functor =
+                  _:
+                  { thimble, ... }:
+                  {
+                    description = thimble;
+                  };
+              };
+            }
+          ];
+        }).config.aspects.main.fragments
+        (
+          exactly (
+            "gen-aspects: aspect `main.sub.includes.[definition 1-entry 1]`: an attrset whose `__functor` yields a "
+            + "context closure reached an aspect position. A submodule reads an attrset definition as config, so "
+            + "nothing would be delivered, and gen-rules' lowering does not lower a functor at an aspect position. "
+            + "Write it as a lambda closure (`{ thimble, ... }: { ... }`), or have the framework lower its own form "
+            + "first."
+          )
+        );
   };
 }

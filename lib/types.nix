@@ -421,9 +421,10 @@ let
             }
           )
         else
-          # Plain attrset or primitive def alongside a guard-shaped sibling: an UNCONDITIONAL
-          # fragment, condition ≡ true, riding beside the guarded ones (F4(a)'s dissolution made
-          # mechanism — the heterogeneous list has defined semantics, no refusal owed).
+          # A primitive def alongside a guard-shaped sibling: an UNCONDITIONAL fragment, condition ≡ true,
+          # riding beside the guarded ones (F4(a)'s dissolution made mechanism — the heterogeneous list
+          # has defined semantics, no refusal owed). A plain attrset def does not reach here:
+          # `mkGuardCarrier` splits it into the typed positions and its raw remainder (den-hoag-3849t).
           {
             kind = "unconditional";
             body = d.value;
@@ -459,10 +460,12 @@ let
       isNestedKey = k: k != "includes" && !(declaredKeys ? ${k});
       # a value the projection enters: a plain attrset, not a property, a guard record or a functor
       isPlainNode = v: builtins.isAttrs v && !(v ? _type) && !(v.__guard or false) && !(v ? __functor);
-      # a functor-form module function: coerced as a lambda is, so the typed element refuses it by name
-      # (`functorModuleRefusal`), as T4's does; any other functor is held raw
-      isFunctorModule = v: builtins.isAttrs v && v ? __functor && isModuleFn v;
-      isCoercible = v: builtins.isFunction v || isFunctorModule v;
+      # a functor the typed element refuses by name, as T4's does: a functor-form module function
+      # (`functorModuleRefusal`) or a functor context closure (`functorClosureRefusal`); it is coerced as a
+      # lambda is, so the refusal names it at its position. A functor with a malformed `__functionArgs` is
+      # neither, and is held raw, as the freeform read leaves it.
+      isRefusedFunctor = v: isFunctorModuleDef { value = v; } || isFunctorClosureDef { value = v; };
+      isCoercible = v: builtins.isFunction v || isRefusedFunctor v;
       # a property wrapper is projected through and kept, so the typed child discharges it as T4 would
       isContentV =
         v:
