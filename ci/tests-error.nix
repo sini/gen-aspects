@@ -113,11 +113,9 @@ in
       expr = res.options.p.type.name;
       expectedError = {
         type = "ThrownError";
-        msg = exactly (
-          "gen-merge: option `p' is declared with types that do not merge (`aspectsRoot' and "
-          + "`aspectsRoot', which the first type's own `functor' does not reconcile); "
-          + "declared in <gen-merge>, <gen-merge>"
-        );
+        msg =
+          "^"
+          + lib.escapeRegex "gen-merge: option `p' is declared with types that do not merge (`aspectsRoot' and `aspectsRoot'";
       };
     };
 
@@ -395,7 +393,8 @@ in
       test-shared-formal-gets-gen-schema-text =
         thrown (barKeysWith { keySemantics.darwin.category = "class"; })
           (
-            exactly "gen-schema: kind 'aspect': declaration key 'keySemantics' is a construction formal of this schema — it is fixed by the call that builds the schema option (`mkSchemaOption`, `mkSchemaEntryType`), and written on a kind entry it is not read as one; pass 'keySemantics' to that constructor, or write `config.keySemantics` for an instance field of that name, which a strict instance must declare as an option"
+            "^"
+            + lib.escapeRegex "gen-schema: kind 'aspect': declaration key 'keySemantics' is a construction formal of this schema"
           );
 
       # G2 · a formal only mkAspectSchema takes.
@@ -405,7 +404,8 @@ in
 
       # C2 on this path · a name gen-schema writes onto the kind value.
       test-published-name-refuses-on-this-path = thrown (barKeysWith { refs.forged = 1; }) (
-        exactly "gen-schema: kind 'aspect': declaration key 'refs' is a name gen-schema writes onto the kind value — written on a kind entry it lands on every instance, while reading `config.schema.aspect.refs` returns the published one; write `config.refs` for an instance field of that name, which a strict instance must declare as an option"
+        "^"
+        + lib.escapeRegex "gen-schema: kind 'aspect': declaration key 'refs' is a name gen-schema writes onto the kind value"
       );
 
       # G7 · a collection named for a cnf formal.
@@ -463,12 +463,19 @@ in
       cnfText =
         f:
         "gen-aspects: kind 'aspect': declaration key '${f}' is an mkAspectSchema construction formal, written in a module this kind entry imports — it is fixed by `mkAspectSchema { ${f} = …; }`, and written there it is not read as one; pass it there, or write `config.${f}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`";
-      cell = entry: text: {
+      # gen-schema's refusal, by its identifying sentence: the guidance after it is gen-schema's to
+      # reword, and the module suffix is this library's.
+      foreign = sentence: {
+        type = "ThrownError";
+        msg = "^" + lib.escapeRegex sentence + ".* [(]module `[^']*'[)]$";
+      };
+      cellWith = expectedError: entry: {
         expr =
           assert controls;
           builtins.attrNames (barWith entry);
-        expectedError = owned text;
+        inherit expectedError;
       };
+      cell = entry: text: cellWith (owned text) entry;
     in
     {
       # A cnf formal through a function module, read after gen-merge applies it.
@@ -478,8 +485,9 @@ in
 
       # A gen-schema formal through `imports`: gen-schema's text wins on the shared name.
       test-shared-formal-through-imports-gets-gen-schema-text =
-        cell { imports = [ { keySemantics.darwin.category = "class"; } ]; }
-          "gen-schema: kind 'aspect': declaration key 'keySemantics' is a construction formal of this schema, written in a module this kind entry imports — it is fixed by the call that builds the schema option (`mkSchemaOption`, `mkSchemaEntryType`), and written there it is not read as one; pass 'keySemantics' to that constructor, or write `config.keySemantics` for an instance field of that name, which a strict instance must declare as an option";
+        cellWith
+          (foreign "gen-schema: kind 'aspect': declaration key 'keySemantics' is a construction formal of this schema, written in a module this kind entry imports")
+          { imports = [ { keySemantics.darwin.category = "class"; } ]; };
 
       # A cnf formal through a whole-module `mkIf`, read after push-down.
       test-cnf-formal-through-mkif = cell {
@@ -1105,7 +1113,8 @@ in
               m;
           }).n.description
           (
-            exactly "gen-merge: module `<gen-merge>' is a function whose result is lambda, not an attribute set. A module function is applied once, to the module arguments, and must return the module itself; a function that returns another function (`a: b: { … }`) is not a module."
+            "^"
+            + lib.escapeRegex "gen-merge: module `<gen-merge>' is a function whose result is lambda, not an attribute set"
           );
       test-pred-custom-retired = thrown (aspects.pred.custom "x" { }) (
         exactly "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is a context closure, which crosses the gen-rules door: declare the aspect through the framework's surface."
@@ -1450,7 +1459,8 @@ in
           }).config.aspects.x;
       conflicting =
         got:
-        exactly (
+        "^"
+        + lib.escapeRegex (
           "gen-merge: the option `x.meta.loc' has conflicting definitions:\n"
           + "- In `<gen-merge>': <a list>\n"
           + "- In `<gen-merge>': ${got}"
