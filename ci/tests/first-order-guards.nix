@@ -270,14 +270,51 @@ let
       expr = {
         below = ok (place { } { d = a.guard a.pred.always { a = t.ref rOuter; }; }).d;
         inList = ok (place { } { d = a.guard a.pred.always [ (t.ref rOuter) ]; }).d;
+        atClassKey = ok (place { } { d = a.guard a.pred.always { nixos = t.ref rOuter; }; }).d;
         whole = ok (place { } { d = a.guard (a.pred.has "thimble") (t.ref rOuter); }).d;
       };
       expected = {
         below = false;
         inList = false;
+        atClassKey = false;
         whole = true;
       };
     };
+    # den-hoag-gkar9 term 2: a fired body with no term its author wrote, no nested guard and no module
+    # slot is served as written; every other body is resolved, a term at a class key or in a list
+    # included, and a nested guard arrives as the CHECKED record the outer's firing resolves it to.
+    test-fired-body-served-or-resolved =
+      let
+        gv = a.mkGuardVocab { };
+        fire = ctx: g: gv.applyGuard ctx (place { } { d = g; }).d;
+        ground = {
+          description = "g";
+          xs = [
+            1
+            { y = "z"; }
+          ];
+        };
+      in
+      {
+        expr = {
+          ground = fire { } (a.guard a.pred.always ground);
+          classTerm = fire { thimble = "p"; } (
+            a.guard (a.pred.has "thimble") { nixos = t.readCtx "thimble" [ ]; }
+          );
+          listTerm = fire { thimble = "p"; } (
+            a.guard (a.pred.has "thimble") { xs = [ (t.readCtx "thimble" [ ]) ]; }
+          );
+          nestedChecked =
+            (fire { } (a.guard a.pred.always { sub = a.guard a.pred.always { description = "d"; }; }))
+            .sub.__checked or false;
+        };
+        expected = {
+          inherit ground;
+          classTerm.nixos = "p";
+          listTerm.xs = [ "p" ];
+          nestedChecked = true;
+        };
+      };
     # A door node fires through the framework's door (cnf.ref), its nested node at the same context
     # through the returned scope (G5's lexically nested path).
     test-door-node-nested-scope = {
