@@ -16,6 +16,7 @@
   genSchema,
   genIdentity,
   genAlgebra,
+  prelude,
   ...
 }:
 let
@@ -485,6 +486,40 @@ in
       test-cnf-formal-through-mkif = cell {
         imports = [ (genMerge.mkIf true { providerPrefix = [ "x" ]; }) ];
       } (cnfText "providerPrefix");
+
+      # Over a gen-merge that does not read a functor module's record, the reservation would be
+      # dropped silently; the kind refuses by name, naming the protocol it requires (den-hoag-r05lc).
+      test-gen-merge-without-the-record-carrier-refused-by-name =
+        let
+          withoutRecord = genMerge // {
+            moduleSyntax = removeAttrs genMerge.moduleSyntax [ "functorRecord" ];
+          };
+          oldAspects = import ../lib {
+            inherit prelude;
+            merge = withoutRecord;
+            schema = genSchema;
+            identity = genIdentity;
+            algebra = genAlgebra;
+          };
+          schema = oldAspects.mkAspectSchema { keySemantics.classOne.category = "class"; };
+        in
+        {
+          expr =
+            assert controls;
+            builtins.attrNames
+              (genMerge.evalModuleTree { } [
+                { options.schema = schema.schemaOption; }
+                (schema.mkAspectModule { })
+                {
+                  config.schema.aspect.options.priority = int0;
+                  config.aspects.bar = { };
+                }
+              ]).config.aspects.bar;
+          expectedError = {
+            type = "ThrownError";
+            msg = exactly "gen-aspects: kind 'aspect' reserves its construction formals in every module its entry imports, on the record of the module it wraps each definition in (`__reservedKeys'), and the gen-merge it is evaluated with does not read that record (its `moduleSyntax.functorRecord' does not list `__reservedKeys'). gen-aspects requires a gen-merge reading the reservation off a functor module's record; update the gen-merge input gen-aspects is built with.";
+          };
+        };
 
       # A FUNCTOR kind entry def importing a cnf formal: the def is wrapped, since its applied result
       # would drop an in-place marker. Its default-branch twin is gen-schema's function-def cell.
