@@ -103,7 +103,8 @@ the walked first-order guards with no edge whose condition was decided FALSE at 
 a condition the evaluator refuses (R: `has` over an absent coordinate under the open world) and a never-walked
 guard are in neither set (den-hoag-n8wb5). A reader uses `declined` only to choose "no edge" over "refuse". `entry` resolves each field where it
 is read (gen-algebra `resolveFields`): a refusing member refuses at its own read, named by aspect and
-field, and its siblings and the relation's edges still answer. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
+field, and its siblings and the relation's edges still answer. A ground body (no term its author wrote, no nested guard,
+no module slot) has no field that can refuse, and fires to itself as written (den-hoag-gkar9). Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
 nodes and inline content. A node mints at its own tuple when the guard's condition holds there,
 otherwise at each descendant's coordinate where it holds and whose crossed levels, below the entities the
 reading node binds, the instance takes (`admits`, `crosses`; ruling 7, T1); a nested include fans out the
