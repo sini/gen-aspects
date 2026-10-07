@@ -1641,4 +1641,37 @@ in
         fcMsg "x.includes.[definition 1-entry 1]"
       );
     };
+
+  # den-hoag-3849t K2: a functor-form module function at a nested key of a plain definition beside a
+  # guard record is coerced as a lambda is, so the typed element refuses it by the functor's own name,
+  # as T4's does. RED (gen-aspects 36b3879): it was held raw at rc 0, and the projection that only
+  # excluded `_type` walked into `__functor` and named a context closure at `sub.__functor.includes`.
+  flake.testsError.carrier-nested-positions = {
+    test-a-functor-module-function-at-a-nested-key-is-refused-by-name =
+      thrown
+        (mkSchemaEval {
+          modules = [
+            { config.aspects.main = gv.vocab.always { description = "G"; }; }
+            {
+              config.aspects.main.sub = {
+                __functionArgs = {
+                  config = false;
+                };
+                __functor =
+                  _:
+                  { config, ... }:
+                  { };
+              };
+            }
+          ];
+        }).config.aspects.main.fragments
+        (
+          exactly (
+            "gen-aspects: aspect `main.sub.includes.[definition 1-entry 1]`: a functor-form module function (an "
+            + "attrset with `__functor`, as `setFunctionArgs` builds) reached an aspect position. A submodule reads "
+            + "an attrset definition as config, never as a module, so its `__functor` key would be kept as an aspect "
+            + "attribute and nothing would be delivered. Write it as a lambda: `{ config, ... }: { ... }`."
+          )
+        );
+  };
 }
