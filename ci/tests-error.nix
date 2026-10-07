@@ -21,6 +21,9 @@
 }:
 let
   exactly = msg: "^" + lib.escapeRegex msg + "$";
+  # gen-prelude's refusal text, composed with this library's own literal door, field and accepted
+  # set (den-hoag-7jltk): every assertion kept, none of gen-prelude's wording copied.
+  inherit (prelude) refusals;
   wcnf.keySemantics.classOne.category = "class";
   gv = aspects.mkGuardVocab { };
   carrier =
@@ -124,23 +127,21 @@ in
   flake.testsError.doors =
     let
       schema = aspects.mkAspectSchema { };
-      unknown =
-        door: accepted:
-        exactly "${door}: 'notAnOption' is not an option of this door; the options are closed (accepted: ${accepted}) (in prelude.checkOptions)";
+      unknown = door: accepted: exactly (refusals.unknownOption door accepted "notAnOption");
     in
     {
       test-mk-aspect-option-unknown = thrown (schema.mkAspectOption { notAnOption = 1; }) (
-        unknown "gen-aspects.mkAspectSchema.mkAspectOption" "'providerPrefix'"
+        unknown "gen-aspects.mkAspectSchema.mkAspectOption" [ "providerPrefix" ]
       );
       test-mk-aspect-module-unknown = thrown (schema.mkAspectModule { notAnOption = 1; }) (
-        unknown "gen-aspects.mkAspectSchema.mkAspectModule" "'providerPrefix'"
+        unknown "gen-aspects.mkAspectSchema.mkAspectModule" [ "providerPrefix" ]
       );
       test-mk-namespace-type-unknown = thrown (schema.mkNamespaceType {
         config = { };
         notAnOption = 1;
-      }) (unknown "gen-aspects.mkAspectSchema.mkNamespaceType" "'config'");
+      }) (unknown "gen-aspects.mkAspectSchema.mkNamespaceType" [ "config" ]);
       test-mk-namespace-type-config-required = thrown (schema.mkNamespaceType { }) (
-        exactly "gen-aspects.mkAspectSchema.mkNamespaceType: required field 'config' is missing (required: 'config') (in prelude.checkRequired)"
+        exactly (refusals.missingField "gen-aspects.mkAspectSchema.mkNamespaceType" [ "config" ] "config")
       );
     };
 
@@ -163,10 +164,16 @@ in
           ];
         };
       read = elems: (aspects.graphFacts { } (tree elems).config.aspects).includesOf.app;
-      door = "gen-aspects.includes (aspect 'app', include position 0): ";
+      door = "gen-aspects.includes (aspect 'app', include position 0)";
       notMember =
         h:
-        exactly "${door}declaration '${h}' is not a member of the registry (available: 'app', 'lib', 'lib/base') (in prelude.resolve)";
+        exactly (
+          refusals.unregisteredDeclaration door h [
+            "app"
+            "lib"
+            "lib/base"
+          ]
+        );
       a = (tree (_: [ ])).config.aspects;
     in
     {
@@ -193,7 +200,7 @@ in
         exactly "gen-aspects: the option `app.includes.\"[definition 1-entry 1]\".key' is written by the aspect type; remove the definition."
       );
       test-bare-string-naming-nothing = thrown (read (_: [ "lib/bsae" ])) (
-        exactly "${door}reference 'lib/bsae' names no entry of the registry (in prelude.resolve)"
+        exactly (refusals.unknownReference door "lib/bsae")
       );
     };
 
@@ -632,7 +639,15 @@ in
             extra = 1;
           })
           (
-            exactly "gen-aspects.instanceOf: 'extra' is not an option of this door; the options are closed (accepted: 'aspect', 'value', 'context', 'sources', 'scope') (in prelude.checkOptions)"
+            exactly (
+              refusals.unknownOption "gen-aspects.instanceOf" [
+                "aspect"
+                "value"
+                "context"
+                "sources"
+                "scope"
+              ] "extra"
+            )
           );
       test-aspect-not-string =
         thrown
@@ -758,7 +773,9 @@ in
     {
       # The previous surface's call (scopes in the input's place) names the new field.
       test-input-missing-suppliers = thrown (aspects.instancesFor { } tree { a = ok; }) (
-        exactly "gen-aspects.instancesFor: required field 'suppliers' is missing (required: 'suppliers', 'scopes', 'containment') (in prelude.checkRequired)"
+        exactly (
+          refusals.missingField "gen-aspects.instancesFor" [ "suppliers" "scopes" "containment" ] "suppliers"
+        )
       );
       test-input-unknown-field =
         thrown
@@ -769,7 +786,9 @@ in
             extra = 1;
           })
           (
-            exactly "gen-aspects.instancesFor: 'extra' is not an option of this door; the options are closed (accepted: 'suppliers', 'scopes', 'containment') (in prelude.checkOptions)"
+            exactly (
+              refusals.unknownOption "gen-aspects.instancesFor" [ "suppliers" "scopes" "containment" ] "extra"
+            )
           );
       test-suppliers-not-attrs = thrown (relWith [ ] ok) (
         exactly "gen-aspects.instancesFor: `suppliers` must be an attrset `<source identity>.<key> = <value>`, not a list."
@@ -790,15 +809,21 @@ in
         at "`members` must be a list of facts ids, not a string."
       );
       test-scope-missing-sources = thrown (rel (removeAttrs ok [ "sources" ])) (
-        exactly "gen-aspects.instancesFor (node 'a'): required field 'sources' is missing (required: 'members', 'sources') (in prelude.checkRequired)"
+        exactly (
+          refusals.missingField "gen-aspects.instancesFor (node 'a')" [ "members" "sources" ] "sources"
+        )
       );
       test-scope-unknown-field = thrown (rel (ok // { extra = 1; })) (
-        exactly "gen-aspects.instancesFor (node 'a'): 'extra' is not an option of this door; the options are closed (accepted: 'members', 'sources') (in prelude.checkOptions)"
+        exactly (
+          refusals.unknownOption "gen-aspects.instancesFor (node 'a')" [ "members" "sources" ] "extra"
+        )
       );
       # R-10. The retired per-tuple `context` refuses through the closed-field door, with no tombstone.
       # RED (at bcc1329): `context` is accepted beside `sources`.
       test-scope-context-retired = thrown (rel (ok // { context.host = "h1"; })) (
-        exactly "gen-aspects.instancesFor (node 'a'): 'context' is not an option of this door; the options are closed (accepted: 'members', 'sources') (in prelude.checkOptions)"
+        exactly (
+          refusals.unknownOption "gen-aspects.instancesFor (node 'a')" [ "members" "sources" ] "context"
+        )
       );
       # R-10. The supplier door: a source with no `suppliers` entry, an entry lacking the key, and a
       # source that is not a string, each named. RED (the door removed): an uncatchable missing attribute.
@@ -815,7 +840,9 @@ in
       # den-hoag-8g2rn §2.6. The retired per-scope `descendants` refuses through the closed-field door
       # (LEGACY), and so does a handed transitive view beside `containment`.
       test-scope-descendants-retired = thrown (rel (ok // { descendants = [ ]; })) (
-        exactly "gen-aspects.instancesFor (node 'a'): 'descendants' is not an option of this door; the options are closed (accepted: 'members', 'sources') (in prelude.checkOptions)"
+        exactly (
+          refusals.unknownOption "gen-aspects.instancesFor (node 'a')" [ "members" "sources" ] "descendants"
+        )
       );
       test-descendants-of-view-refused =
         thrown
@@ -826,7 +853,13 @@ in
             descendantsOf = { };
           })
           (
-            exactly "gen-aspects.instancesFor: 'descendantsOf' is not an option of this door; the options are closed (accepted: 'suppliers', 'scopes', 'containment') (in prelude.checkOptions)"
+            exactly (
+              refusals.unknownOption "gen-aspects.instancesFor" [
+                "suppliers"
+                "scopes"
+                "containment"
+              ] "descendantsOf"
+            )
           );
       # OMIT: `containment` is required (`{ }` when there is none).
       test-containment-missing =
@@ -836,7 +869,13 @@ in
             scopes.a = ok;
           })
           (
-            exactly "gen-aspects.instancesFor: required field 'containment' is missing (required: 'suppliers', 'scopes', 'containment') (in prelude.checkRequired)"
+            exactly (
+              refusals.missingField "gen-aspects.instancesFor" [
+                "suppliers"
+                "scopes"
+                "containment"
+              ] "containment"
+            )
           );
       test-containment-not-attrs = thrown (relCont [ ]) (
         exactly "gen-aspects.instancesFor: `containment` must be an attrset `<identifier> = { parent; key; identity; marked; bindings; }`, not a list."
@@ -845,7 +884,15 @@ in
       test-containment-record-missing-bindings =
         thrown (relCont (cont // { u1 = removeAttrs cont.u1 [ "bindings" ]; }))
           (
-            atE "u1" "required field 'bindings' is missing (required: 'parent', 'key', 'identity', 'marked', 'bindings') (in prelude.checkRequired)"
+            exactly (
+              refusals.missingField "gen-aspects.instancesFor (containment 'u1')" [
+                "parent"
+                "key"
+                "identity"
+                "marked"
+                "bindings"
+              ] "bindings"
+            )
           );
       test-containment-record-unknown-field =
         thrown
@@ -858,7 +905,15 @@ in
             }
           ))
           (
-            atE "u1" "'extra' is not an option of this door; the options are closed (accepted: 'parent', 'key', 'identity', 'marked', 'bindings') (in prelude.checkOptions)"
+            exactly (
+              refusals.unknownOption "gen-aspects.instancesFor (containment 'u1')" [
+                "parent"
+                "key"
+                "identity"
+                "marked"
+                "bindings"
+              ] "extra"
+            )
           );
       test-containment-key-not-a-string = thrown (relCont (
         cont
