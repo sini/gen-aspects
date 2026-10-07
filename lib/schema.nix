@@ -52,17 +52,24 @@ let
           throw "gen-aspects: kind '${kind}': declaration key '${builtins.head formalNamed}' is an mkAspectSchema construction formal — it is fixed by `mkAspectSchema { ${builtins.head formalNamed} = …; }`, and written on a kind entry it is not read as one; pass it there, or write `config.${builtins.head formalNamed}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`"
         else
           map
-            (d: {
-              __reservedKeys = reservation;
-              __functor =
-                _: _:
-                if !(builtins.elem "__reservedKeys" (merge.moduleSyntax.functorRecord or [ ])) then
-                  throw "gen-aspects: kind '${kind}' reserves its construction formals in every module its entry imports, on the record of the module it wraps each definition in (`__reservedKeys'), and the gen-merge it is evaluated with does not read that record (its `moduleSyntax.functorRecord' does not list `__reservedKeys'). gen-aspects requires a gen-merge reading the reservation off a functor module's record; update the gen-merge input gen-aspects is built with."
-                else if d.value ? __functor || !(builtins.isAttrs d.value) then
-                  { imports = [ d.value ]; }
-                else
-                  d.value;
-            })
+            (
+              d:
+              if builtins.isAttrs d.value && !(d.value ? __functor || d.value ? imports || d.value ? require) then
+                d.value
+              else
+                {
+                  __reservedKeys = reservation;
+                  __functionArgs = { };
+                  __functor =
+                    _: _:
+                    if !(builtins.elem "__reservedKeys" (merge.moduleSyntax.functorRecord or [ ])) then
+                      throw "gen-aspects: kind '${kind}' reserves its construction formals in every module its entry imports, on the record of the module it wraps each definition in (`__reservedKeys'), and the gen-merge it is evaluated with does not read that record (its `moduleSyntax.functorRecord' does not list `__reservedKeys'). gen-aspects requires a gen-merge reading the reservation off a functor module's record; update the gen-merge input gen-aspects is built with."
+                    else if d.value ? __functor || !(builtins.isAttrs d.value) then
+                      { imports = [ d.value ]; }
+                    else
+                      d.value;
+                }
+            )
             (
               builtins.filter (
                 d: builtins.isAttrs d.value || builtins.isFunction d.value || builtins.isPath d.value
@@ -76,7 +83,9 @@ let
       # does on direct defs. The marker rides on the RECORD of a functor wrapping each def, never in a
       # module's content (den-hoag-r05lc): the kind value is a module a foreign evaluator also imports,
       # and nixpkgs applies the functor and reads only its result. An attrset def is that result; a
-      # function, functor or path def is imported by it.
+      # function, functor or path def is imported by it. An attrset def naming no `imports` or
+      # `require` imports nothing, so the reservation has nothing to scope and it is passed as it
+      # stands: the wrapper is applied once per instance, and only where it has work.
       reservation =
         let
           r = genSchema.entryReservation kind;
