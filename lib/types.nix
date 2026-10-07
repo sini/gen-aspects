@@ -1577,21 +1577,28 @@ let
     let
       # The container's element positions, stated ONCE (gen-merge's `split`): one per key, each
       # re-rooted at `[ k ]` — drop the container `loc` (the mount) so children are relative — with
-      # the position extended by that key.
+      # the position extended by that key. Each key's definitions are collected in ONE pass over the
+      # definitions, in definition order: a per-key scan of every definition is O(keys × defs), the
+      # 4n² thunks a fired guard carrier paid per aspect (den-hoag-gkar9).
       split =
         _loc: defs:
+        let
+          byKey = builtins.zipAttrsWith (_: vs: vs) (
+            map (
+              d:
+              builtins.mapAttrs (_: value: {
+                inherit (d) file;
+                inherit value;
+              }) d.value
+            ) defs
+          );
+        in
         map (k: {
           step = [ k ];
           loc = [ k ];
-          defs = builtins.concatMap (
-            d:
-            prelude.optional (d.value ? ${k}) {
-              inherit (d) file;
-              value = d.value.${k};
-            }
-          ) defs;
+          defs = byKey.${k};
           type = elemType;
-        }) (builtins.attrNames (prelude.foldl' (acc: d: acc // d.value) { } defs));
+        }) (builtins.attrNames byKey);
       foldWith =
         foldElement: loc: defs:
         builtins.listToAttrs (

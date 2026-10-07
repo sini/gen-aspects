@@ -58,7 +58,7 @@
             echo "tests-process: FAILED at cell $1: $2" >&2
             exit 1
           }
-          # evalArm <arm>: runs one cell in its own process; leaves rc/val set. The value variable
+          # evalArm <arm> [n]: runs one cell in its own process; leaves rc/val set. The value variable
           # is `val`, never `out` — `out` is the derivation's own output path.
           evalArm() {
             rc=0
@@ -76,6 +76,7 @@
               --argstr genAlgebraSrc "$genAlgebraSrc" \
               --argstr genAspectsAlgebraSrc "$genAspectsAlgebraSrc" \
               --argstr label "$label" \
+              --argstr n "''${2:-0}" \
               "$cells" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
           }
@@ -105,9 +106,32 @@
           [ "$nd" = "1" ] || die nta-aspect-module "expected 1 door, counted $nd"
           [ "$np" = "0" ] || die nta-aspect-module "expected 0 declaration-only evaluations (an nta child, not a standalone evaluation), counted $np"
 
+          # den-hoag-gkar9: aspectsRoot's per-key collection is linear. thunksAt <n> runs the cell at
+          # size n with the evaluator's statistics on and leaves `thunks` set; statistics that were
+          # not written die as COULD NOT MEASURE, never read as a count.
+          thunksAt() {
+            rm -f "$TMPDIR/stats"
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            evalArm aspects-root-linear "$1"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die aspects-root-linear "n=$1: expected exit 0, got $rc"
+            [ "$val" = "$1" ] || die aspects-root-linear "n=$1: expected $1, got '$val'"
+            [ -s "$TMPDIR/stats" ] || die aspects-root-linear "n=$1: could not measure, no statistics written"
+            thunks=$(sed -n 's/.*"nrThunks": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
+            [ -n "$thunks" ] || die aspects-root-linear "n=$1: could not measure, no nrThunks in the statistics"
+          }
+          thunksAt 100; t1=$thunks
+          thunksAt 200; t2=$thunks
+          thunksAt 400; t3=$thunks
+          echo "aspects-root-linear: thunks $t1 / $t2 / $t3 at n = 100 / 200 / 400"
+          # Linear, the second slope is exactly twice the first (measured on all three evaluators); a
+          # per-key scan of every definition adds 4n² and roughly quadruples it. 0.5% slack.
+          [ $((100 * (t3 - t2))) -le $((201 * (t2 - t1))) ] \
+            || die aspects-root-linear "thunks grow faster than linear in n: $t1 / $t2 / $t3 at n = 100 / 200 / 400"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "2" ] || die runner "expected 2 evaluations, ran $ran"
-          echo "tests-process: 2 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "5" ] || die runner "expected 5 evaluations, ran $ran"
+          echo "tests-process: 3 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

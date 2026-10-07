@@ -27,6 +27,8 @@
   genAspectsAlgebraSrc,
   # A trace label generated fresh per run by the runner, which counts its lines on stderr.
   label ? "",
+  # The fixture size of a scaling cell, as a string (`--argstr`).
+  n ? "0",
 }:
 let
   prelude = import "${genPreludeSrc}/lib";
@@ -160,6 +162,21 @@ let
         c.config.aspects.networking.priority
         c.config.aspects.desktop.priority
       ];
+
+    # den-hoag-gkar9: aspectsRoot's per-key definition collection is ONE pass. n modules each define
+    # one distinct aspect, so a per-key scan of every definition costs keys × defs = n²; each aspect
+    # is forced to WHNF only. The verdict is the evaluator's thunk count at three sizes, read by the
+    # runner (a quadratic shows as a growing slope), not this value.
+    aspects-root-linear =
+      let
+        ids = builtins.genList (i: "a${toString i}") (builtins.fromJSON n);
+        tree =
+          (spiedDoored.evalModuleTree { } (
+            [ { options.aspects = (ga.mkAspectSchema { }).mkAspectOption { }; } ]
+            ++ map (k: { aspects.${k}.description = k; }) ids
+          )).config.aspects;
+      in
+      builtins.deepSeq (map (k: builtins.seq tree.${k} null) ids) (builtins.length ids);
   };
 in
 cells.${arm}
