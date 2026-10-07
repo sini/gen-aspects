@@ -116,11 +116,7 @@ let
     // (genValues.haberdashery.thimbles.${thimble} or { });
   }) genValues.haberdashery.thimbles;
 
-  realized = genDelivery.realize {
-    projected = genProjected;
-    terminals.nixos = dataTerminal;
-    inherit refinements;
-  };
+  realized = genDelivery.realize { inherit refinements; } { nixos = dataTerminal; } genProjected;
 in
 {
   config._module.args = { inherit realized; };

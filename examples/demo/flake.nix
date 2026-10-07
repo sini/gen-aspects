@@ -68,8 +68,6 @@
         # role runs; web/all thimbles run the firewall + nginx parametric aspects, database thimbles run
         # firewall only.
         projected = roster.delivery.project {
-          values = composed.values;
-          cnf = import ./gen-modules/_aspect-cnf.nix { inherit lib; };
           selectNodes =
             values:
             lib.mapAttrs (
@@ -86,7 +84,7 @@
                     ];
               }
             ) values.haberdashery.thimbles;
-        };
+        } (import ./gen-modules/_aspect-cnf.nix { inherit lib; }) composed.values;
       in
       {
         imports = [
