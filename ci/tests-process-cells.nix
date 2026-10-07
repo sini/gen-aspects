@@ -185,7 +185,7 @@ let
       in
       builtins.deepSeq (map (k: builtins.seq tree.${k} null) ids) (builtins.length ids);
 
-    # den-hoag-gkar9 term 2: a fired GROUND guard serves its body as written, so delivering it costs the
+    # den-hoag-gkar9 term 2: a fired guard whose body is plain data serves it as written, so delivering it costs the
     # same at every body width. One guard of n fields is placed and checked once, then fired 32 times at
     # a context where its condition holds (`-true`) and where it fails (`-false`). The verdict is the
     # difference of the two thunk counts, the body's delivery, at two widths, read by the runner.

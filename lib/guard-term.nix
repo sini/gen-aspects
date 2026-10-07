@@ -43,6 +43,7 @@ let
     "{\"guard\":"
     "{\"slot\":"
   ];
+  isSlotId = hasPrefix [ "{\"slot\":" ];
 
   # A door id is DECODED only once it matches refId's output grammar, because `builtins.fromJSON`
   # aborts uncatchably on malformed input on all three evaluators. The grammar match itself overflows
@@ -278,9 +279,17 @@ let
           # The D this guard was checked under; the resolver must read the same one (P3).
           __declared = declaredFor cnf;
           __nested = lifted.nested;
-          # A GROUND body (no term the author wrote, no nested guard, no module slot) resolves to the data
-          # it was lifted from at every context, so firing serves that data and never walks the term back.
-          __served = if lifted.authored == [ ] && lifted.nested == none then { value = g.body; } else null;
+          # A body that is THE LIFT'S IMAGE OF PLAIN DATA (no term its author wrote, nothing nested but
+          # module slots) resolves to the data it was lifted from at every context: `resolveFields` takes
+          # each lift-made node back to its datum, and a slot's `ref` to its function as written (`envOf`).
+          # So firing serves that data and never walks the term back. A nested guard resolves to its
+          # CHECKED record, not its source, and an authored term, closed or not (`t.lit "x"`), is a term
+          # record whose source is not its value: both resolve.
+          __served =
+            if lifted.authored == [ ] && builtins.all isSlotId (builtins.attrNames lifted.nested) then
+              { value = g.body; }
+            else
+              null;
           inherit body;
           __mint =
             if isExact cm && isExact bm && innerUnmintable == [ ] then

@@ -129,7 +129,7 @@
           [ $((100 * (t3 - t2))) -le $((201 * (t2 - t1))) ] \
             || die aspects-root-linear "thunks grow faster than linear in n: $t1 / $t2 / $t3 at n = 100 / 200 / 400"
 
-          # den-hoag-gkar9 term 2: delivering a fired ground guard's body costs the same at every width.
+          # den-hoag-gkar9 term 2: delivering a fired plain-data guard body costs the same at every width.
           # fireAt <arm> <n> leaves `thunks` set, read as above.
           fireAt() {
             rm -f "$TMPDIR/stats"

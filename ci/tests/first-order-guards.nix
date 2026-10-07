@@ -280,13 +280,17 @@ let
         whole = true;
       };
     };
-    # den-hoag-gkar9 term 2: a fired body with no term its author wrote, no nested guard and no module
-    # slot is served as written; every other body is resolved, a term at a class key or in a list
-    # included, and a nested guard arrives as the CHECKED record the outer's firing resolves it to.
+    # den-hoag-gkar9 term 2: a fired body that is the lift's image of plain data (no term its author
+    # wrote, nothing nested but module slots) is served as written, a slot's function as written; every
+    # other body is resolved: a term at a class key or in a list, an authored closed term (`t.lit`,
+    # whose source is the term record, not its value), and a nested guard, which arrives as the CHECKED
+    # record the outer's firing resolves it to.
     test-fired-body-served-or-resolved =
       let
         gv = a.mkGuardVocab { };
         fire = ctx: g: gv.applyGuard ctx (place { } { d = g; }).d;
+        modFn = { config, ... }: { marker = "m"; };
+        slotted = a.guard a.pred.always { includes = [ modFn ]; };
         ground = {
           description = "g";
           xs = [
@@ -307,12 +311,22 @@ let
           nestedChecked =
             (fire { } (a.guard a.pred.always { sub = a.guard a.pred.always { description = "d"; }; }))
             .sub.__checked or false;
+          authoredClosed = fire { } (a.guard a.pred.always { description = t.lit "x"; });
+          slot = {
+            served = ((place { } { d = slotted; }).d.__served or null) != null;
+            fn = ((builtins.head (fire { } slotted).includes) { config = { }; }).marker;
+          };
         };
         expected = {
           inherit ground;
           classTerm.nixos = "p";
           listTerm.xs = [ "p" ];
           nestedChecked = true;
+          authoredClosed.description = "x";
+          slot = {
+            served = true;
+            fn = "m";
+          };
         };
       };
     # A door node fires through the framework's door (cnf.ref), its nested node at the same context
