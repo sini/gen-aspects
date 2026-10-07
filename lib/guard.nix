@@ -66,6 +66,24 @@ in
       # identifiers, which name the registration and the position, so two fragments share a key only
       # where they share the closure.
       applyGuardScoped =
+        let
+          # A guard carrier's content law over its survivors. Plain attrsets fold as `lazyAttrsOf
+          # anything`, bound once, where `applyGuardScoped` is first forced: not in a let the library's
+          # load builds (a member-load cost), and not per firing (building the type cost more than the
+          # fold it runs; den-hoag-15wnx, measured against nixpkgs' same fold). Every other survivor list
+          # (a scalar or list body at a freeform field, a construction carrying `__mint`, a mix) takes
+          # `anything`, whose own arms are the same law; the test is `anything`'s own attrset-arm test.
+          fields = merge.types.lazyAttrsOf merge.types.anything;
+          contentLaw =
+            loc: defs:
+            if
+              builtins.all (d: builtins.isAttrs d.value) defs
+              && !((builtins.head defs).value ? __mint && builtins.all (d: d.value ? __mint) defs)
+            then
+              fields.merge loc defs
+            else
+              merge.types.anything.merge loc defs;
+        in
         args: g:
         if g ? fragments then
           let
@@ -77,14 +95,22 @@ in
             value =
               if survivors == [ ] then
                 null
-              else if builtins.length survivors == 1 then
-                builtins.head values
               else
                 # The module system's own law for untyped content (`types.anything`): lists concatenate,
                 # attrsets merge per key, equal scalars agree, and a conflicting scalar is refused by name
                 # (ADR-0025 item 1). `mergeDefaultOption` folds attrsets with `//`, which drops a
                 # definition's keys without a message (den-hoag-ywlww).
-                merge.types.anything.merge loc (
+                #
+                # Plain attrset survivors' fields fold as `lazyAttrsOf anything` (den-hoag-15wnx). Each
+                # field's definitions take gen-merge's spine, so a property marker a raw fragment holds at a
+                # nested key is discharged at fire time, where a fired record's content can meet its
+                # priority; one survivor takes the law as several do, because the law is not the identity
+                # on one definition. The field level is LAZY, as the aspect type's own freeform slot (T4)
+                # is: a field whose every definition discharges to nothing is kept and refused by name
+                # where it is read, and reading one field never forces another (ADR-0010 §4(a),
+                # per-field substitution). Below the fields `anything` is nixpkgs' own, strict key set
+                # and all. Survivors that are not plain attrsets take `anything` whole (`contentLaw`).
+                contentLaw loc (
                   map (v: {
                     file = g.meta.file or "<unknown>";
                     value = v;

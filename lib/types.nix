@@ -395,6 +395,24 @@ let
         + "closure reached an aspect position. A submodule reads an attrset definition as config, so nothing would be "
         + "delivered, and gen-rules' lowering does not lower a functor at an aspect position. Write it as a lambda "
         + "closure (`{ thimble, ... }: { ... }`), or have the framework lower its own form first.";
+      # den-hoag-15wnx: an override across route (a)'s split. The typed positions are merged at load among the
+      # plain definitions, and nothing carries their priority to the discharge, where the raw remainder and a
+      # fired record meet it; so the priority cannot range over the definitions the module system ranges it over.
+      # Served, such a value would silently lose an element (the remainder's `mkForce { }` beats the typed
+      # `{ includes }` of its own definition).
+      #
+      # ★ A STATED SHORTFALL, NOT THE TARGET. The module system serves these values, and law fixes their value
+      # (ADR-0029: the priority algebra is the module system's own; ADR-0039's serve half). The target is
+      # den-hoag-15wnx OQ1 arm α: emit the typed body under its typed evaluation's winning priority, so that it,
+      # the remainder and a fired record meet in one `filterOverrides`. Until α lands this refuses by name, as
+      # ADR-0025 item 1 admits, rather than serve the loss.
+      overrideSplitRefusal =
+        loc:
+        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a priority (`mkOverride`, `mkForce`, "
+        + "`mkDefault`) over a value holding an `includes` list or a module function, in a plain definition beside a "
+        + "guard. The typed positions are merged when the carrier is built and its guards are discharged later, so the "
+        + "priority cannot range over a guard's content. Write the priority on the scalars alone, or move the "
+        + "`includes` out from under it.";
       functorModuleRefusal =
         loc:
         "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a functor-form module function (an attrset with "
@@ -436,19 +454,21 @@ let
       # den-hoag-cgobz). A plain definition contributes its POSITIONS (`positionsOf`, den-hoag-3849t):
       # the `includes` list at each of its aspect positions, and a module function at a nested key in
       # the same coercion, one level down. A guard record contributes nothing here.
-      carrierCoerced = entryCoerced carrierSub (
-        d:
-        d
-        // {
-          value =
-            if builtins.isFunction d.value then
-              { includes = [ d.value ]; }
-            else if isGuardRecordDef d || !(builtins.isAttrs d.value) then
-              { }
-            else
-              positionsOf d.value;
-        }
-      );
+      carrierCoerced =
+        loc:
+        entryCoerced carrierSub (
+          d:
+          d
+          // {
+            value =
+              if builtins.isFunction d.value then
+                { includes = [ d.value ]; }
+              else if isGuardRecordDef d || !(builtins.isAttrs d.value) then
+                { }
+              else
+                positionsOf loc d.value;
+          }
+        );
       # ROUTE (a) (den-hoag-3849t): of a plain definition beside a guard, only its `includes` lists are
       # typed, at every aspect position, and a module function at a nested key is coerced into one.
       # F4(a)'s content law (`types.anything`) merges attrsets per key and scalars by agreement, and
@@ -479,25 +499,30 @@ let
       # a nested value's positions: a module function is coerced, a property is projected through
       # keeping its wrapper, a plain node recurses, and anything else has none
       posVal =
-        x:
+        loc: x:
         if isCoercible x then
           { includes = [ x ]; }
         else if isContentV x then
           (
             let
-              c = posVal x.content;
+              c = posVal loc x.content;
             in
-            if c == { } then { } else x // { content = c; }
+            if c == { } then
+              { }
+            else if x._type == "override" then
+              throw (overrideSplitRefusal loc)
+            else
+              x // { content = c; }
           )
         else if isMergeV x then
           (
             let
-              cs = builtins.filter (c: c != { }) (map posVal x.contents);
+              cs = builtins.filter (c: c != { }) (map (posVal loc) x.contents);
             in
             if cs == [ ] then { } else x // { contents = cs; }
           )
         else if isPlainNode x then
-          positionsOf x
+          positionsOf loc x
         else
           { };
       remVal =
@@ -514,10 +539,10 @@ let
           x;
       # the `includes` lists of a plain value's aspect positions, and its nested module functions coerced
       positionsOf =
-        v:
+        loc: v:
         prelude.optionalAttrs (v ? includes) { inherit (v) includes; }
         // prelude.filterAttrs (_: x: x != { }) (
-          prelude.mapAttrs (_: posVal) (prelude.filterAttrs (k: _: isNestedKey k) v)
+          prelude.mapAttrs (k: posVal (loc ++ [ k ])) (prelude.filterAttrs (k: _: isNestedKey k) v)
         );
       # the rest of it, held raw: every declared key and every value that is not a position
       remainderOf =
@@ -554,7 +579,7 @@ let
           {
             step = [ ];
             inherit loc defs;
-            type = carrierCoerced;
+            type = carrierCoerced loc;
           }
         ];
         mergeDefs = {
@@ -581,11 +606,11 @@ let
               # identity: a typed fragment of plain definitions alone repeats what their `decl`s mint, so
               # only one holding a module function's element is opaque
               ofFunctions = builtins.any (d: builtins.isFunction d.value) defs;
-              body = positionsData (fold carrierCoerced defs);
+              body = positionsData (fold (carrierCoerced loc) defs);
             };
             isPlainDef = d: !(isGuardRecordDef d) && builtins.isAttrs d.value;
             hasTyped = builtins.any (
-              d: builtins.isFunction d.value || (isPlainDef d && positionsOf d.value != { })
+              d: builtins.isFunction d.value || (isPlainDef d && positionsOf loc d.value != { })
             ) defs;
           in
           (builtins.foldl'

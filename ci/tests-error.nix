@@ -1704,4 +1704,114 @@ in
           )
         );
   };
+
+  # den-hoag-15wnx: the message halves of `ci/tests` `guard-nested-property`.
+  flake.testsError.guard-nested-property =
+    let
+      fireMain =
+        ctx: defs:
+        gv.applyGuard ctx
+          (mkSchemaEval { modules = map (v: { config.aspects.main = v; }) defs; }).config.aspects.main;
+      cortex = gv.vocab.whenEq [ "thimble" "name" ] "cortex";
+      fires.thimble.name = "cortex";
+      # the A10 default's fixture: a guard record that always fires, a plain definition, and a sibling aspect
+      dup =
+        v:
+        gv.applyGuard { }
+          (mkSchemaEval {
+            modules = [
+              { config.aspects.dup = gv.vocab.always { description = "g"; }; }
+              { config.aspects.dup = v; }
+              { config.aspects.q.description = "q"; }
+            ];
+          }).config.aspects.dup;
+      render =
+        v:
+        if builtins.isAttrs v then
+          (if v ? description then [ v.description ] else [ ])
+          ++ builtins.concatMap render (v.includes or [ ])
+          ++ (if v ? sub then render v.sub else [ ])
+        else
+          [ ];
+      e = {
+        description = "e";
+      };
+      overrideSplit =
+        loc:
+        exactly (
+          "gen-aspects: aspect `${loc}`: a priority (`mkOverride`, `mkForce`, `mkDefault`) over a value holding an "
+          + "`includes` list or a module function, in a plain definition beside a guard. The typed positions are "
+          + "merged when the carrier is built and its guards are discharged later, so the priority cannot range "
+          + "over a guard's content. Write the priority on the scalars alone, or move the `includes` out from "
+          + "under it."
+        );
+    in
+    {
+      # A carrier FIELD whose every definition discharges to nothing is kept and refused where it is read,
+      # as T4's lazy freeform field is (nixpkgs' `anything` drops it). RED (base): the `mkIf` marker served.
+      test-all-discharged-field-refused-where-read =
+        thrown
+          (fireMain fires [
+            (cortex { classTwo.r = "R"; })
+            { sub = genMerge.mkIf false { classTwo.s = "S"; }; }
+          ]).sub
+          (exactly "gen-merge: option `main.sub' has no definitions after priority resolution");
+      test-all-discharged-class-field-refused-where-read =
+        thrown
+          (fireMain { thimble.name = "vault"; } [
+            (cortex { classTwo.r = "R"; })
+            { classTwo = genMerge.mkIf false { s = "S"; }; }
+          ]).classTwo
+          (exactly "gen-merge: option `main.classTwo' has no definitions after priority resolution");
+      # Survivors that are not all plain attrsets take `anything` whole, so an attrset beside a scalar is
+      # its leaf conflict, refused by name. RED (the field level applied to every survivor list): refused
+      # instead as definitions `lazyAttrsOf' cannot consume, and the scalar cells in `ci/tests` refuse.
+      test-mixed-survivors-refused-by-name = thrown (fireMain fires [
+        (cortex { classTwo.r = "R"; })
+        "x"
+      ]) ("^" + lib.escapeRegex "gen-merge: the option `main' has conflicting definitions:");
+
+      # THE A10 DEFAULT (den-hoag-15wnx OQ1 arm β, a STATED SHORTFALL; arm α is the target): a priority
+      # over a nested value holding a typed position, in a plain definition beside a guard, is refused by
+      # name. Served, `mkForce { includes }` lost its element to the remainder's `mkForce { }`. RED (the
+      # refusal removed): `[ "g" ]`, the element lost at rc 0.
+      test-override-over-a-nested-typed-position-refused = thrown (dup {
+        sub = genMerge.mkForce { includes = [ e ]; };
+      }) (overrideSplit "dup.sub");
+      test-default-over-a-mixed-nested-value-refused = thrown (dup {
+        sub = genMerge.mkDefault {
+          includes = [ e ];
+          description = "s";
+        };
+      }) (overrideSplit "dup.sub");
+      # LIVE CONTROLS, same run: a priority over raw content alone, an `mkIf` over a typed position, and
+      # a priority over the top-level `includes` are all served.
+      test-control-override-paths-served = {
+        expr = {
+          scalarForce = render (dup {
+            sub = genMerge.mkForce { description = "s"; };
+          });
+          ifOverIncludes = render (dup {
+            sub = genMerge.mkIf true { includes = [ e ]; };
+          });
+          includesForce = render (dup {
+            includes = genMerge.mkForce [ e ];
+          });
+        };
+        expected = {
+          scalarForce = [
+            "g"
+            "s"
+          ];
+          ifOverIncludes = [
+            "g"
+            "e"
+          ];
+          includesForce = [
+            "g"
+            "e"
+          ];
+        };
+      };
+    };
 }
