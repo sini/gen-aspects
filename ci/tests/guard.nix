@@ -934,4 +934,89 @@ in
           };
         };
     };
+
+  # den-hoag-3849t (route (a)): of a plain definition beside a guard record, only its `includes` lists
+  # are typed, at every aspect position, and a module function at a nested key is coerced into one, as
+  # F4(b) coerces it beside a second definition. GA4: a plain fragment mints over its definition as
+  # written, so a function-free carrier keeps its structural key; the typed fragment of plain
+  # definitions alone is skipped by identity. GA5: the typed fragment's nested position is not an
+  # aspect (no typed default reaches the content law), and its `includes` holds the applied element.
+  # RED for GA5 (gen-aspects 36b3879): no fragment was typed, `[ ]`.
+  flake.tests.guard.test-guard-multidef-plain-positions-typed =
+    let
+      gv = aspects.mkGuardVocab { };
+      isApplied = v: builtins.isAttrs v && v ? id_hash && v ? key && !(v.__guard or false);
+      x.config.aspects.main = gv.vocab.always { description = "G"; };
+      eval = modules: (mkSchemaEval { inherit modules; }).config.aspects.main;
+      carrierQ = eval [
+        x
+        { config.aspects.main.includes = [ { description = "Q"; } ]; }
+      ];
+      carrierSub = eval [
+        x
+        {
+          config.aspects.main.sub =
+            { config, ... }:
+            {
+              includes = [ { description = "T"; } ];
+            };
+        }
+      ];
+    in
+    {
+      expr = {
+        # GA4
+        qIncKey = lib.hasPrefix "guard:carrier:" (aspects.guardKey carrierQ);
+        qIncFired = map (i: i.description) (gv.applyGuard { } carrierQ).includes;
+        # GA5
+        nestedFn = map (f: {
+          subIsAspect = (f.body.sub or { }) ? id_hash;
+          elems = map isApplied (f.body.sub.includes or [ ]);
+        }) (builtins.filter (f: f.coerced or false) carrierSub.fragments);
+      };
+      expected = {
+        qIncKey = true;
+        qIncFired = [ "Q" ];
+        nestedFn = [
+          {
+            subIsAspect = false;
+            elems = [ true ];
+          }
+        ];
+      };
+    };
+
+  # GA6 (den-hoag-dmdou): a carrier carried by value to another aspect position passes through,
+  # re-stamped with the position it is placed at, so its key is that position's. RED (gen-aspects
+  # 36b3879): the carrier reached the guard-record arm, which read `condition`, and aborted uncatchably.
+  flake.tests.guard.test-guard-carrier-carried-by-value-is-restamped =
+    let
+      gv = aspects.mkGuardVocab { };
+      r =
+        (mkSchemaEval {
+          modules = [
+            { config.aspects.other = gv.vocab.always { description = "G"; }; }
+            {
+              config.aspects.other =
+                { config, ... }:
+                {
+                  includes = [ { description = "Y"; } ];
+                };
+            }
+            ({ config, ... }: { config.aspects.main = config.aspects.other; })
+          ];
+        }).config.aspects;
+    in
+    {
+      expr = {
+        key = aspects.guardKey r.main;
+        name = r.main.name;
+        fired = (gv.applyGuard { } r.main).description;
+      };
+      expected = {
+        key = "guard-loc:main";
+        name = "main";
+        fired = "G";
+      };
+    };
 }

@@ -361,6 +361,9 @@ let
       # RECORD (guard.nix, `__guard`). A CONTEXT CLOSURE (a function that is not a module fn) is
       # refused by name at any arity (`bareClosureRefusal`, below).
       isGuardRecordDef = d: builtins.isAttrs d.value && (d.value.__guard or false);
+      # A carrier carried by value: an aspect's merged carrier, placed at another aspect position
+      # (den-hoag-dmdou). It is already checked; it passes through, re-stamped, or splices its fragments.
+      isCarrierValue = v: builtins.isAttrs v && (v.__guard or false) && v ? fragments;
       isClosureDef = d: builtins.isFunction d.value && !(isModuleFn d.value);
       # A FUNCTOR-FORM MODULE FUNCTION (an attrset with `__functor`, as `lib.setFunctionArgs` builds it,
       # whose formals are satisfiable by `cnf.moduleArgs`). The submodule reads an attrset def as CONFIG,
@@ -407,15 +410,96 @@ let
       # functions join the carrier, module functions do not), and is applied once, in this evaluation,
       # as `coerced` applies it beside a plain second definition: each in its own element of the
       # carrier's `includes`, so its tables are that element's and the root reaches them (S1;
-      # den-hoag-cgobz). Every other definition (the guard records, the plain fragments, held raw)
-      # contributes nothing at this position.
+      # den-hoag-cgobz). A plain definition contributes its POSITIONS (`positionsOf`, den-hoag-3849t):
+      # the `includes` list at each of its aspect positions, and a module function at a nested key in
+      # the same coercion, one level down. A guard record contributes nothing here.
       carrierCoerced = entryCoerced carrierSub (
         d:
         d
         // {
-          value = if builtins.isFunction d.value then { includes = [ d.value ]; } else { };
+          value =
+            if builtins.isFunction d.value then
+              { includes = [ d.value ]; }
+            else if isGuardRecordDef d || !(builtins.isAttrs d.value) then
+              { }
+            else
+              positionsOf d.value;
         }
       );
+      # ROUTE (a) (den-hoag-3849t): of a plain definition beside a guard, only its `includes` lists are
+      # typed, at every aspect position, and a module function at a nested key is coerced into one.
+      # F4(a)'s content law (`types.anything`) merges attrsets per key and scalars by agreement, and
+      # concatenates lists without entering their elements; so the typed contribution adds nothing a
+      # definition did not write, apart from an empty `includes` at a nested position, and no typed
+      # default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
+      declaredKeys = sub.getSubOptions [ ];
+      # an undeclared key of an aspect: a nested aspect position (the freeform slot)
+      isNestedKey = k: k != "includes" && !(declaredKeys ? ${k});
+      # a value the projection enters: a plain attrset, not a property, a guard record or a functor
+      isPlainNode = v: builtins.isAttrs v && !(v ? _type) && !(v.__guard or false) && !(v ? __functor);
+      # a functor-form module function: coerced as a lambda is, so the typed element refuses it by name
+      # (`functorModuleRefusal`), as T4's does; any other functor is held raw
+      isFunctorModule = v: builtins.isAttrs v && v ? __functor && isModuleFn v;
+      isCoercible = v: builtins.isFunction v || isFunctorModule v;
+      # a property wrapper is projected through and kept, so the typed child discharges it as T4 would
+      isContentV =
+        v:
+        builtins.isAttrs v
+        && builtins.elem (v._type or null) [
+          "if"
+          "override"
+          "order"
+        ];
+      isMergeV = v: builtins.isAttrs v && (v._type or null) == "merge";
+      # a nested value's positions: a module function is coerced, a property is projected through
+      # keeping its wrapper, a plain node recurses, and anything else has none
+      posVal =
+        x:
+        if isCoercible x then
+          { includes = [ x ]; }
+        else if isContentV x then
+          (
+            let
+              c = posVal x.content;
+            in
+            if c == { } then { } else x // { content = c; }
+          )
+        else if isMergeV x then
+          (
+            let
+              cs = builtins.filter (c: c != { }) (map posVal x.contents);
+            in
+            if cs == [ ] then { } else x // { contents = cs; }
+          )
+        else if isPlainNode x then
+          positionsOf x
+        else
+          { };
+      remVal =
+        x:
+        if isContentV x then
+          x // { content = remVal x.content; }
+        else if isMergeV x then
+          x // { contents = map remVal x.contents; }
+        else if isCoercible x then
+          { }
+        else if isPlainNode x then
+          remainderOf x
+        else
+          x;
+      # the `includes` lists of a plain value's aspect positions, and its nested module functions coerced
+      positionsOf =
+        v:
+        prelude.optionalAttrs (v ? includes) { inherit (v) includes; }
+        // prelude.filterAttrs (_: x: x != { }) (
+          prelude.mapAttrs (_: posVal) (prelude.filterAttrs (k: _: isNestedKey k) v)
+        );
+      # the rest of it, held raw: every declared key and every value that is not a position
+      remainderOf =
+        v:
+        prelude.mapAttrs (k: x: if isNestedKey k then remVal x else x) (
+          prelude.filterAttrs (k: x: k != "includes" && !(isNestedKey k && isCoercible x)) v
+        );
       # The position its module functions are applied at declares `includes` alone, typed as every
       # aspect's is, and imports no aspect module, so the coerced definitions are the list's only
       # contributors and each adds exactly one element, in definition order (den-hoag-cgobz C1). A
@@ -423,11 +507,19 @@ let
       # module's content reaches no carrier, as before; each element is a full include element, so
       # the aspect modules apply inside it, as they do to T4's.
       carrierSub = merge.submodule {
+        # a nested key is a position of the same shape, an `includes` list and nested keys, and nothing else
+        freeformType = t.lazyAttrsOf carrierSub;
         options.includes = merge.mkOption {
           type = t.listOf (includesElemType cnf);
           default = includesDefault;
         };
       };
+      # the child's value as data: `_module` dropped at every level
+      positionsData =
+        v:
+        prelude.mapAttrs (k: x: if k == "includes" then x else positionsData x) (
+          removeAttrs v [ "_module" ]
+        );
       # The carrier's member. Its one position, adding no step, holds its module functions under
       # `carrierCoerced`, so gen-merge evaluates their elements in this evaluation (a nested tree is a
       # child of the one evaluation that holds it, selected by its fold's split).
@@ -449,36 +541,60 @@ let
             mkGuardCarrier (m: m.mergeDefs.threaded ev loc) loc defs;
         };
       };
-      # Each definition becomes a fragment, in order; the n-th module function's is UNCONDITIONAL,
-      # marked `coerced`, and holds the n-th applied element in place of the function.
+      # Each definition becomes a fragment, in order. The typed positions of every module function and
+      # plain definition form ONE unconditional `coerced` fragment, placed at the first definition that
+      # is not a guard record, and only when there is a position; each plain definition also keeps its
+      # remainder as an unconditional fragment, minted over the definition as written (`decl`). A carrier
+      # carried by value splices its own fragments.
       mkGuardCarrier = fold: loc: defs: {
         __guard = true;
         fragments =
           let
-            applied = (fold carrierCoerced defs).includes;
+            typed = {
+              kind = "unconditional";
+              coerced = true;
+              # identity: a typed fragment of plain definitions alone repeats what their `decl`s mint, so
+              # only one holding a module function's element is opaque
+              ofFunctions = builtins.any (d: builtins.isFunction d.value) defs;
+              body = positionsData (fold carrierCoerced defs);
+            };
+            isPlainDef = d: !(isGuardRecordDef d) && builtins.isAttrs d.value;
+            hasTyped = builtins.any (
+              d: builtins.isFunction d.value || (isPlainDef d && positionsOf d.value != { })
+            ) defs;
           in
           (builtins.foldl'
             (
               acc: d:
-              if builtins.isFunction d.value then
-                {
-                  n = acc.n + 1;
-                  fs = acc.fs ++ [
-                    {
-                      kind = "unconditional";
-                      coerced = true;
-                      body.includes = [ (builtins.elemAt applied acc.n) ];
-                    }
-                  ];
+              if isGuardRecordDef d then
+                acc
+                // {
+                  fs = acc.fs ++ (if isCarrierValue d.value then d.value.fragments else [ (toFragment d) ]);
                 }
               else
                 {
-                  inherit (acc) n;
-                  fs = acc.fs ++ [ (toFragment d) ];
+                  placed = true;
+                  fs =
+                    acc.fs
+                    ++ (if acc.placed || !hasTyped then [ ] else [ typed ])
+                    ++ (
+                      if builtins.isFunction d.value then
+                        [ ]
+                      else if isPlainDef d then
+                        [
+                          {
+                            kind = "unconditional";
+                            body = remainderOf d.value;
+                            decl = d.value;
+                          }
+                        ]
+                      else
+                        [ (toFragment d) ]
+                    );
                 }
             )
             {
-              n = 0;
+              placed = false;
               fs = [ ];
             }
             defs
@@ -614,7 +730,17 @@ let
           # Single-def guard record: dispatched here directly (never reaches the multi-def
           # branch above, whose `mkGuardCarrier` is what supports a guard record defined more
           # than once under one key; den-hoag-sezf Arm B).
-          if builtins.isAttrs v && (v.__guard or false) then
+          if isCarrierValue v then
+            {
+              value = v // {
+                name = prelude.last loc;
+                meta = (v.meta or { }) // {
+                  inherit loc;
+                  file = (builtins.head defs).file or "<unknown>";
+                };
+              };
+            }
+          else if builtins.isAttrs v && (v.__guard or false) then
             # Guard record (guard.nix) — guard PAYLOAD (pred/body) untouched; only tracing
             # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
             # not hashed by guardKey).

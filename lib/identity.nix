@@ -243,21 +243,23 @@ let
   fragmentToken =
     f:
     # A module function's applied element (den-hoag-cgobz) is opaque, as the function was: no token,
-    # and nothing below it is read, so identity forces no condition in the function's result.
+    # and nothing below it is read, so identity forces no condition in the function's result. A typed
+    # fragment of plain definitions alone repeats what their `decl`s mint, so it is skipped
+    # (den-hoag-3849t), and a plain fragment mints over its definition as written.
     if f.coerced or false then
-      null
+      (if f.ofFunctions or true then null else "skip")
     else if f.kind == "record" then
       { guard = termGuardId f; }
     else
       let
-        probe = builtins.tryEval (bodyKey f.body);
+        probe = builtins.tryEval (bodyKey (f.decl or f.body));
       in
       if !(probe.success && probe.value != null) then null else { body = probe.value; };
 
   carrierKey =
     g:
     let
-      toks = map fragmentToken g.fragments;
+      toks = builtins.filter (t: t != "skip") (map fragmentToken g.fragments);
     in
     if builtins.any (t: t == null) toks then
       guardLocFallback g
