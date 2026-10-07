@@ -122,6 +122,8 @@
             isExact = null;
             keyCategory = null;
             mkIsModuleFn = null;
+            refusalShapeOf = null;
+            refusalReachedText = null;
           };
           # Unread here: the suite takes only the refusal renderer, and the published surface (pinned in
           # AGENTS.md) does not carry the default. `graphFacts` itself reads `types.includesDefault`.
@@ -150,6 +152,8 @@
               isExact = null;
               keyCategory = null;
               mkIsModuleFn = null;
+              refusalShapeOf = null;
+              refusalReachedText = null;
             })
             maxLiftDepth
             ;

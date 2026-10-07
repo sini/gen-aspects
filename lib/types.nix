@@ -250,6 +250,87 @@ let
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
   mkIsModuleFn = cnf: canTake.upTo cnf.moduleArgs;
 
+  # A refusal VALUE of a value-regime library (ADR-0025 item 1), forwarded unread to an aspect
+  # position (den-hoag-3sk7j). Recognised by each live encoding's EXACT shape, never by a mark: a
+  # refusal mints nothing (ADR-0034). `null`, or `{ kind; code; message; }`. Each test leads with
+  # one `?` probe, so an aspect costs at most three. The Either arm decides with gen-algebra's own
+  # `isRefusal`, so this file holds no second copy of that predicate (den-hoag-s1ua7). One recogniser
+  # for both planes: the plain plane reads it through `refusalOf` (with its declared-key carve-out),
+  # and the guard lift refuses what it recognises and `T.isRefusal` does not.
+  refusalShapeOf =
+    v:
+    if !(builtins.isAttrs v) then
+      null
+    else if v ? left && builtins.attrNames v == [ "left" ] then
+      if T.isRefusal v then
+        {
+          kind = "an Either refusal (`{ left = { code; witness; }; }`, gen-algebra / gen-rules)";
+          inherit (v.left) code;
+          message = v.left.witness.message or null;
+        }
+      else if builtins.isList v.left && v.left != [ ] then
+        {
+          kind = "an Either refusal carrying a failure list (`{ left = [ failure … ]; }`, gen-types / gen-schema `runValidators`, gen-algebra `collectErrors`)";
+          code = null;
+          message =
+            let
+              f = builtins.head v.left;
+            in
+            if builtins.isAttrs f then f.message or null else null;
+        }
+      else
+        null
+    else if
+      v ? refused
+      &&
+        builtins.attrNames v == [
+          "blamed"
+          "code"
+          "message"
+          "refused"
+          "witness"
+        ]
+      && v.refused == true
+      && builtins.isString v.code
+    then
+      {
+        kind = "a refusal record (`{ refused = true; code; … }`, gen-program)";
+        inherit (v) code message;
+      }
+    else if
+      v ? __crossingResult
+      &&
+        builtins.attrNames v == [
+          "__crossingResult"
+          "refusal"
+        ]
+      && v.__crossingResult == "refusal"
+      && builtins.isAttrs v.refusal
+    then
+      {
+        kind = "a crossing refusal (`__crossingResult = \"refusal\"`, gen-bind)";
+        code = v.refusal.code or null;
+        message = null;
+      }
+    else
+      null;
+  # Its refusal text, after the position each plane names.
+  refusalReachedText =
+    r:
+    "a refusal value reached an aspect position: "
+    + r.kind
+    + (if builtins.isString r.code then " with code `${r.code}`" else "")
+    + ", not an aspect. A call that returns its refusals as values refused, and its result was placed "
+    + "here unread; read the refusal where it was returned."
+    + (
+      if builtins.isString r.message && r.message != "" then
+        " Its message: ${r.message}"
+        + (if builtins.substring (builtins.stringLength r.message - 1) 1 r.message == "." then "" else ".")
+      else
+        ""
+    )
+    + " A context closure crosses the gen-rules door: declare the aspect through the framework's surface, "
+    + "so that gen-rules' lowering turns the closure into a door node, or write it as a guard term.";
   # gen-aspects' instance of the one term algebra (lib/guard-term.nix), over this file's own
   # classification surface, so a guard's module slots are exactly the keys `keyCategory` calls classes.
   GT = import ./guard-term.nix {
@@ -260,6 +341,8 @@ let
       isExact
       keyCategory
       mkIsModuleFn
+      refusalShapeOf
+      refusalReachedText
       ;
   };
 
@@ -815,87 +898,21 @@ let
         + "submodule (`cnf.aspectModules`); "
         + "without that mount the closure arrives here unlowered. A closure that reads none of the module function's "
         + "arguments can also be written beside the function instead of inside it.";
-      # A refusal VALUE of a value-regime library (ADR-0025 item 1), forwarded unread to an aspect
-      # position (den-hoag-3sk7j). Recognised by each live encoding's EXACT shape, never by a mark: a
-      # refusal mints nothing (ADR-0034). `null`, or `{ kind; code; message; }`. Each test leads with
-      # one `?` probe, so an aspect costs at most three. An encoding whose keys this aspect type DECLARES
-      # is not recognised: a declared key is the author's, and the value is that author's aspect. The declared
-      # set is read only once a shape matched, inline, so an aspect pays no binding for it (§2.3's bound).
+      # The plain plane's reading of `refusalShapeOf` (top of file): an encoding whose keys this aspect
+      # type DECLARES is not recognised, because a declared key is the author's and the value is that
+      # author's aspect. The declared set is read only once a shape matched, inline, so an aspect pays
+      # no binding for it (§2.3's bound).
       refusalOf =
         v:
-        if !(builtins.isAttrs v) then
-          null
-        else if v ? left && builtins.attrNames v == [ "left" ] && !((sub.getSubOptions [ ]) ? left) then
-          if builtins.isAttrs v.left && builtins.isString (v.left.code or null) then
-            {
-              kind = "an Either refusal (`{ left = { code; witness; }; }`, gen-algebra / gen-rules)";
-              inherit (v.left) code;
-              message = v.left.witness.message or null;
-            }
-          else if builtins.isList v.left && v.left != [ ] then
-            {
-              kind = "an Either refusal carrying a failure list (`{ left = [ failure … ]; }`, gen-types / gen-schema `runValidators`, gen-algebra `collectErrors`)";
-              code = null;
-              message =
-                let
-                  f = builtins.head v.left;
-                in
-                if builtins.isAttrs f then f.message or null else null;
-            }
-          else
-            null
-        else if
-          v ? refused
-          &&
-            builtins.attrNames v == [
-              "blamed"
-              "code"
-              "message"
-              "refused"
-              "witness"
-            ]
-          && v.refused == true
-          && builtins.isString v.code
-          && !(builtins.any (k: (sub.getSubOptions [ ]) ? ${k}) (builtins.attrNames v))
-        then
-          {
-            kind = "a refusal record (`{ refused = true; code; … }`, gen-program)";
-            inherit (v) code message;
-          }
-        else if
-          v ? __crossingResult
-          &&
-            builtins.attrNames v == [
-              "__crossingResult"
-              "refusal"
-            ]
-          && v.__crossingResult == "refusal"
-          && builtins.isAttrs v.refusal
-          && !(builtins.any (k: (sub.getSubOptions [ ]) ? ${k}) (builtins.attrNames v))
-        then
-          {
-            kind = "a crossing refusal (`__crossingResult = \"refusal\"`, gen-bind)";
-            code = v.refusal.code or null;
-            message = null;
-          }
+        let
+          r = refusalShapeOf v;
+        in
+        if r != null && !(builtins.any (k: (sub.getSubOptions [ ]) ? ${k}) (builtins.attrNames v)) then
+          r
         else
           null;
       refusalRefusal =
-        loc: r:
-        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a refusal value reached an aspect position: "
-        + r.kind
-        + (if builtins.isString r.code then " with code `${r.code}`" else "")
-        + ", not an aspect. A call that returns its refusals as values refused, and its result was placed "
-        + "here unread; read the refusal where it was returned."
-        + (
-          if builtins.isString r.message && r.message != "" then
-            " Its message: ${r.message}"
-            + (if builtins.substring (builtins.stringLength r.message - 1) 1 r.message == "." then "" else ".")
-          else
-            ""
-        )
-        + " A context closure crosses the gen-rules door: declare the aspect through the framework's surface, "
-        + "so that gen-rules' lowering turns the closure into a door node, or write it as a guard term.";
+        loc: r: "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: " + refusalReachedText r;
       dispatch =
         loc: defs:
         if builtins.any isFunctorModuleDef defs then

@@ -1136,6 +1136,39 @@ in
         exactly "gen-aspects.guard: aspect `s`, the guard nested 256 deep at `sub`: guard-depth: the guard body nests deeper than 256 levels at `sub`; a body that deep is almost always CYCLIC (a guard whose body holds itself, or an attrset containing itself). Pass a finite, acyclic body."
       );
       test-door-not-a-function = thrown (go "x") (door "received: string");
+      # den-hoag-s1ua7 / den-hoag-3nr2o: a refusal-shaped body that gen-algebra's `isRefusal` takes
+      # refuses by its code even with no witness; another library's refusal value refuses with the plain
+      # plane's text (den-hoag-3sk7j); a hand-spelled term record refuses by name.
+      test-body-refusal-without-witness = thrown (gv.applyGuard { }
+        (place { } {
+          d = aspects.guard aspects.pred.always { l.left.code = "x"; };
+        }).d
+      ) (exactly "gen-aspects.guard: aspect `d`: x: {}");
+      test-body-failure-list =
+        thrown
+          (gv.applyGuard { }
+            (place { } {
+              d = aspects.guard aspects.pred.always { l.left = [ { message = "m"; } ]; };
+            }).d
+          )
+          (
+            exactly "gen-aspects.guard: aspect `d`: a refusal value reached an aspect position: an Either refusal carrying a failure list (`{ left = [ failure … ]; }`, gen-types / gen-schema `runValidators`, gen-algebra `collectErrors`), not an aspect. A call that returns its refusals as values refused, and its result was placed here unread; read the refusal where it was returned. Its message: m. A context closure crosses the gen-rules door: declare the aspect through the framework's surface, so that gen-rules' lowering turns the closure into a door node, or write it as a guard term."
+          );
+      test-body-hand-spelled-term =
+        thrown
+          (gv.applyGuard { }
+            (place { } {
+              d = aspects.guard aspects.pred.always {
+                x = {
+                  __bodyTerm = "Lit";
+                  value = 1;
+                };
+              };
+            }).d
+          )
+          (
+            exactly "gen-aspects.guard: aspect `d`: term-not-constructed: {\"former\":\"Lit\",\"remedy\":\"a term is built by the formers (`term.lit`, `term.attrs`, ...), which mint it; a record that spells `__bodyTerm` by hand is not a term\"}"
+          );
       test-door-functor-not-a-function = thrown (go { __functor = 5; }) (
         door "received: a set whose `__functor` is of type int, not a function"
       );

@@ -330,6 +330,75 @@ let
           };
         };
       };
+    # den-hoag-s1ua7 / den-hoag-3nr2o: a body datum is recognised as a refusal or a term only by
+    # gen-algebra's own predicates. A datum shaped like an Either-left that `isRefusal` does not take is
+    # data, served as written; one it takes refuses CATCHABLY, however partial its witness; another
+    # library's refusal value (the failure list) refuses catchably, as on the plain plane; and a record
+    # that spells `__bodyTerm` without a former's mint never aborts and never fires as the term it
+    # imitates, whatever it spells at `__mint`.
+    test-body-shaped-like-a-refusal-or-a-term =
+      let
+        gv = a.mkGuardVocab { };
+        fireOf = b: gv.applyGuard { } (place { } { d = a.guard a.pred.always b; }).d;
+        r = b: builtins.tryEval (builtins.deepSeq (fireOf b) (fireOf b));
+        idOk =
+          b:
+          (builtins.tryEval (builtins.deepSeq (place { } { d = a.guard a.pred.always b; }).d.__mint true))
+          .success;
+        leftData.l.left = 1;
+        leftIntCode.l.left.code = 105;
+        hand = {
+          __bodyTerm = "Lit";
+          value = 1;
+        };
+        neverTheTerm =
+          b:
+          let
+            x = r b;
+          in
+          !x.success || x.value == b;
+      in
+      {
+        expr = {
+          leftData = fireOf leftData;
+          leftIntCode = fireOf leftIntCode;
+          leftDataId = idOk leftData;
+          refusalShape =
+            (r {
+              l.left = {
+                code = "bogus";
+                witness = { };
+              };
+            }).success;
+          refusalNoWitness = (r { l.left.code = "x"; }).success;
+          failureList = (r { l.left = [ { message = "m"; } ]; }).success;
+          realRefusal = (r { description = t.lit (x: x); }).success;
+          termKey = neverTheTerm { x = hand; };
+          termRoot = neverTheTerm hand;
+          forgedMintEmpty = neverTheTerm {
+            x = hand // {
+              __mint = { };
+            };
+          };
+          forgedMintInt = neverTheTerm {
+            x = hand // {
+              __mint = 1;
+            };
+          };
+        };
+        expected = {
+          inherit leftData leftIntCode;
+          leftDataId = true;
+          refusalShape = false;
+          refusalNoWitness = false;
+          failureList = false;
+          realRefusal = false;
+          termKey = true;
+          termRoot = true;
+          forgedMintEmpty = true;
+          forgedMintInt = true;
+        };
+      };
     # A door node fires through the framework's door (cnf.ref), its nested node at the same context
     # through the returned scope (G5's lexically nested path).
     test-door-node-nested-scope = {

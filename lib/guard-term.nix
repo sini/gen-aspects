@@ -12,11 +12,14 @@
   isExact,
   keyCategory,
   mkIsModuleFn,
+  refusalShapeOf,
+  refusalReachedText,
 }:
 let
   inherit (import ./cnf.nix) declaredOf;
   tm = T.term;
-  isLeft = r: builtins.isAttrs r && builtins.attrNames r == [ "left" ];
+  # A refusal is recognised only by gen-algebra's own predicate, exact to `refuse` (den-hoag-s1ua7).
+  inherit (T) isRefusal;
   unique =
     xs:
     builtins.attrNames (
@@ -143,12 +146,16 @@ let
         nested.${id} = v;
         authored = [ ];
       }
-    else if T.isTerm v || isLeft v || builtins.isFunction v then
+    else if T.isTerm v || isRefusal v || builtins.isFunction v then
       {
         term = v;
         nested = none;
         authored = if T.isTerm v then [ v ] else [ ];
       }
+    # Another library's refusal value, which the plain plane refuses by the same recogniser
+    # (den-hoag-3sk7j): the guard plane refuses it too, rather than serve it as data.
+    else if refusalShapeOf v != null then
+      throw "gen-aspects.guard: ${at}: ${refusalReachedText (refusalShapeOf v)}"
     else if builtins.isAttrs v && (v.__guard or false) then
       let
         inner =
@@ -227,7 +234,7 @@ let
   render =
     at: l:
     "gen-aspects.guard: ${at}: ${l.code}: ${
-      l.witness.message or (builtins.toJSON (removeAttrs l.witness [ "message" ]))
+      l.witness.message or (builtins.toJSON (removeAttrs (l.witness or { }) [ "message" ]))
     }"
     + (
       if l.code == "term-function" then
@@ -266,7 +273,7 @@ let
           builtins.attrValues lifted.nested
         );
       in
-      if isLeft r then
+      if isRefusal r then
         throw (render at r.left)
       else if malformed != [ ] then
         throw "gen-aspects.guard: ${at}: ref-id-domain: a door registration reference's identifier is outside refId's grammar (or longer than ${toString maxIdLength} characters), so it cannot be read back: ${shortId (builtins.head malformed).id}; build it with gen-algebra's `refId`."
@@ -447,14 +454,14 @@ let
         c = T.resolveTerm env g.condition;
         b = T.resolveTerm env g.body;
       in
-      if isLeft c then
+      if isRefusal c then
         throw (render at c.left)
       else if !c.right then
         {
           value = null;
           inherit (args) scope;
         }
-      else if isDoorBody g.body && isLeft b then
+      else if isDoorBody g.body && isRefusal b then
         throw (render at b.left)
       else if isDoorBody g.body then
         let
@@ -554,7 +561,7 @@ let
         scope = { };
       }) g.condition;
     in
-    if isLeft c then
+    if isRefusal c then
       (if c.left.code == "absent-coordinate" then null else throw (render "condition" c.left))
     else
       c.right;
