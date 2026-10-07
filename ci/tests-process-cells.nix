@@ -35,7 +35,14 @@ let
   identity = import "${genIdentitySrc}/lib";
   graph = import "${genGraphSrc}/lib" { inherit prelude; };
   algebra = import "${genAlgebraSrc}/lib";
-  scope = import "${genScopeSrc}/lib" { inherit graph identity prelude; };
+  scope = import "${genScopeSrc}/lib" {
+    inherit
+      algebra
+      graph
+      identity
+      prelude
+      ;
+  };
 
   # THE SPY (den-hoag-n6dh7 U2-g, unchanged from gen-merge's own file): the same gen-merge library
   # over an evaluator whose `eval` traces `label`, so the label's count on stderr is the number of
