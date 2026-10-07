@@ -52,16 +52,17 @@ let
           throw "gen-aspects: kind '${kind}': declaration key '${builtins.head formalNamed}' is an mkAspectSchema construction formal — it is fixed by `mkAspectSchema { ${builtins.head formalNamed} = …; }`, and written on a kind entry it is not read as one; pass it there, or write `config.${builtins.head formalNamed}` for an instance field of that name, which a `closedKeys` schema must declare or list in `freeformKeys`"
         else
           map
-            (
-              d:
-              if d.value ? __functor || !(builtins.isAttrs d.value) then
-                {
-                  __reservedKeys = reservation;
-                  imports = [ d.value ];
-                }
-              else
-                d.value // { __reservedKeys = reservation; }
-            )
+            (d: {
+              __reservedKeys = reservation;
+              __functor =
+                _: _:
+                if !(builtins.elem "__reservedKeys" (merge.moduleSyntax.functorRecord or [ ])) then
+                  throw "gen-aspects: kind '${kind}' reserves its construction formals in every module its entry imports, on the record of the module it wraps each definition in (`__reservedKeys'), and the gen-merge it is evaluated with does not read that record (its `moduleSyntax.functorRecord' does not list `__reservedKeys'). gen-aspects requires a gen-merge reading the reservation off a functor module's record; update the gen-merge input gen-aspects is built with."
+                else if d.value ? __functor || !(builtins.isAttrs d.value) then
+                  { imports = [ d.value ]; }
+                else
+                  d.value;
+            })
             (
               builtins.filter (
                 d: builtins.isAttrs d.value || builtins.isFunction d.value || builtins.isPath d.value
@@ -72,8 +73,10 @@ let
       # itself with gen-merge's `__reservedKeys`: `cnfKeys` with this library's text, united with
       # gen-schema's `entryReservation kind` (its formals, its published names, and the kind shape the
       # `inherits` alias reads, exempt), gen-schema's text winning on the shared names as its door
-      # does on direct defs. The marker rides in place on an attrset def; a functor def is wrapped,
-      # because its applied result would drop an in-place key.
+      # does on direct defs. The marker rides on the RECORD of a functor wrapping each def, never in a
+      # module's content (den-hoag-r05lc): the kind value is a module a foreign evaluator also imports,
+      # and nixpkgs applies the functor and reads only its result. An attrset def is that result; a
+      # function, functor or path def is imported by it.
       reservation =
         let
           r = genSchema.entryReservation kind;

@@ -3,6 +3,7 @@
 # (`construction-formal-refusals`). A door that refused every top-level key, or every instance field
 # named like a formal, reds the controls here; a door that perturbed the kind reds the mark cell.
 {
+  lib,
   genMerge,
   aspects,
   mkSchemaEval,
@@ -43,6 +44,50 @@ let
 in
 {
   flake.tests.construction-formals = {
+    # ★ THE KIND VALUE MOUNTS IN NIXPKGS (den-hoag-r05lc). The reservation rides on a functor record
+    # nixpkgs never reads, so a nixpkgs `lib.evalModules` importing `config.schema.aspect` serves an
+    # attrset entry carrying `options` (a content-level marker is an unsupported attribute there) and
+    # a function entry (where it landed as a `__reservedKeys` key on an open freeform), each as the
+    # same definitions mounted raw. den imports the kind value into its nixpkgs aspect submodule.
+    test-kind-value-mounts-in-nixpkgs =
+      let
+        port = lib.mkOption {
+          type = lib.types.int;
+          default = 1;
+        };
+        kindOf =
+          entry: (mkSchemaEval { modules = [ { config.schema.aspect = entry; } ]; }).config.schema.aspect;
+        mount =
+          m:
+          (lib.evalModules {
+            modules = [
+              {
+                options.h = lib.mkOption {
+                  type = lib.types.submodule {
+                    imports = [ m ];
+                    freeformType = lib.types.lazyAttrsOf lib.types.anything;
+                  };
+                  default = { };
+                };
+              }
+            ];
+          }).config.h;
+        attrsDef = {
+          options.port = port;
+        };
+        functionDef = { lib, ... }: { };
+      in
+      {
+        expr = {
+          attrs = mount (kindOf attrsDef);
+          function = mount (kindOf functionDef);
+        };
+        expected = {
+          attrs = mount attrsDef;
+          function = mount functionDef;
+        };
+      };
+
     # G8 · every member refuses on the mkAspectSchema path. The value is the list of members that did
     # NOT refuse. Both halves non-empty and an ordinary key admitted are the live controls.
     test-population-refuses = {
