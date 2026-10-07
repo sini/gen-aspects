@@ -88,8 +88,9 @@ let
         "tags"
       ];
 
+  vocabulary = builtins.filter (f: f != "ReadFrom") T.knownFormers;
   instanceFor = cnf: {
-    vocabulary = builtins.filter (f: f != "ReadFrom") T.knownFormers;
+    inherit vocabulary;
     declared = declaredFor cnf;
     slots = {
       isKey = k: keyCategory cnf k == "class";
@@ -139,11 +140,13 @@ let
       {
         term = tm.ref id;
         nested.${id} = v;
+        authored = [ ];
       }
     else if T.isTerm v || isLeft v || builtins.isFunction v then
       {
         term = v;
         nested = none;
+        authored = if T.isTerm v then [ v ] else [ ];
       }
     else if builtins.isAttrs v && (v.__guard or false) then
       let
@@ -165,11 +168,13 @@ let
       {
         term = tm.ref id;
         nested.${id} = inner;
+        authored = [ ];
       }
     else if builtins.isAttrs v && (v.type or null) == "derivation" then
       {
         term = tm.lit v;
         nested = none;
+        authored = [ ];
       }
     else if builtins.isAttrs v then
       let
@@ -179,6 +184,7 @@ let
             {
               term = c;
               nested = none;
+              authored = if T.isTerm c then [ c ] else [ ];
             }
           else
             liftAt cnf at (depth + 1) (pos ++ [ k ]) c
@@ -187,6 +193,7 @@ let
       {
         term = tm.attrs (builtins.mapAttrs (_: x: x.term) kids);
         nested = builtins.foldl' (acc: x: acc // x.nested) none (builtins.attrValues kids);
+        authored = builtins.concatMap (x: x.authored) (builtins.attrValues kids);
       }
     else if builtins.isList v then
       let
@@ -197,25 +204,24 @@ let
       {
         term = tm.list (map (x: x.term) kids);
         nested = builtins.foldl' (acc: x: acc // x.nested) none kids;
+        authored = builtins.concatMap (x: x.authored) kids;
       }
     else
       {
         term = tm.lit v;
         nested = none;
+        authored = [ ];
       };
   lift = cnf: v: (liftAt cnf "guard" 0 [ ] v).term;
 
   nodes = t: [ t ] ++ builtins.concatMap nodes (T.children t);
   refsIn = t: builtins.filter (n: n.__bodyTerm == "Ref") (nodes t);
-  # UC1: a door-registration `ref` is admitted only as the whole body.
-  misplacedDoorRef =
-    body:
-    builtins.filter (n: n.__bodyTerm == "Ref" && isDoorId n.id) (
-      builtins.concatMap nodes (T.children body)
-    );
+  # UC1: a door-registration `ref` is admitted only as the whole body. Both scans take the body's nodes,
+  # `below` the root for the first.
+  misplacedDoorRef = below: builtins.filter (n: n.__bodyTerm == "Ref" && isDoorId n.id) below;
   isDoorBody = body: body.__bodyTerm == "Ref" && isDoorId body.id;
   malformedDoorRef =
-    body: builtins.filter (n: isDoorId n.id && decodeDoorId n.id == null) (refsIn body);
+    ns: builtins.filter (n: n.__bodyTerm == "Ref" && isDoorId n.id && decodeDoorId n.id == null) ns;
 
   render =
     at: l:
@@ -246,8 +252,11 @@ let
           inherit (g) condition;
           inherit body;
         };
-        bad = misplacedDoorRef body;
-        malformed = malformedDoorRef body;
+        # A door reference sits only in a term the author wrote: the lift's own references name a nested
+        # guard or a module slot, never a door. So the scans read the authored terms, not the lifted body.
+        authoredNodes = builtins.concatMap nodes lifted.authored;
+        bad = misplacedDoorRef (if T.isTerm g.body then builtins.tail authoredNodes else authoredNodes);
+        malformed = malformedDoorRef authoredNodes;
         # The terms' identities, read through gen-algebra's `identityOf` and selected by `isExact`;
         # never `__mint` raw (the contract on gen-algebra's `__mint` line).
         cm = identityOf g.condition;
@@ -269,6 +278,9 @@ let
           # The D this guard was checked under; the resolver must read the same one (P3).
           __declared = declaredFor cnf;
           __nested = lifted.nested;
+          # A GROUND body (no term the author wrote, no nested guard, no module slot) resolves to the data
+          # it was lifted from at every context, so firing serves that data and never walks the term back.
+          __served = if lifted.authored == [ ] && lifted.nested == none then { value = g.body; } else null;
           inherit body;
           __mint =
             if isExact cm && isExact bm && innerUnmintable == [ ] then
@@ -501,6 +513,11 @@ let
             inherit (patched) value;
             scope = scope // patched.scope;
           }
+      else if g.__served != null then
+        {
+          inherit (g.__served) value;
+          inherit (args) scope;
+        }
       else
         {
           # Each field resolved where it is READ (ADR-0010 §4(a) clause 3; gen-algebra `resolveFields`):
