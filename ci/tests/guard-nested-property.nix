@@ -23,8 +23,9 @@
 #     field, `d1` or `c1`, in the plain definition or the record's body).
 #   · a top-level priority on the definition itself (depth 0) is discharged by the aspect option before the
 #     carrier exists, so it is outside this law; this unit leaves it as it was.
-#   · a module function at a nested key is a typed position (route (a), den-hoag-3849t), not content; a
-#     priority over one is ci/tests-error.nix `guard-nested-property`'s override refusal.
+#   · a module function or an `includes` at a nested key is a typed position (route (a), den-hoag-3849t),
+#     typed at load; a priority over one keeps its priority to the discharge (`partialAttrsOf`,
+#     den-hoag-fjdnf), so it ranges over the fired content as T4's does: `test-priority-over-a-typed-*`.
 #   · survivors that are not all plain attrsets (a scalar body at a freeform field, as gen-demo's corpus
 #     writes `stitch.trim`; a construction carrying `__mint`) take `anything` whole:
 #     `test-scalar-survivors-*`, `test-minted-survivor-*` here, the mixed refusal in the error plane.
@@ -152,6 +153,102 @@ let
   );
   fireMain =
     ctx: defs: gv.applyGuard ctx (mkSchemaEval { modules = map plain defs; }).config.aspects.main;
+  # den-hoag-fjdnf: a priority over a nested value holding a typed position (an `includes`), beside a record
+  # that writes the top description (`quiet`) or the nested keys as well (`clash`). Rendered as every
+  # explicit description, depth first.
+  e = n: { description = n; };
+  bodies = {
+    quiet.description = "g";
+    clash = {
+      description = "g";
+      sub = {
+        description = "r";
+        inner.description = "ri";
+      };
+    };
+    subDefault = {
+      description = "g";
+      sub = genMerge.mkDefault { description = "R"; };
+    };
+    innerDefault = {
+      description = "g";
+      sub.inner = genMerge.mkDefault { description = "ri"; };
+    };
+  };
+  served =
+    shape: defs:
+    fireMain fires ([ (gv.vocab.whenEq [ "thimble" "name" ] "cortex" bodies.${shape}) ] ++ defs);
+  # the paths in a served value holding a property marker (`_type`): a marker served as data
+  leaks =
+    at: v:
+    if builtins.isAttrs v then
+      lib.optional (v ? _type) (builtins.concatStringsSep "." at)
+      ++ builtins.concatLists (
+        map (k: leaks (at ++ [ k ]) v.${k}) (
+          builtins.filter (k: k != "_module" && k != "__functor" && k != "_type") (builtins.attrNames v)
+        )
+      )
+    else if builtins.isList v then
+      builtins.concatLists (lib.imap0 (i: leaks (at ++ [ "[${toString i}]" ])) v)
+    else
+      [ ];
+  overDepth1 = {
+    force = served "quiet" [ { sub = genMerge.mkForce { includes = [ (e "e") ]; }; } ];
+    defaultMixed = served "quiet" [
+      {
+        sub = genMerge.mkDefault {
+          includes = [ (e "e") ];
+          description = "s";
+        };
+      }
+    ];
+    clashForce = served "clash" [ { sub = genMerge.mkForce { includes = [ (e "e") ]; }; } ];
+    clashDefault = served "clash" [
+      {
+        sub = genMerge.mkDefault {
+          includes = [ (e "e") ];
+          description = "s";
+        };
+      }
+    ];
+  };
+  overDepth2 = {
+    clashForce = served "clash" [ { sub.inner = genMerge.mkForce { includes = [ (e "e") ]; }; } ];
+    clashDefault = served "clash" [
+      {
+        sub.inner = genMerge.mkDefault {
+          includes = [ (e "e") ];
+          description = "s";
+        };
+      }
+    ];
+    twoPlain = served "clash" [
+      { sub = genMerge.mkForce { includes = [ (e "e") ]; }; }
+      { sub.includes = [ (e "e2") ]; }
+    ];
+    forceInForce = served "clash" [
+      { sub = genMerge.mkForce { inner = genMerge.mkForce { includes = [ (e "e") ]; }; }; }
+      { sub = genMerge.mkForce { inner.includes = [ (e "e2") ]; }; }
+    ];
+  };
+  # every definition of a typed position discharges to nothing, beside a record's `mkDefault` there
+  noWinner = {
+    ifFalseVsRecDefault1 = served "subDefault" [
+      { sub = genMerge.mkIf false { includes = [ (e "a") ]; }; }
+    ];
+    ifFalseVsRecDefault2 = served "innerDefault" [
+      { sub.inner = genMerge.mkIf false { includes = [ (e "a") ]; }; }
+    ];
+  };
+  render =
+    v:
+    if builtins.isAttrs v then
+      (if v ? description then [ v.description ] else [ ])
+      ++ builtins.concatMap render (v.includes or [ ])
+      ++ (if v ? sub then render v.sub else [ ])
+      ++ (if v ? inner then render v.inner else [ ])
+    else
+      [ ];
 in
 {
   flake.tests.guard-nested-property = grid // {
@@ -163,6 +260,108 @@ in
         classTwo.r = "R";
         sub = { };
       };
+    };
+    # den-hoag-fjdnf (15wnx OQ1 arm α): the typed half of a definition is folded at load and keeps the
+    # priority that selected it, so the priority ranges over its remainder and the fired record together,
+    # as T4's does. Each expected value is T4's (the record's body as a plain sibling, no carrier), read
+    # with the same renderer. RED (the partial fold's priority dropped): the element lost, `["g"]`.
+    test-priority-over-a-typed-position-at-depth-1 = {
+      expr = builtins.mapAttrs (_: render) overDepth1;
+      expected = {
+        force = [
+          "g"
+          "e"
+        ];
+        defaultMixed = [
+          "g"
+          "s"
+          "e"
+        ];
+        clashForce = [
+          "g"
+          "e"
+        ];
+        clashDefault = [
+          "g"
+          "r"
+          "ri"
+        ];
+      };
+    };
+    # depth 2, and two plain definitions whose priorities the load-time pass resolves between them
+    test-priority-over-a-typed-position-at-depth-2 = {
+      expr = builtins.mapAttrs (_: render) overDepth2;
+      expected = {
+        clashForce = [
+          "g"
+          "r"
+          "e"
+        ];
+        clashDefault = [
+          "g"
+          "r"
+          "ri"
+        ];
+        twoPlain = [
+          "g"
+          "e"
+        ];
+        forceInForce = [
+          "g"
+          "e"
+        ];
+      };
+    };
+    # A typed position none of whose definitions survives discharge is the priority monoid's identity (gen-merge
+    # `mergeDefsPartial`), so the record's `mkDefault` there is served, as T4's is. RED (an empty value at the
+    # default priority in its place): the record's description lost, `["g"]`.
+    test-a-typed-position-with-no-winner-is-the-identity = {
+      expr = builtins.mapAttrs (_: render) noWinner;
+      expected = {
+        ifFalseVsRecDefault1 = [
+          "g"
+          "R"
+        ];
+        ifFalseVsRecDefault2 = [
+          "g"
+          "ri"
+        ];
+      };
+    };
+    # The leak column: no cell above serves a property marker as data. The control, same scan: a marker in a
+    # plain value is found.
+    test-priority-over-a-typed-position-serves-no-marker = {
+      expr = {
+        control = leaks [ ] {
+          a.b = genMerge.mkForce 1;
+          c = [ (genMerge.mkDefault 2) ];
+        };
+        cells = lib.concatLists (
+          lib.mapAttrsToList (n: v: map (at: "${n}: ${at}") (leaks [ ] v)) (
+            lib.mapAttrs' (n: lib.nameValuePair "d1-${n}") overDepth1
+            // lib.mapAttrs' (n: lib.nameValuePair "d2-${n}") overDepth2
+            // noWinner
+          )
+        );
+      };
+      expected = {
+        control = [
+          "a.b"
+          "c.[0]"
+        ];
+        cells = [ ];
+      };
+    };
+    # The typed half folds one key at a time: reading a sibling key does not force a key whose condition
+    # throws. RED (the no-winner test made a key filter, `isDefinedBy`): `SIBLING-FORCED`.
+    test-a-partial-fold-reads-one-key-lazily = {
+      expr =
+        render
+          (served "quiet" [
+            { sub = genMerge.mkIf (throw "SIBLING-FORCED") { includes = [ (e "a") ]; }; }
+            { other.includes = [ (e "b") ]; }
+          ]).other;
+      expected = [ "b" ];
     };
     # one survivor takes the law: the marker is discharged, not carried
     test-one-survivor-discharges = {

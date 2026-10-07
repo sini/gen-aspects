@@ -622,24 +622,6 @@ let
         + "closure reached an aspect position. A submodule reads an attrset definition as config, so nothing would be "
         + "delivered, and gen-rules' lowering does not lower a functor at an aspect position. Write it as a lambda "
         + "closure (`{ thimble, ... }: { ... }`), or have the framework lower its own form first.";
-      # den-hoag-15wnx: an override across route (a)'s split. The typed positions are merged at load among the
-      # plain definitions, and nothing carries their priority to the discharge, where the raw remainder and a
-      # fired record meet it; so the priority cannot range over the definitions the module system ranges it over.
-      # Served, such a value would silently lose an element (the remainder's `mkForce { }` beats the typed
-      # `{ includes }` of its own definition).
-      #
-      # ★ A STATED SHORTFALL, NOT THE TARGET. The module system serves these values, and law fixes their value
-      # (ADR-0029: the priority algebra is the module system's own; ADR-0039's serve half). The target is
-      # den-hoag-15wnx OQ1 arm α: emit the typed body under its typed evaluation's winning priority, so that it,
-      # the remainder and a fired record meet in one `filterOverrides`. Until α lands this refuses by name, as
-      # ADR-0025 item 1 admits, rather than serve the loss.
-      overrideSplitRefusal =
-        loc:
-        "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a priority (`mkOverride`, `mkForce`, "
-        + "`mkDefault`) over a value holding an `includes` list or a module function, in a plain definition beside a "
-        + "guard. The typed positions are merged when the carrier is built and its guards are discharged later, so the "
-        + "priority cannot range over a guard's content. Write the priority on the scalars alone, or move the "
-        + "`includes` out from under it.";
       functorModuleRefusal =
         loc:
         "gen-aspects: aspect `${prelude.concatStringsSep "." loc}`: a functor-form module function (an attrset with "
@@ -734,12 +716,7 @@ let
             let
               c = posVal loc x.content;
             in
-            if c == { } then
-              { }
-            else if x._type == "override" then
-              throw (overrideSplitRefusal loc)
-            else
-              x // { content = c; }
+            if c == { } then { } else x // { content = c; }
           )
         else if isMergeV x then
           (
@@ -785,7 +762,11 @@ let
       # the aspect modules apply inside it, as they do to T4's.
       carrierSub = merge.submodule {
         # a nested key is a position of the same shape, an `includes` list and nested keys, and nothing else
-        freeformType = t.lazyAttrsOf carrierSub;
+        # A nested position's typed body is a PARTIAL fold: the plain definitions' positions, merged here,
+        # meet the remainders and a fired record's content at fire time. So each nested key keeps the
+        # priority that selected its winners (`partialAttrsOf`), and the content law's one priority pass
+        # ranges over all of them, as the module system's does (ADR-0029; den-hoag-fjdnf).
+        freeformType = merge.partialAttrsOf carrierSub;
         options.includes = merge.mkOption {
           type = t.listOf (includesElemType cnf);
           default = includesDefault;
@@ -794,9 +775,12 @@ let
       # the child's value as data: `_module` dropped at every level
       positionsData =
         v:
-        prelude.mapAttrs (k: x: if k == "includes" then x else positionsData x) (
-          removeAttrs v [ "_module" ]
-        );
+        if v ? _type then
+          v // { content = positionsData v.content; }
+        else
+          prelude.mapAttrs (k: x: if k == "includes" then x else positionsData x) (
+            removeAttrs v [ "_module" ]
+          );
       # The carrier's member. Its one position, adding no step, holds its module functions under
       # `carrierCoerced`, so gen-merge evaluates their elements in this evaluation (a nested tree is a
       # child of the one evaluation that holds it, selected by its fold's split).

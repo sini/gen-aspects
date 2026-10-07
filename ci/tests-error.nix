@@ -1867,7 +1867,7 @@ in
           (mkSchemaEval { modules = map (v: { config.aspects.main = v; }) defs; }).config.aspects.main;
       cortex = gv.vocab.whenEq [ "thimble" "name" ] "cortex";
       fires.thimble.name = "cortex";
-      # the A10 default's fixture: a guard record that always fires, a plain definition, and a sibling aspect
+      # the fixture: a guard record that always fires, a plain definition, and a sibling aspect
       dup =
         v:
         gv.applyGuard { }
@@ -1889,15 +1889,6 @@ in
       e = {
         description = "e";
       };
-      overrideSplit =
-        loc:
-        exactly (
-          "gen-aspects: aspect `${loc}`: a priority (`mkOverride`, `mkForce`, `mkDefault`) over a value holding an "
-          + "`includes` list or a module function, in a plain definition beside a guard. The typed positions are "
-          + "merged when the carrier is built and its guards are discharged later, so the priority cannot range "
-          + "over a guard's content. Write the priority on the scalars alone, or move the `includes` out from "
-          + "under it."
-        );
     in
     {
       # A carrier FIELD whose every definition discharges to nothing is kept and refused where it is read,
@@ -1924,21 +1915,9 @@ in
         "x"
       ]) ("^" + lib.escapeRegex "gen-merge: the option `main' has conflicting definitions:");
 
-      # THE A10 DEFAULT (den-hoag-15wnx OQ1 arm β, a STATED SHORTFALL; arm α is the target): a priority
-      # over a nested value holding a typed position, in a plain definition beside a guard, is refused by
-      # name. Served, `mkForce { includes }` lost its element to the remainder's `mkForce { }`. RED (the
-      # refusal removed): `[ "g" ]`, the element lost at rc 0.
-      test-override-over-a-nested-typed-position-refused = thrown (dup {
-        sub = genMerge.mkForce { includes = [ e ]; };
-      }) (overrideSplit "dup.sub");
-      test-default-over-a-mixed-nested-value-refused = thrown (dup {
-        sub = genMerge.mkDefault {
-          includes = [ e ];
-          description = "s";
-        };
-      }) (overrideSplit "dup.sub");
-      # LIVE CONTROLS, same run: a priority over raw content alone, an `mkIf` over a typed position, and
-      # a priority over the top-level `includes` are all served.
+      # A priority over raw content alone, an `mkIf` over a typed position, and a priority over the
+      # top-level `includes` are served. A priority over a nested typed position is served as the module
+      # system serves it (den-hoag-fjdnf): ci/tests `guard-nested-property`.
       test-control-override-paths-served = {
         expr = {
           scalarForce = render (dup {
