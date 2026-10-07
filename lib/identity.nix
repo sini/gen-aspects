@@ -1,6 +1,10 @@
 # Aspect identity: a declaration's key is its declared path, rendered by `path.nix`'s one injective
 # rendering (identity design §1).
-{ prelude }:
+{
+  prelude,
+  identityOf,
+  isExact,
+}:
 let
   # The rendering of a record's OWN fields. It is the key only of a record with no declared path
   # (`meta.loc`: an include element, a hand-built record); a placed declaration keys by `meta.loc`.
@@ -269,12 +273,19 @@ let
   # A first-order guard's identity is its mint over (condition, body), attached where it was checked
   # against its `cnf` (lib/guard-term.nix): defined for a checked guard only, and refused by name when
   # the mint cannot take it (ADR-0034, REFUSED). No source-position fallback.
+  # Dispatched on gen-algebra's `identityOf` tag: an unchecked guard carries no `__mint`, so it is on
+  # the unmigrated arm.
   termGuardId =
     g:
-    if !(g ? __mint) then
-      throw "gen-aspects: identity: a first-order guard has an identity once it is checked against its cnf (placed at an aspect position, or fired through a vocabulary); this one is unchecked."
+    let
+      i = identityOf g;
+    in
+    if isExact i then
+      i.minted
+    else if i ? unmintable then
+      throw i.unmintable
     else
-      g.__mint.minted or (throw g.__mint.unmintable);
+      throw "gen-aspects: identity: a first-order guard has an identity once it is checked against its cnf (placed at an aspect position, or fired through a vocabulary); this one is unchecked.";
 
   guardKey =
     g:

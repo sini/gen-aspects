@@ -8,6 +8,8 @@
 {
   T,
   hashIdentity,
+  identityOf,
+  isExact,
   keyCategory,
   mkIsModuleFn,
 }:
@@ -152,7 +154,11 @@ let
         id = builtins.toJSON {
           guard = {
             at = pos;
-            id = inner.__mint.minted or null;
+            id =
+              let
+                i = identityOf inner;
+              in
+              if isExact i then i.minted else null;
           };
         };
       in
@@ -242,9 +248,11 @@ let
         };
         bad = misplacedDoorRef body;
         malformed = malformedDoorRef body;
-        cm = g.condition.__mint;
-        bm = body.__mint;
-        innerUnmintable = builtins.filter (i: builtins.isAttrs i && !(i.__mint ? minted)) (
+        # The terms' identities, read through gen-algebra's `identityOf` and selected by `isExact`;
+        # never `__mint` raw (the contract on gen-algebra's `__mint` line).
+        cm = identityOf g.condition;
+        bm = identityOf body;
+        innerUnmintable = builtins.filter (i: builtins.isAttrs i && !(isExact (identityOf i))) (
           builtins.attrValues lifted.nested
         );
       in
@@ -263,7 +271,7 @@ let
           __nested = lifted.nested;
           inherit body;
           __mint =
-            if cm ? minted && bm ? minted && innerUnmintable == [ ] then
+            if isExact cm && isExact bm && innerUnmintable == [ ] then
               {
                 minted = hashIdentity "guard" [ "condition" "body" ] (
                   l:
@@ -277,7 +285,7 @@ let
             else
               {
                 unmintable = "gen-aspects.guard: ${at}: the guard has no identity: ${
-                  cm.unmintable or bm.unmintable or (builtins.head innerUnmintable).__mint.unmintable
+                  cm.unmintable or bm.unmintable or (identityOf (builtins.head innerUnmintable)).unmintable
                 }";
               };
         };

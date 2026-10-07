@@ -22,10 +22,12 @@
   merge,
   schema,
   hashIdentity,
+  identityOf,
+  isExact,
   T,
 }:
 let
-  identity = import ./identity.nix { inherit prelude; };
+  identity = import ./identity.nix { inherit prelude identityOf isExact; };
   canTake = import ./can-take.nix { inherit prelude; };
 
   # The identity inputs are written by the type and by nothing else (ADR-0016 r5: one minting
@@ -254,6 +256,8 @@ let
     inherit
       T
       hashIdentity
+      identityOf
+      isExact
       keyCategory
       mkIsModuleFn
       ;

@@ -23,6 +23,7 @@ let
       T
       ;
     inherit (identity) hashIdentity;
+    inherit (algebra) identityOf isExact;
   };
   # ★ RENAMED FROM `identity` TO AVOID SHADOWING THE INJECTED MINT. gen-identity arrives as
   # `identity` on the ecosystem's convention — the library name minus `gen-`, as prelude, merge
@@ -30,7 +31,10 @@ let
   # whole `let` body. The parameter is interface and the let-binding is private, so the private
   # one yields. This module is gen-aspects' own aspect-KEY derivation (paths, keys, guard keys),
   # which is a different concern from the mint and now reads as one.
-  aspectIdentity = import ./identity.nix { inherit prelude; };
+  aspectIdentity = import ./identity.nix {
+    inherit prelude;
+    inherit (algebra) identityOf isExact;
+  };
   cnfModule = import ./cnf.nix;
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value

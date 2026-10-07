@@ -118,6 +118,8 @@
           GT = import ../lib/guard-term.nix {
             T = null;
             hashIdentity = null;
+            identityOf = null;
+            isExact = null;
             keyCategory = null;
             mkIsModuleFn = null;
           };
@@ -133,7 +135,10 @@
         # walk was REFUSED is indistinguishable from a body that merely carried a function, since both
         # answer with the same source-position fallback. The cells that must tell those apart take the
         # scan itself through this channel, and its refusal renderer with it.
-        identityInternals = import ../lib/identity.nix { prelude = gen-prelude.lib; };
+        identityInternals = import ../lib/identity.nix {
+          prelude = gen-prelude.lib;
+          inherit (genAlgebra) identityOf isExact;
+        };
         # The guard-term instance's depth budget, so the cells straddling it read the bound rather than
         # restate it. Only the constant is read; the instance's own inputs are never forced.
         guardTermInternals = {
@@ -141,6 +146,8 @@
             (import ../lib/guard-term.nix {
               T = null;
               hashIdentity = null;
+              identityOf = null;
+              isExact = null;
               keyCategory = null;
               mkIsModuleFn = null;
             })
