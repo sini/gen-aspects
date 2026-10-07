@@ -105,7 +105,14 @@ guard are in neither set (den-hoag-n8wb5). A reader uses `declined` only to choo
 is read (gen-algebra `resolveFields`): a refusing member refuses at its own read, named by aspect and
 field, and its siblings and the relation's edges still answer. A body that is the lift's image of plain data (no term its author wrote,
 nothing nested but module slots) has no field that can refuse, and fires to itself as written; an authored
-term, even a closed `t.lit`, still resolves (den-hoag-gkar9). Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
+term, even a closed `t.lit`, still resolves (den-hoag-gkar9). The declaration check reads only the positions
+the lift did not build (an authored term or refusal, a function, a derivation's `lit`, a class key's value, a
+nested guard's `ref`); the lift's own nodes pass by construction of gen-algebra `checkTerm`'s local tests: a
+`lit` of a scalar is inert, the mint arm holds at every former-built node, no lift node is `Apply` or a
+context reader, and `attrChild` decides each key alone. That is not gen-algebra's published contract, so
+`first-order-guards.test-checked-body-passes-the-whole-clause` reds if gen-algebra adds a local test over a
+lift-built node (den-hoag-egkyp). A nested guard is checked as the lift forces it, so its refusal is thrown
+before a refusal at an earlier position of the outer body. Only reached pairs are edges: `members` are walked over `graphFacts`' local sites through static
 nodes and inline content. A node mints at its own tuple when the guard's condition holds there,
 otherwise at each descendant's coordinate where it holds and whose crossed levels, below the entities the
 reading node binds, the instance takes (`admits`, `crosses`; ruling 7, T1); a nested include fans out the

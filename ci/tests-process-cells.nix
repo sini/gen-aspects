@@ -191,7 +191,34 @@ let
     # difference of the two thunk counts, the body's delivery, at two widths, read by the runner.
     guard-fire-true = fireWidth { thimble = "p"; };
     guard-fire-false = fireWidth { };
+
+    # den-hoag-egkyp: a guard's declaration check costs a constant per body field, its floor. One guard of
+    # n plain fields is placed and fired once where its condition FAILS, so the check runs and nothing is
+    # delivered (`-check`); `-data` forces the same body with no guard. The verdict is the difference of
+    # the two thunk counts, the check, at two widths, read by the runner.
+    guard-check-check = checkWidth true;
+    guard-check-data = checkWidth false;
   };
+  checkWidth =
+    guarded:
+    let
+      w = builtins.fromJSON n;
+      body = builtins.listToAttrs (
+        builtins.genList (i: {
+          name = "x${toString i}";
+          value = "v${toString i}";
+        }) w
+      );
+      g =
+        (spiedDoored.evalModuleTree { } [
+          { options.aspects = (ga.mkAspectSchema { }).mkAspectOption { }; }
+          { aspects.d = ga.guard (ga.pred.eq [ "thimble" ] "p") body; }
+        ]).config.aspects.d;
+    in
+    if guarded then
+      builtins.deepSeq ((ga.mkGuardVocab { }).applyGuard { } g) w
+    else
+      builtins.deepSeq body w;
   fireWidth =
     ctx:
     let

@@ -1255,6 +1255,12 @@ in
           (
             exactly "gen-aspects.guard: aspect `g`: term-function: {\"remedy\":\"a closure is not a term\"}. A guard body is data: module content belongs under a class key. A context closure crosses the gen-rules door: declare the aspect through the framework's surface, or write the body as a guard term (`guard (pred.has <coordinate>) <body>`)."
           );
+      # den-hoag-egkyp: a closure below an aspect key is checked in its key's frame, so the refusal names the key.
+      test-closure-at-field-names-key =
+        thrown (place { } { g = aspects.guard aspects.pred.always { f = ctx: { }; }; }).g
+          (
+            exactly "gen-aspects.guard: aspect `g`: term-function: {\"key\":\"f\",\"remedy\":\"a function is admitted only in a declared module slot; write a term, or declare the closure through the framework's surface\"}. A guard body is data: module content belongs under a class key. A context closure crosses the gen-rules door: declare the aspect through the framework's surface, or write the body as a guard term (`guard (pred.has <coordinate>) <body>`)."
+          );
     };
 
   # Stage 2b, the message (spec §2.10 [v1 G-C4], §3a): every site that refuses a context closure names

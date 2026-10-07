@@ -10,6 +10,7 @@
   mkSchemaEval,
   genAlgebra,
   genIdentity,
+  guardTermInternals,
   ...
 }:
 let
@@ -694,6 +695,126 @@ let
         over = false;
       };
     };
+    # den-hoag-egkyp: the lift takes a scalar child without a call, and still spends the depth budget on
+    # it: a scalar at depth 256 checks and keys, one at 257 is refused catchably.
+    test-scalar-leaf-depth-budget = {
+      expr =
+        let
+          deep = n: if n == 0 then "leaf" else { d = deep (n - 1); };
+          k = n: ok (a.key (place { } { s = a.guard a.pred.always (deep n); }).s);
+        in
+        {
+          at256 = k 256;
+          at257 = k 257;
+        };
+      expected = {
+        at256 = true;
+        at257 = false;
+      };
+    };
+    # den-hoag-egkyp: the declaration check reads only the positions the lift did not build, because
+    # gen-algebra's checkTerm passes the lift's own nodes by construction: no local test refuses a
+    # `lit` of a scalar (InertValue), the mint arm holds at every former-built node (`mintNode` is
+    # total), no lift node is `Apply` or a context reader, and `attrChild` decides each key alone. None
+    # of that is published, so this cell gates it: over a battery spanning every node the lift builds,
+    # every body the check admits has a whole body (the checked record's `body`) that `checkClause` also
+    # admits under the same instance. A local test gen-algebra adds over a lift-built node reds it.
+    test-checked-body-passes-the-whole-clause =
+      let
+        G = a.guard a.pred.always;
+        modFn = { config, ... }: { };
+        deep = n: if n == 0 then "leaf" else { d = deep (n - 1); };
+        deepList = n: if n == 0 then [ "leaf" ] else [ (deepList (n - 1)) ];
+        ctxString = "${builtins.toFile "gen-aspects-egkyp" "x"}";
+        bodies = {
+          scalars = {
+            s = "d";
+            i = 1;
+            f = 1.5;
+            b = true;
+            z = null;
+            big = 9223372036854775807;
+            uni = "ü\n\t";
+          };
+          path = {
+            p = ./first-order-guards.nix;
+          };
+          contextString = {
+            s = ctxString;
+          };
+          rootScalar = "just";
+          rootNull = null;
+          rootPath = ./first-order-guards.nix;
+          emptyAttrs = { };
+          emptyList = [ ];
+          emptyChildren = {
+            a = { };
+            b = [ ];
+          };
+          rootList = [
+            1
+            "x"
+            { y = 2; }
+          ];
+          nested = {
+            a.b.c = 1;
+            l = [
+              1
+              [
+                "x"
+                { y = ./first-order-guards.nix; }
+              ]
+            ];
+          };
+          deepAttrs = deep 256;
+          deepList = {
+            l = deepList 200;
+          };
+          slotAtRoot = modFn;
+          slotInIncludes = {
+            includes = [ modFn ];
+          };
+          slotAtField = {
+            f = modFn;
+          };
+          nestedGuard = {
+            g = G { description = "inner"; };
+          };
+          nestedGuardInList = {
+            xs = [ (G { p = ./first-order-guards.nix; }) ];
+          };
+          guardAtRoot = G { x = 1; };
+          classContent = {
+            nixos = {
+              s = ctxString;
+              p = ./first-order-guards.nix;
+            };
+          };
+          classSlot = {
+            nixos = modFn;
+          };
+          authored = {
+            description = t.lit "x";
+            c.nixos = t.lit "c";
+          };
+        };
+        inst = guardTermInternals.instanceFor { keySemantics.nixos.category = "class"; };
+        verdict =
+          body:
+          let
+            g = (place { } { d = G body; }).d;
+          in
+          if !(builtins.tryEval (builtins.deepSeq g.__checked true)).success then
+            "refused"
+          else if T.isRefusal (T.checkClause inst { inherit (g) condition body; }) then
+            "the whole body is refused"
+          else
+            "admitted";
+      in
+      {
+        expr = builtins.mapAttrs (_: verdict) bodies;
+        expected = builtins.mapAttrs (_: _: "admitted") bodies;
+      };
     # A module function at an aspect position of a guard body (the whole body, an `includes` element) is
     # a module slot, carried unapplied as base carried it; a context closure there is refused; the slot's
     # position, not its payload, enters the identity.

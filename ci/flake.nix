@@ -142,22 +142,32 @@
           inherit (genAlgebra) identityOf isExact;
         };
         # The guard-term instance's depth budget, so the cells straddling it read the bound rather than
-        # restate it. Only the constant is read; the instance's own inputs are never forced.
-        guardTermInternals = {
-          inherit
-            (import ../lib/guard-term.nix {
-              T = null;
-              hashIdentity = null;
-              identityOf = null;
-              isExact = null;
-              keyCategory = null;
-              mkIsModuleFn = null;
+        # restate it, and the instance a guard is checked under, for the cell that checks a checked
+        # record's whole body against gen-algebra as published (den-hoag-egkyp). `instanceFor` takes a
+        # cnf as `mkSchemaEval` places it: the fixture's classes under the caller's keySemantics.
+        guardTermInternals =
+          let
+            GT = import ../lib/guard-term.nix {
+              T = genAlgebra.term genIdentity.hashIdentity;
+              inherit (genIdentity) hashIdentity;
+              inherit (genAlgebra) identityOf isExact;
+              inherit (aspects) keyCategory mkIsModuleFn;
               refusalShapeOf = null;
               refusalReachedText = null;
-            })
-            maxLiftDepth
-            ;
-        };
+            };
+          in
+          {
+            inherit (GT) maxLiftDepth;
+            instanceFor =
+              cnf:
+              GT.instanceFor (
+                (import ../lib/cnf.nix).cnfDefaults
+                // cnf
+                // {
+                  keySemantics = defaultKeySemantics // (cnf.keySemantics or { });
+                }
+              );
+          };
       };
       # Cells whose subject is an error MESSAGE: outside `testModules`, read by
       # `nix-unit --flake ./ci#testsError` (see the file's header). `tests-process.nix` is a PROCESS

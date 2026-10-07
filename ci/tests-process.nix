@@ -154,9 +154,35 @@
           [ $((100 * d2)) -le $((101 * d1)) ] \
             || die guard-fire-width "delivery grows with body width: $d1 / $d2 thunks over 32 firings at width 16 / 64"
 
+          # den-hoag-egkyp: a guard's declaration check costs its floor per body field. checkAt <arm> <n>
+          # leaves `thunks` set, read as above.
+          checkAt() {
+            rm -f "$TMPDIR/stats"
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            evalArm "$1" "$2"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die guard-check-width "$1 n=$2: expected exit 0, got $rc"
+            [ "$val" = "$2" ] || die guard-check-width "$1 n=$2: expected $2, got '$val'"
+            [ -s "$TMPDIR/stats" ] || die guard-check-width "$1 n=$2: could not measure, no statistics written"
+            thunks=$(sed -n 's/.*"nrThunks": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
+            [ -n "$thunks" ] || die guard-check-width "$1 n=$2: could not measure, no nrThunks in the statistics"
+          }
+          checkAt guard-check-check 16; k1=$thunks
+          checkAt guard-check-data 16; e1=$thunks
+          checkAt guard-check-check 64; k2=$thunks
+          checkAt guard-check-data 64; e2=$thunks
+          s=$(((k2 - e2) - (k1 - e1)))
+          echo "guard-check-width: the declaration check costs $s thunks over the 48 fields from width 16 to 64"
+          # The lift visits each field once and the clause reads only what can refuse: 2 thunks per
+          # field, the child's place in its parent and its (lazy) term, measured identical on all three
+          # evaluators. Checking the clause over the lifted body costs 244.
+          [ "$s" -gt 0 ] || die guard-check-width "could not measure: the check costs nothing over width ($k1 - $e1, $k2 - $e2)"
+          [ "$s" -le $((48 * 2)) ] \
+            || die guard-check-width "the declaration check costs more than 2 thunks per body field: $s over 48 fields"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "9" ] || die runner "expected 9 evaluations, ran $ran"
-          echo "tests-process: 4 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "13" ] || die runner "expected 13 evaluations, ran $ran"
+          echo "tests-process: 5 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

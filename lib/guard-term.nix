@@ -145,12 +145,15 @@ let
         term = tm.ref id;
         nested.${id} = v;
         authored = [ ];
+        checked = [ ];
       }
     else if T.isTerm v || isRefusal v || builtins.isFunction v then
       {
         term = v;
         nested = none;
         authored = if T.isTerm v then [ v ] else [ ];
+        checked = [ v ];
+        bare = true;
       }
     # Another library's refusal value, which the plain plane refuses by the same recogniser
     # (den-hoag-3sk7j): the guard plane refuses it too, rather than serve it as data.
@@ -173,19 +176,28 @@ let
           };
         };
       in
-      {
+      let
         term = tm.ref id;
+      in
+      {
+        inherit term;
         nested.${id} = inner;
         authored = [ ];
+        checked = [ term ];
       }
     else if builtins.isAttrs v && (v.type or null) == "derivation" then
-      {
+      let
         term = tm.lit v;
+      in
+      {
+        inherit term;
         nested = none;
         authored = [ ];
+        checked = [ term ];
       }
     else if builtins.isAttrs v then
       let
+        d = depth + 1;
         kids = builtins.mapAttrs (
           k: c:
           if keyCategory cnf k == "class" then
@@ -193,15 +205,30 @@ let
               term = c;
               nested = none;
               authored = if T.isTerm c then [ c ] else [ ];
+              checked = [ (if T.isTerm c || isRefusal c then c else tm.attrs { ${k} = c; }) ];
+            }
+          else if d <= maxLiftDepth && isScalar c then
+            {
+              term = tm.lit c;
+              nested = none;
+              authored = [ ];
+              checked = [ ];
             }
           else
-            liftAt cnf at (depth + 1) (pos ++ [ k ]) c
+            let
+              x = liftAt cnf at d (pos ++ [ k ]) c;
+            in
+            if (x.bare or false) && builtins.isFunction x.term then
+              x // { checked = [ (tm.attrs { ${k} = x.term; }) ]; }
+            else
+              x
         ) v;
       in
       {
         term = tm.attrs (builtins.mapAttrs (_: x: x.term) kids);
         nested = builtins.foldl' (acc: x: acc // x.nested) none (builtins.attrValues kids);
         authored = builtins.concatMap (x: x.authored) (builtins.attrValues kids);
+        checked = builtins.concatMap (x: x.checked) (builtins.attrValues kids);
       }
     else if builtins.isList v then
       let
@@ -213,14 +240,25 @@ let
         term = tm.list (map (x: x.term) kids);
         nested = builtins.foldl' (acc: x: acc // x.nested) none kids;
         authored = builtins.concatMap (x: x.authored) kids;
+        checked = builtins.concatMap (x: x.checked) kids;
       }
     else
       {
         term = tm.lit v;
         nested = none;
         authored = [ ];
+        checked = [ ];
       };
   lift = cnf: v: (liftAt cnf "guard" 0 [ ] v).term;
+  # The datum the lift takes to a `lit` at its first test: no function, attrset or list.
+  isScalar =
+    c:
+    let
+      ty = builtins.typeOf c;
+    in
+    ty != "set" && ty != "list" && ty != "lambda";
+  # The body the clause is checked over when the lift met nothing refusable: one term, built once.
+  groundBody = tm.list [ ];
 
   nodes = t: [ t ] ++ builtins.concatMap nodes (T.children t);
   refsIn = t: builtins.filter (n: n.__bodyTerm == "Ref") (nodes t);
@@ -258,7 +296,13 @@ let
         body = lifted.term;
         r = T.checkClause (instanceFor cnf) {
           inherit (g) condition;
-          inherit body;
+          body =
+            if lifted.bare or false then
+              g.body
+            else if lifted.checked == [ ] then
+              groundBody
+            else
+              tm.list lifted.checked;
         };
         # A door reference sits only in a term the author wrote: the lift's own references name a nested
         # guard or a module slot, never a door. So the scans read the authored terms, not the lifted body.
@@ -461,6 +505,11 @@ let
           value = null;
           inherit (args) scope;
         }
+      else if g.__served != null then
+        {
+          inherit (g.__served) value;
+          inherit (args) scope;
+        }
       else if isDoorBody g.body && isRefusal b then
         throw (render at b.left)
       else if isDoorBody g.body then
@@ -529,11 +578,6 @@ let
             inherit (patched) value;
             scope = scope // patched.scope;
           }
-      else if g.__served != null then
-        {
-          inherit (g.__served) value;
-          inherit (args) scope;
-        }
       else
         {
           # Each field resolved where it is READ (ADR-0010 §4(a) clause 3; gen-algebra `resolveFields`):
