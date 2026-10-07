@@ -123,25 +123,40 @@ in
       };
     };
 
-  # den-hoag-7gp66 P1: the closed doors' shared checks, message pinned on the real path.
+  # den-hoag-7gp66 P1/P2: the doors' shared checks, message pinned on the real path.
   flake.testsError.doors =
     let
       schema = aspects.mkAspectSchema { };
       unknown = door: accepted: exactly (refusals.unknownOption door accepted "notAnOption");
+      retiredClasses = (import ../lib/cnf.nix).retiredCnfKeys.classes;
     in
     {
+      # The `cnf` step (P2 L5, Q1 (C)): an unknown key is the shared check's refusal, naming the door
+      # and the recognised set; the retired `classes` is refused naming its replacement.
+      test-cnf-unknown-key = thrown (aspects.mkGuardVocab { notAnOption = 1; }) (
+        unknown "gen-aspects.mkGuardVocab" aspects.cnfKeys
+      );
+      test-cnf-retired-key = thrown (aspects.aspectsType { classes.nixos = { }; }) (
+        exactly (refusals.retiredOption "gen-aspects.aspectsType" retiredClasses "classes")
+      );
+      test-cnf-retired-key-text = thrown (aspects.aspectsType { classes.nixos = { }; }) (
+        "^gen-aspects[.]aspectsType: 'classes' is a retired option of this door; its replacement is `keySemantics` [(]retired at gen-aspects 9a855c9"
+      );
+      # The firing record (P2 L5): a missing field is refused by name at its application.
+      test-applyguardwith-missing-field =
+        thrown
+          ((aspects.mkGuardVocab { }).applyGuardWith {
+            context = { };
+            sources = { };
+          })
+          (
+            exactly (refusals.missingField "gen-aspects.applyGuardWith" [ "context" "sources" "scope" ] "scope")
+          );
       test-mk-aspect-option-unknown = thrown (schema.mkAspectOption { notAnOption = 1; }) (
         unknown "gen-aspects.mkAspectSchema.mkAspectOption" [ "providerPrefix" ]
       );
       test-mk-aspect-module-unknown = thrown (schema.mkAspectModule { notAnOption = 1; }) (
         unknown "gen-aspects.mkAspectSchema.mkAspectModule" [ "providerPrefix" ]
-      );
-      test-mk-namespace-type-unknown = thrown (schema.mkNamespaceType {
-        config = { };
-        notAnOption = 1;
-      }) (unknown "gen-aspects.mkAspectSchema.mkNamespaceType" [ "config" ]);
-      test-mk-namespace-type-config-required = thrown (schema.mkNamespaceType { }) (
-        exactly (refusals.missingField "gen-aspects.mkAspectSchema.mkNamespaceType" [ "config" ] "config")
       );
     };
 
@@ -586,10 +601,11 @@ in
       ]) { description = t.readCtx "extra" [ ]; };
       mint =
         value: context: sources:
-        aspects.instanceOf { } {
+        aspects.instanceOf { } { } {
           aspect = "A";
-          inherit value context sources;
-        };
+          inherit context;
+          inherit sources;
+        } value;
       at = msg: exactly "gen-aspects.instanceOf: aspect `A` ${msg}";
     in
     {
@@ -629,34 +645,37 @@ in
       # The argument record and its field types. RED (without the doors): the extra field and the
       # non-string `aspect` are admitted silently and the cell's empty context refuses at the
       # derived-reads door instead; string `sources` aborts `expected a set but found a string`, uncatchably.
-      test-unknown-field =
+      # P2 L5 (Q2 (A)): the pre-P2 one-record call is refused at the options step, naming its first
+      # field; `scope` given on the record instead of the options is refused naming the options step
+      # (G10). An extra field on the record itself is admitted (R5, `ci/tests/doors.nix`).
+      test-old-one-record-shape = thrown (aspects.instanceOf { } {
+        aspect = "A";
+        value = p;
+        context = { };
+        sources = { };
+      }) (exactly (refusals.unknownOption "gen-aspects.instanceOf" [ "scope" ] "aspect"));
+      test-scope-on-the-record = thrown (aspects.instanceOf { } { } {
+        aspect = "A";
+        context = { };
+        sources = { };
+        scope = { };
+      }) (exactly (refusals.guardedField "gen-aspects.instanceOf" "gen-aspects.instanceOf" "scope"));
+      test-record-missing-field =
         thrown
-          (aspects.instanceOf { } {
+          (aspects.instanceOf { } { } {
             aspect = "A";
-            value = p;
             context = { };
-            sources = { };
-            extra = 1;
           })
           (
-            exactly (
-              refusals.unknownOption "gen-aspects.instanceOf" [
-                "aspect"
-                "value"
-                "context"
-                "sources"
-                "scope"
-              ] "extra"
-            )
+            exactly (refusals.missingField "gen-aspects.instanceOf" [ "aspect" "context" "sources" ] "sources")
           );
       test-aspect-not-string =
         thrown
-          (aspects.instanceOf { } {
+          (aspects.instanceOf { } { } {
             aspect = { };
-            value = p;
             context = { };
             sources = { };
-          })
+          } p)
           (
             exactly "gen-aspects.instanceOf: `aspect` must be the aspect's identity, a string; received: set."
           );
@@ -667,13 +686,15 @@ in
       # set but found a string` inside the firing, naming no door.
       test-scope-not-attrs =
         thrown
-          (aspects.instanceOf { } {
+          (aspects.instanceOf { } { scope = "s"; } {
             aspect = "A";
-            value = p;
-            context.host = "h1";
-            sources.host = entity "h1";
-            scope = "s";
-          })
+            context = {
+              host = "h1";
+            };
+            sources = {
+              host = entity "h1";
+            };
+          } p)
           (
             at "was handed a scope of type string; a scope is an instance's `scope`, closures keyed by nested registration identifiers."
           );
@@ -704,9 +725,9 @@ in
       relC =
         suppliers: containment: scope:
         aspects.instancesFor { } tree {
-          inherit suppliers containment;
-          scopes.a = scope;
-        };
+          inherit suppliers;
+          inherit containment;
+        } { a = scope; };
       relWith = suppliers: relC suppliers { };
       rel = relWith sup;
       at = msg: exactly "gen-aspects.instancesFor (node 'a'): ${msg}";
@@ -739,25 +760,26 @@ in
         builtins.attrNames
           (aspects.instancesFor { } placed {
             suppliers = sup;
-            scopes.a = ok;
             containment = { };
-          }).vertices
+          } { a = ok; }).vertices
       );
       ownRefused =
         src:
         thrown
-          (aspects.instancesFor { } placed {
-            containment = { };
-            suppliers = sup // {
-              ${src}.host = "h2";
-            };
-            scopes = {
+          (aspects.instancesFor { } placed
+            {
+              suppliers = sup // {
+                ${src}.host = "h2";
+              };
+              containment = { };
+            }
+            {
               a = ok;
               b = ok // {
                 sources.host = src;
               };
-            };
-          })
+            }
+          )
           (
             exactly (
               "gen-aspects.instancesFor: aspect `${pid}` was handed, for formal(s) `host`, the identity of "
@@ -771,33 +793,20 @@ in
         "key(s) '${k}' name a source that `suppliers` holds no value for under that key; a context value is supplied as `suppliers.<source>.<key>`, never beside the scope.";
     in
     {
-      # The previous surface's call (scopes in the input's place) names the new field.
-      test-input-missing-suppliers = thrown (aspects.instancesFor { } tree { a = ok; }) (
-        exactly (
-          refusals.missingField "gen-aspects.instancesFor" [ "suppliers" "scopes" "containment" ] "suppliers"
-        )
+      # The previous surface's call (scopes in the input's place) names the missing field.
+      test-input-missing-suppliers = thrown (aspects.instancesFor { } tree { containment = { }; }) (
+        exactly (refusals.missingField "gen-aspects.instancesFor" [ "suppliers" "containment" ] "suppliers")
       );
-      test-input-unknown-field =
-        thrown
-          (aspects.instancesFor { } tree {
-            suppliers = sup;
-            scopes = { };
-            containment = { };
-            extra = 1;
-          })
-          (
-            exactly (
-              refusals.unknownOption "gen-aspects.instancesFor" [ "suppliers" "scopes" "containment" ] "extra"
-            )
-          );
       test-suppliers-not-attrs = thrown (relWith [ ] ok) (
         exactly "gen-aspects.instancesFor: `suppliers` must be an attrset `<source identity>.<key> = <value>`, not a list."
       );
-      test-scopes-not-attrs = thrown (aspects.instancesFor { } tree {
-        suppliers = sup;
-        scopes = [ ];
-        containment = { };
-      }) (exactly "gen-aspects.instancesFor: `scopes` must be an attrset of node scopes, not a list.");
+      test-scopes-not-attrs = thrown (aspects.instancesFor { } tree
+        {
+          suppliers = sup;
+          containment = { };
+        }
+        [ ]
+      ) (exactly "gen-aspects.instancesFor: `scopes` must be an attrset of node scopes, not a list.");
       # C-B. RED (without the door): `attribute '<member>' missing`, uncatchable.
       test-member-not-a-node = thrown (rel (ok // { members = [ "absent" ]; })) (
         at "member 'absent' is not a node of this tree; a member is a `graphFacts` node id (resolve a local key through `nodeIdOf`)."
@@ -838,45 +847,19 @@ in
       test-source-own-node-id = ownRefused pid;
       test-source-own-vertex-id = ownRefused vid;
       # den-hoag-8g2rn §2.6. The retired per-scope `descendants` refuses through the closed-field door
-      # (LEGACY), and so does a handed transitive view beside `containment`.
+      # (LEGACY). A handed transitive view beside `containment` is an extra field of the open
+      # `{ suppliers; containment; }` record since den-hoag-7gp66 P2 L5, admitted (R5's stated price).
       test-scope-descendants-retired = thrown (rel (ok // { descendants = [ ]; })) (
         exactly (
           refusals.unknownOption "gen-aspects.instancesFor (node 'a')" [ "members" "sources" ] "descendants"
         )
       );
-      test-descendants-of-view-refused =
-        thrown
-          (aspects.instancesFor { } tree {
-            suppliers = sup;
-            scopes.a = ok;
-            containment = { };
-            descendantsOf = { };
-          })
-          (
-            exactly (
-              refusals.unknownOption "gen-aspects.instancesFor" [
-                "suppliers"
-                "scopes"
-                "containment"
-              ] "descendantsOf"
-            )
-          );
       # OMIT: `containment` is required (`{ }` when there is none).
-      test-containment-missing =
-        thrown
-          (aspects.instancesFor { } tree {
-            suppliers = sup;
-            scopes.a = ok;
-          })
-          (
-            exactly (
-              refusals.missingField "gen-aspects.instancesFor" [
-                "suppliers"
-                "scopes"
-                "containment"
-              ] "containment"
-            )
-          );
+      test-containment-missing = thrown (aspects.instancesFor { } tree { suppliers = sup; }) (
+        exactly (
+          refusals.missingField "gen-aspects.instancesFor" [ "suppliers" "containment" ] "containment"
+        )
+      );
       test-containment-not-attrs = thrown (relCont [ ]) (
         exactly "gen-aspects.instancesFor: `containment` must be an attrset `<identifier> = { parent; key; identity; marked; bindings; }`, not a list."
       );
@@ -1013,12 +996,11 @@ in
         thrown
           (aspects.instancesFor { } tree {
             suppliers = supC;
-            scopes = { };
             containment = cont // {
               x1 = rec0 null "host" "q";
               x2 = rec0 null "host" "q";
             };
-          })
+          } { })
           (
             exactly "gen-aspects.instancesFor: containment entities 'x1', 'x2' carry one identity; an entity has one identifier."
           );
@@ -1129,12 +1111,15 @@ in
       dn = aspects.guard (aspects.pred.has "thimble") (t.ref rid);
       go =
         door:
-        (aspects.instanceOf { ref = door; } {
+        (aspects.instanceOf { ref = door; } { } {
           aspect = "x";
-          value = dn;
-          context.thimble = "p";
-          sources.thimble = src "p";
-        }).entry;
+          context = {
+            thimble = "p";
+          };
+          sources = {
+            thimble = src "p";
+          };
+        } dn).entry;
       self = aspects.guard aspects.pred.always { sub = self; };
       door =
         msg:
@@ -1302,7 +1287,11 @@ in
             deferIncludeResolution = true;
             modules = [ ];
           }).config.aspects
-          ("^" + lib.escapeRegex "gen-aspects: unrecognised cnf key 'deferIncludeResolution'.");
+          (
+            exactly (
+              refusals.unknownOption "gen-aspects.mkAspectSchema" aspects.cnfKeys "deferIncludeResolution"
+            )
+          );
     };
 
   # den-hoag-ywlww: two firing definitions of one parametric aspect that disagree on a scalar are
@@ -1351,14 +1340,20 @@ in
           ];
         }).config.aspects;
       src = "entity:" + builtins.hashString "sha256" "h1";
-      r = aspects.instancesFor { } tree {
-        containment = { };
-        suppliers.${src}.host = "h1";
-        scopes.n = {
-          members = [ "lazy" ];
-          sources.host = src;
-        };
-      };
+      r =
+        aspects.instancesFor { } tree
+          {
+            suppliers = {
+              ${src}.host = "h1";
+            };
+            containment = { };
+          }
+          {
+            n = {
+              members = [ "lazy" ];
+              sources.host = src;
+            };
+          };
     in
     {
       test-member-refuses-by-field = thrown r.vertices.${builtins.head r.reaches.n.lazy}.entry.bad (
@@ -1433,17 +1428,19 @@ in
       unscoped =
         depth:
         let
-          o = aspects.instanceOf (kinds // { ref = sd.door depth false; }) {
+          o = aspects.instanceOf (kinds // { ref = sd.door depth false; }) { } {
             aspect = "outer";
-            value = sd.outerNode depth;
-            context.thimble = "h0";
-            sources.thimble = src "h0";
-          };
+            context = {
+              thimble = "h0";
+            };
+            sources = {
+              thimble = src "h0";
+            };
+          } (sd.outerNode depth);
           first = builtins.head o.entry.includes;
         in
-        (aspects.instanceOf (kinds // { ref = sd.door depth true; }) {
+        (aspects.instanceOf (kinds // { ref = sd.door depth true; }) { } {
           aspect = "inner";
-          value = if depth == 1 then first else builtins.head first.includes;
           context = {
             thimble = "h0";
             bobbin = "u0";
@@ -1452,7 +1449,7 @@ in
             thimble = src "h0";
             bobbin = src "u0";
           };
-        }).entry;
+        } (if depth == 1 then first else builtins.head first.includes)).entry;
     in
     {
       test-unscoped-takes-fallback = thrown (unscoped 1) (

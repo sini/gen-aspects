@@ -16,7 +16,7 @@ let
 in
 {
   options.namespaces = genMerge.mkOption {
-    type = genMerge.types.lazyAttrsOf (aspectSchema.mkNamespaceType { inherit config; });
+    type = genMerge.types.lazyAttrsOf (aspectSchema.mkNamespaceType config);
     default = { };
     description = "Named aspect namespaces.";
   };

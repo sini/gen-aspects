@@ -69,10 +69,11 @@ let
   };
   inst =
     cnf: value: s:
-    aspects.instanceOf cnf {
-      inherit aspect value;
-      inherit (s) context sources;
-    };
+    aspects.instanceOf cnf { } {
+      inherit aspect;
+      context = s.context;
+      sources = s.sources;
+    } value;
   twoDefsScope = {
     context = {
       host = "h1";
@@ -233,9 +234,8 @@ let
   };
   r = aspects.instancesFor { } rel {
     suppliers = relSuppliers;
-    scopes = relScopes;
     containment = relContainment;
-  };
+  } relScopes;
   desc = id: r.vertices.${id}.entry.description;
   descs = map desc;
   facts = aspects.graphFacts { } rel;
@@ -275,9 +275,8 @@ let
     tree: scopes:
     aspects.instancesFor idCnf tree {
       suppliers = idSuppliers;
-      inherit scopes;
       containment = { };
-    };
+    } scopes;
   vertexCount = rr: builtins.length (builtins.attrNames rr.vertices);
   marksAt =
     rr: n: a:
@@ -547,9 +546,8 @@ in
           cont:
           aspects.instancesFor { } rel {
             suppliers = relSuppliers;
-            scopes.a = relScope "h1" null [ "w" ];
             containment = cont;
-          };
+          } { a = relScope "h1" null [ "w" ]; };
         users = rr: map (id: rr.vertices.${id}.formals.user) rr.reaches.a.u;
         canonical = relWith relContainment;
         renamed = relWith (removeAttrs relContainment [ "u1" ] // { z1 = relContainment.u1; });
@@ -698,9 +696,8 @@ in
       let
         rA = aspects.instancesFor { } rel {
           suppliers = relSuppliers;
-          scopes = { inherit (relScopes) a; };
           containment = relContainment;
-        };
+        } { inherit (relScopes) a; };
         # an id the other relation lacks reads null, so a mismatch is a false cell, never an abort
         slice =
           rr:
@@ -960,14 +957,18 @@ in
           y = entity "H";
           w = entity "H2";
         };
-        rr = aspects.instancesFor { } rel {
-          suppliers = sup;
-          containment = { };
-          scopes = builtins.mapAttrs (_: s: {
-            members = [ "e" ];
-            sources.host = s;
-          }) src;
-        };
+        rr =
+          aspects.instancesFor { } rel
+            {
+              suppliers = sup;
+              containment = { };
+            }
+            (
+              builtins.mapAttrs (_: s: {
+                members = [ "e" ];
+                sources.host = s;
+              }) src
+            );
         read = n: map (id: rr.vertices.${id}.entry.description) rr.reaches.${n}.e;
       in
       {
@@ -1025,22 +1026,22 @@ in
                 h2 = rec0 null "host" "h2" { };
                 u1 = rec0 "h2" "user" "u1" { };
               };
-              scopes = {
-                n = {
-                  members = [
-                    "o"
-                    "d"
-                  ];
-                  sources.host = entity "h";
-                };
-                nu = {
-                  members = [ "o" ];
-                  sources.host = entity "h2";
-                };
-                omit = {
-                  members = [ ];
-                  sources.host = entity "h";
-                };
+            }
+            {
+              n = {
+                members = [
+                  "o"
+                  "d"
+                ];
+                sources.host = entity "h";
+              };
+              nu = {
+                members = [ "o" ];
+                sources.host = entity "h2";
+              };
+              omit = {
+                members = [ ];
+                sources.host = entity "h";
               };
             };
         rc = relOf {

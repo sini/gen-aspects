@@ -1438,8 +1438,8 @@ in
   # EVERY refusal renderer `lib/facts.nix` EXPORTS has both a catchability and a message assertion.
   # The reach is the exports, and stating it wider would overstate what this roster measures: it reads
   # `attrNames factsInternals`, so a renderer defined in this file's `let` but not exported, or one in
-  # another library file, is outside it. `lib/cnf.nix`'s `cnfRefusal` is the library's only other
-  # renderer and carries both assertion kinds in `ci/tests/cnf-refusal.nix`.
+  # another library file, is outside it. The `cnf` refusal is the shared check's (gen-prelude `door`),
+  # pinned on the error plane (`doors`).
   # Stated as an assertion rather than left to review, because the gap this closes was exactly a
   # refusal that had neither: the check is that the set of renderers equals the set covered.
   flake.tests.graph-facts.test-every-refusal-renderer-is-covered = {

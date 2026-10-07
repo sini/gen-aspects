@@ -54,7 +54,7 @@ let
   instanceModule = import ./instance.nix {
     inherit prelude;
     inherit (identity) hashIdentity;
-    inherit (guardModule) mkGuardVocab;
+    inherit (guardModule) guardVocabOf;
     inherit (types) GT;
     inherit (factsModule) graphCore;
     inherit (types) aspectId;
@@ -94,11 +94,11 @@ in
   # THE canonical, uniform aspect content-address (all three kinds). den-hoag retired its
   # `sha256 "den-aspect:${key}"` hand-roll onto it. `aspectId origin aspect`. See lib/types.nix.
   inherit (types) aspectId;
-  # `instanceOf cnf { aspect; value; context; sources; }` → `{ id; entry; formals; }` — the instance
+  # `instanceOf cnf { scope ? { }; } { aspect; context; sources; } value` → `{ id; entry; formals; scope; }` — the instance
   # mint: a guard record or carrier applied to a context is a node of its own, identified by
   # its aspect and by the sources of the keys it receives there (0cmbt spec §2.5). See lib/instance.nix.
   inherit (instanceModule) instanceOf;
-  # `instancesFor cnf aspects { suppliers; scopes; containment; }` → `{ vertices; instantiates;
+  # `instancesFor cnf aspects { suppliers; containment; } scopes` → `{ vertices; instantiates;
   # reaches; nestedAt; declined; }` — the instance relation: one vertex per minted instance, its
   # `instantiates` edge to its declaration, scope → instance edges and, per reading node, nested edges
   # from vertices, each fanning out over the containment descendants derived from `containment`

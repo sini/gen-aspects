@@ -166,53 +166,36 @@ let
   # whose grammar is gen-schema's and has no union.
   mergedKeys = keysIn "merged";
 
-  # A key the library RETIRED names its replacement in the refusal, and does so from a binding rather
-  # than from an `if`: a future retirement adds an entry, and the message construction does not
-  # change. An unrecognised key with no entry gets the same message minus this paragraph.
+  # A key the library RETIRED, mapped to the text naming its replacement: the `retired` arm of the
+  # shared options check (gen-prelude `door`, den-hoag-7gp66 P2 L5), which refuses the old key by
+  # name with this text where any other unknown key gets the plain refusal naming the recognised set.
+  # A future retirement adds an entry here and nothing else.
   #
-  # Each sentence is stored WITHOUT its leading `cnf.<key>` — `cnfRefusal` renders that from the key.
-  # Spelling it here would put the literal token `cnf.classes` in `lib/`, where the CI guard that
-  # derives the vocabulary from the reads themselves would pick it up as a phantom member of the
-  # recognised set — the retirement record manufacturing its own false evidence.
+  # Each text is stored WITHOUT a leading `cnf.<key>`: spelling it here would put the literal token
+  # `cnf.classes` in `lib/`, where the CI guard that derives the vocabulary from the reads themselves
+  # would pick it up as a phantom member of the recognised set — the retirement record manufacturing
+  # its own false evidence.
   retiredCnfKeys = {
     classes =
-      "was RETIRED at gen-aspects 9a855c9 (2026-07-15): a class is now a keySemantics entry. "
-      + "Replace `classes = { nixos = { }; }` with `keySemantics = { nixos = { category = \"class\"; }; }`.";
+      "`keySemantics` (retired at gen-aspects 9a855c9, 2026-07-15: a class is a keySemantics entry, "
+      + "so `classes = { nixos = { }; }` becomes `keySemantics = { nixos = { category = \"class\"; }; }`)";
   };
 
-  # ALL offending keys are named, never just the first: otherwise a three-typo migration is three
-  # round trips. The recognised set is rendered from `cnfDefaults` and never restated, because a
-  # literal list inside a message string is one more copy that drifts silently. No edit-distance
-  # "did you mean" — that adds a similarity heuristic and a tuning parameter to a refusal path, where
-  # printing the recognised set in full answers the same question exactly rather than probabilistically.
-  cnfRefusal =
-    unknown:
-    let
-      noun = if builtins.length unknown == 1 then "key" else "keys";
-      named = builtins.concatStringsSep ", " (map (k: "'${k}'") unknown);
-      retired = map (k: "  `cnf.${k}` ${retiredCnfKeys.${k}}\n") (
-        builtins.filter (k: retiredCnfKeys ? ${k}) unknown
-      );
-    in
-    "gen-aspects: unrecognised cnf ${noun} ${named}.\n"
-    + builtins.concatStringsSep "" retired
-    + "  Recognised cnf keys: ${builtins.concatStringsSep ", " cnfKeys} "
-    + "(also exported as `aspects.cnfKeys`).";
+  # The record the internals hold: every key, its default where the caller gave none. The key set
+  # was checked at the door, so this is total by construction.
+  constructed = cnf: cnfDefaults // cnf;
 
-  checkedCnf =
-    cnf:
-    let
-      unknown = builtins.filter (k: !(cnfDefaults ? ${k})) (builtins.attrNames cnf);
-    in
-    if unknown == [ ] then cnfDefaults // cnf else throw (cnfRefusal unknown);
+  # An internal site that extends a constructed record with further keys asserts they are keys of the
+  # vocabulary: an internal invariant, not a caller's refusal, which the door owns.
+  extendCnf =
+    c: overrides:
+    assert builtins.all (k: cnfDefaults ? ${k}) (builtins.attrNames overrides);
+    c // overrides;
 
-  # An internal site that extends a checked record with further keys is refused at its OWN call, so
-  # the "internals hold a checked record" invariant has a single enforcement point rather than one
-  # honour-system point per extension site.
-  extendCnf = c: overrides: checkedCnf (c // overrides);
-
-  # A PUBLIC entry point: construct the record, and put that construction on the STRICT path of the
-  # result, so the refusal is reachable by forcing the result to WHNF rather than only by evaluating
+  # A PUBLIC entry point: the `cnf` step is a `prelude.door` (den-hoag-7gp66 P2 L5) — closed over
+  # `cnfKeys`, refusing an unknown key by name with the recognised set and a retired one naming its
+  # replacement, its contract published as data — whose body constructs the record and puts that
+  # construction on the STRICT path of the result, so the refusal is reachable by forcing the result to WHNF rather than only by evaluating
   # a configuration through it. This placement is load-bearing: forcing a returned option DECLARATION
   # does not force validation buried inside its type, so a check placed there would be a landmine
   # firing at whatever unrelated read first happens to build the submodule.
@@ -226,11 +209,21 @@ let
   checkedEntry =
     f: cnf:
     let
-      c = checkedCnf cnf;
+      c = constructed cnf;
     in
     builtins.seq c (
       builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef c.ref) (f c))
     );
+
+  # `cnfDoor prelude name f` — the published door over `checkedEntry f`, named for the entry point
+  # (R6). The spec is the same at every entry point, so each binds it once, where it is built.
+  cnfDoor =
+    prelude: name: f:
+    prelude.door {
+      inherit name;
+      optional = cnfKeys;
+      retired = retiredCnfKeys;
+    } (checkedEntry f);
 
   # `cnf.ref`, the framework's door: `null`, or a function the resolver can call with
   # `{ id; context; sources; captured; }` without aborting. A formals pattern is read through
@@ -324,9 +317,9 @@ in
     cnfDefaults
     cnfKeys
     mergedKeys
-    cnfRefusal
-    checkedCnf
+    retiredCnfKeys
     extendCnf
     checkedEntry
+    cnfDoor
     ;
 }

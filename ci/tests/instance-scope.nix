@@ -31,12 +31,15 @@ let
   # The outer instance at `{ thimble = host; }`, fired through the real door.
   outerAt =
     depth: host:
-    a.instanceOf (cnfOf depth false) {
+    a.instanceOf (cnfOf depth false) { } {
       aspect = "outer";
-      value = sd.outerNode depth;
-      context.thimble = host;
-      sources.thimble = src host;
-    };
+      context = {
+        thimble = host;
+      };
+      sources = {
+        thimble = src host;
+      };
+    } (sd.outerNode depth);
   # The deferred inner node in an outer instance's entry: the outer's include at depth 1, the mid's
   # (fired in place, its condition holding at `{ thimble }`) at depth 2.
   innerOf =
@@ -48,9 +51,8 @@ let
   # The deferred inner of `o` (an outer instance at `host`) fired at `bobbin`, handed `scope`.
   innerAt =
     depth: poison: o: host: scope: bobbin:
-    (a.instanceOf (cnfOf depth poison) {
+    (a.instanceOf (cnfOf depth poison) { inherit scope; } {
       aspect = "inner";
-      value = innerOf depth o;
       context = {
         thimble = host;
         inherit bobbin;
@@ -59,8 +61,7 @@ let
         thimble = src host;
         bobbin = src bobbin;
       };
-      inherit scope;
-    }).entry;
+    } (innerOf depth o)).entry;
   # G1 at one depth: the inner fired at three bobbins through the POISONED door. Handed the outer's
   # scope it reads its closure there (no throw); handed none it takes the fallback, which throws.
   g1 =
@@ -156,9 +157,8 @@ in
           at =
             scope:
             ok
-              (a.instanceOf (cnfOf 2 false) {
+              (a.instanceOf (cnfOf 2 false) { inherit scope; } {
                 aspect = "inner";
-                value = innerOf 2 o0;
                 context = {
                   thimble = "h1";
                   bobbin = "u0";
@@ -167,8 +167,7 @@ in
                   thimble = src "h1";
                   bobbin = src "u0";
                 };
-                inherit scope;
-              }).entry;
+              } (innerOf 2 o0)).entry;
         in
         {
           withScope = at o0.scope;
@@ -194,14 +193,20 @@ in
                 modules = [ { config.aspects.o = sd.outerNode 2; } ];
               }
             )).config.aspects;
-          r = a.instancesFor (cnfOf 2 false) tree {
-            containment = { };
-            suppliers.${src "h0"}.thimble = "h0";
-            scopes.n = {
-              members = [ "o" ];
-              sources.thimble = src "h0";
-            };
-          };
+          r =
+            a.instancesFor (cnfOf 2 false) tree
+              {
+                suppliers = {
+                  ${src "h0"}.thimble = "h0";
+                };
+                containment = { };
+              }
+              {
+                n = {
+                  members = [ "o" ];
+                  sources.thimble = src "h0";
+                };
+              };
           v = r.vertices.${builtins.head r.reaches.n.o};
         in
         {

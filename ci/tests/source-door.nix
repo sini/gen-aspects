@@ -28,7 +28,6 @@ let
   relOf =
     scopes:
     aspects.instancesFor cnf tree {
-      containment = { };
       suppliers = builtins.mapAttrs (_: s: { host = "h-${s.sources.host}"; }) (
         builtins.listToAttrs (
           map (s: {
@@ -37,8 +36,8 @@ let
           }) (builtins.attrValues scopes)
         )
       );
-      inherit scopes;
-    };
+      containment = { };
+    } scopes;
   scopeAt = src: {
     members = [ "q" ];
     sources.host = src;
@@ -71,24 +70,32 @@ let
   };
   rawRelAt =
     src:
-    aspects.instancesFor { } rawTree {
-      containment = { };
-      suppliers.${src}.host = "h1";
-      scopes.n1 = {
-        members = [ "p" ];
-        sources.host = src;
+    aspects.instancesFor { } rawTree
+      {
+        suppliers = {
+          ${src}.host = "h1";
+        };
+        containment = { };
+      }
+      {
+        n1 = {
+          members = [ "p" ];
+          sources.host = src;
+        };
       };
-    };
   mintAdmits =
     src:
     (builtins.tryEval (
       builtins.deepSeq
-        (aspects.instanceOf { } {
+        (aspects.instanceOf { } { } {
           aspect = "A";
-          value = q;
-          context.host = "h1";
-          sources.host = src;
-        }).id
+          context = {
+            host = "h1";
+          };
+          sources = {
+            host = src;
+          };
+        } q).id
         true
     )).success;
 in
@@ -186,14 +193,19 @@ in
     # Its control: the reached node alone mints, so the refusal above is `u`'s.
     test-biefe-control-reached-alone-admitted = {
       expr = admittedBy (
-        aspects.instancesFor { } (removeAttrs rawTree [ "u" ]) {
-          containment = { };
-          suppliers.${entityOf "entity"}.host = "h1";
-          scopes.n1 = {
-            members = [ "p" ];
-            sources.host = entityOf "entity";
-          };
-        }
+        aspects.instancesFor { } (removeAttrs rawTree [ "u" ])
+          {
+            suppliers = {
+              ${entityOf "entity"}.host = "h1";
+            };
+            containment = { };
+          }
+          {
+            n1 = {
+              members = [ "p" ];
+              sources.host = entityOf "entity";
+            };
+          }
       );
       expected = true;
     };

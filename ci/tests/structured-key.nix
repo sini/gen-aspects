@@ -60,17 +60,23 @@ let
       flatten = builtins.length (builtins.attrNames (aspects.flatten a));
       instanceVertices = builtins.length (
         builtins.attrNames
-          (aspects.instancesFor gCnf a {
-            containment = { };
-            suppliers.${entity "h1"}.host = "h1";
-            scopes.n = {
-              members = [
-                u
-                v
-              ];
-              sources.host = entity "h1";
-            };
-          }).vertices
+          (aspects.instancesFor gCnf a
+            {
+              suppliers = {
+                ${entity "h1"}.host = "h1";
+              };
+              containment = { };
+            }
+            {
+              n = {
+                members = [
+                  u
+                  v
+                ];
+                sources.host = entity "h1";
+              };
+            }
+          ).vertices
       );
     };
   apart = {

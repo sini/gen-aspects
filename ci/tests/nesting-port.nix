@@ -279,12 +279,15 @@ in
           def (aspects.guard (aspects.pred.has "d") (T.term.ref rid))
         );
       in
-      (aspects.instanceOf (cnf // { ref = door; }) {
+      (aspects.instanceOf (cnf // { ref = door; }) { } {
         aspect = "n";
-        value = placed;
-        context.d = "x";
-        sources.d = genIdentity.hashIdentity "entity" [ "name" ] (_: "x");
-      }).entry;
+        context = {
+          d = "x";
+        };
+        sources = {
+          d = genIdentity.hashIdentity "entity" [ "name" ] (_: "x");
+        };
+      } placed).entry;
     expected.description = "d-x";
   };
 }

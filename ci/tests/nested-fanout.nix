@@ -190,19 +190,22 @@ let
     let
       cnf = cnfOf declared;
     in
-    aspects.instancesFor cnf (treeOf cnf) {
-      inherit suppliers;
-      containment = cEdit containment;
-      scopes = builtins.listToAttrs (
-        map (nd: {
-          name = nd;
-          value = {
-            inherit members;
-            sources = nodes.${nd};
-          };
-        }) at
+    aspects.instancesFor cnf (treeOf cnf)
+      {
+        inherit suppliers;
+        containment = cEdit containment;
+      }
+      (
+        builtins.listToAttrs (
+          map (nd: {
+            name = nd;
+            value = {
+              inherit members;
+              sources = nodes.${nd};
+            };
+          }) at
+        )
       );
-    };
   # a vertex's label: its aspect, @, its formals' entity names in key order
   labelIn =
     r: i:
@@ -659,23 +662,26 @@ in
               );
           in
           vertices (
-            aspects.instancesFor (cnfOf true) (treeOf (cnfOf true)) {
-              suppliers = suppliers // {
-                ${src "a"} = {
-                  host = "v-a";
-                  zone = "v-az";
+            aspects.instancesFor (cnfOf true) (treeOf (cnfOf true))
+              {
+                suppliers = suppliers // {
+                  ${src "a"} = {
+                    host = "v-a";
+                    zone = "v-az";
+                  };
                 };
-              };
-              containment = zoned containment;
-              scopes.nz = {
-                members = [ "innerUF" ];
-                sources = {
-                  zone = src "a";
-                  user = src "u1";
-                  flavor = src "kf2";
+                containment = zoned containment;
+              }
+              {
+                nz = {
+                  members = [ "innerUF" ];
+                  sources = {
+                    zone = src "a";
+                    user = src "u1";
+                    flavor = src "kf2";
+                  };
                 };
-              };
-            }
+              }
           );
       };
       expected = {

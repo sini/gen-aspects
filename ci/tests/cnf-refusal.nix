@@ -14,8 +14,10 @@
 # and none of them routes through a configuration.
 #
 # ★ WHAT THESE CELLS CANNOT SEE, stated rather than left silent. (1) Nix cannot recover a thrown
-# message through `tryEval`, so catchability is asserted on the real call and message CONTENT on
-# `cnfRefusal`, the renderer that same path throws. (2) None of these cells can catch a key declared
+# message through `tryEval`, so catchability is asserted here and the message is pinned byte for byte
+# on the error plane (`ci/tests-error.nix`, `cnf-door`): since den-hoag-7gp66 P2 L5 every `cnf` step
+# is a `prelude.door` and the refusal is the shared check's, its retired key named through the door's
+# `retired` (orchestrator-ruled Q1 (C)). (2) None of these cells can catch a key declared
 # in `cnfDefaults` that nothing in `lib/` reads: they all assert that a declared key CONSTRUCTS, and
 # a vestigial key constructs. That direction is pinned lexically in CI, against the read set derived
 # from `lib/` itself.
@@ -29,22 +31,9 @@
 let
   # `cnfDefaults` is deliberately NOT public: the published surface answers whether a key is
   # recognised, and the value each key falls back to is the library's own business. The totality
-  # cells need those values, so they take them through the same internal channel as `cnfRefusal`.
-  inherit (cnfInternals) cnfRefusal cnfDefaults;
+  # cells need those values, so they take them through the library's internal channel.
+  inherit (cnfInternals) cnfDefaults;
   inherit (aspects) cnfKeys;
-
-  # Substring test WITHOUT a regex. `lib.hasInfix` compiles to `builtins.match ".*<sub>.*"`, and a
-  # leading-`.*` match over a several-hundred-character subject is the shape that overflows the
-  # evaluator's stack under the test runner. This scan is O(n·m) on strings this short and cannot.
-  # Its own control is `test-substring-scan-discriminates` below: a scan that can never match reads
-  # exactly like an absence.
-  containsSub =
-    sub: s:
-    let
-      n = builtins.stringLength sub;
-      m = builtins.stringLength s;
-    in
-    m >= n && builtins.any (i: builtins.substring i n s == sub) (builtins.genList (i: i) (m - n + 1));
 
   refuses = e: !(builtins.tryEval (builtins.seq e null)).success;
 
@@ -62,13 +51,6 @@ let
       mkGuardVocab
       ;
   };
-
-  bogusMsg = cnfRefusal [ "totallyBogusKey42" ];
-  retiredMsg = cnfRefusal [ "classes" ];
-  multiMsg = cnfRefusal [
-    "zzz1"
-    "zzz2"
-  ];
 
   # The two harness caller shapes R§4.0 measured in opposite directions: a caller that passes
   # `keySemantics` and no fixture must still see the fixture's classes declared, and a caller that
@@ -172,61 +154,6 @@ in
       })
     ) entryPoints;
     expected = builtins.mapAttrs (_: _: false) entryPoints;
-  };
-
-  # ── the message contract ────────────────────────────────────────────────────────────────────
-  flake.tests.cnf-refusal.test-message-names-the-key = {
-    expr = containsSub "totallyBogusKey42" bogusMsg;
-    expected = true;
-  };
-
-  flake.tests.cnf-refusal.test-message-renders-the-recognised-set = {
-    expr = builtins.all (k: containsSub k bogusMsg) cnfKeys;
-    expected = true;
-  };
-
-  flake.tests.cnf-refusal.test-retired-key-points-at-its-replacement = {
-    expr = {
-      names = containsSub "classes" retiredMsg;
-      points = containsSub "keySemantics" retiredMsg;
-    };
-    expected = {
-      names = true;
-      points = true;
-    };
-  };
-
-  # ALL offending keys, never the first: a first-offender implementation passes every other cell
-  # here, so this is the requirement's only falsifier.
-  flake.tests.cnf-refusal.test-all-bad-keys-are-named = {
-    expr = {
-      first = containsSub "zzz1" multiMsg;
-      second = containsSub "zzz2" multiMsg;
-    };
-    expected = {
-      first = true;
-      second = true;
-    };
-  };
-
-  # A key the library never retired gets no retirement paragraph — the pointer comes from a binding,
-  # not from a branch that fires for everything.
-  flake.tests.cnf-refusal.test-unretired-key-has-no-retirement-note = {
-    expr = containsSub "RETIRED" multiMsg;
-    expected = false;
-  };
-
-  # THE CONTROL for every `containsSub` cell above: a scan that cannot match must return false, and
-  # one that must match on the same subject must return true.
-  flake.tests.cnf-refusal.test-substring-scan-discriminates = {
-    expr = {
-      absent = containsSub "nonceTokenNotInAnyMessage" bogusMsg;
-      present = containsSub "gen-aspects: unrecognised cnf key" bogusMsg;
-    };
-    expected = {
-      absent = false;
-      present = true;
-    };
   };
 
   # ── the vocabulary stays total ──────────────────────────────────────────────────────────────

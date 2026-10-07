@@ -49,7 +49,7 @@
   hasClassContent,
 }:
 let
-  inherit (import ./cnf.nix) checkedEntry;
+  inherit (import ./cnf.nix) cnfDoor;
   inherit (import ./walk.nix) walk isGuardLeaf;
 
   inherit (import ./path.nix) render;
@@ -59,7 +59,7 @@ let
 
   # The refusal renders from a NAMED binding rather than being spelled at its `throw`. Nix cannot
   # recover a thrown message through `tryEval`, so the CI asserts catchability on the real path and
-  # message CONTENT on this renderer — the same split `cnf.nix` uses for `cnfRefusal`. A message
+  # message CONTENT on this renderer. A message
   # that exists only inside a `throw` is one nothing can hold to naming its subject.
   danglingIncludeRefusal =
     id: i: target:
@@ -794,7 +794,9 @@ rec {
     in
     if said == [ ] then facts else warn' (deadNestedWarning said) facts;
 
-  graphFacts = checkedEntry (cnf: aspects: sayDeadNested warn cnf (graphCore cnf aspects).facts);
+  graphFacts = cnfDoor prelude "gen-aspects.graphFacts" (
+    cnf: aspects: sayDeadNested warn cnf (graphCore cnf aspects).facts
+  );
 
   # `includeSitesOfInstance cnf aspects iid entry` → an applied instance body's include sites, by the
   # classification `graphFacts` publishes as `includeSitesOf` (one function, two callers: a node's
@@ -802,7 +804,7 @@ rec {
   # instance: each content site's `target` is `<iid>/includes/<i>`, recursively, an identifier and no
   # mint (identity design §3; 7gp66 OQ4 (b′)). Partially applied to `cnf` and `aspects`, the registry
   # it resolves against is built once.
-  includeSitesOfInstance = checkedEntry (
+  includeSitesOfInstance = cnfDoor prelude "gen-aspects.includeSitesOfInstance" (
     cnf: aspects:
     let
       inherit (graphCore cnf aspects) sitesOfEntryAt;

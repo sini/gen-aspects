@@ -10,7 +10,7 @@
   GT,
 }:
 let
-  inherit (import ./cnf.nix) checkedEntry;
+  inherit (import ./cnf.nix) cnfDoor;
   tm = T.term;
 
   # The condition vocabulary (design Section 3): constructors emitting terms of the one algebra.
@@ -37,11 +37,25 @@ let
     __guard = true;
     inherit condition body;
   };
-in
-{
-  inherit pred guard;
 
-  mkGuardVocab = checkedEntry (
+  # THE FIRING RECORD (den-hoag-7gp66 P2 L5): `applyGuardWith` / `applyGuardScoped` take `{ context;
+  # sources; scope; }`, three configuration operands with no natural order, as one keyed open record
+  # (R5: a missing field refused by name at its application, an extra one admitted), then the guard,
+  # the subject, last. The spec is bound once; the library's own firing (`instanceOf`, `applyGuard`)
+  # calls the unchecked core.
+  firingRecord = prelude.door {
+    name = "gen-aspects.applyGuardWith";
+    required = [
+      "context"
+      "sources"
+      "scope"
+    ];
+    open = true;
+  };
+
+  # The vocabulary over a CONSTRUCTED `cnf`, unchecked: `mkGuardVocab` is it behind the `cnf` door,
+  # and `instanceOf` reads its core from it directly.
+  guardVocabOf =
     cnf:
     let
       at = loc: "aspect `${prelude.concatStringsSep "." loc}`";
@@ -125,16 +139,17 @@ in
           throw "gen-aspects.guard: applyGuard: a context closure was handed where a guard record belongs. gen-aspects holds first-order guards only; a closure crosses the gen-rules door. Declare the aspect through the framework's surface, or write it as a guard term (`guard (pred.has <coordinate>) <body>`)."
         else
           throw "gen-aspects.guard: applyGuard: not a guard record";
-      applyGuardWith = args: g: (applyGuardScoped args g).value;
+      applyGuardWithCore = args: g: (applyGuardScoped args g).value;
     in
     {
+      applyGuardScopedCore = applyGuardScoped;
       inherit
         pred
         guard
         fires
-        applyGuardWith
-        applyGuardScoped
         ;
+      applyGuardWith = firingRecord (args: applyGuardWithCore args);
+      applyGuardScoped = firingRecord (args: applyGuardScoped args);
       vocab = {
         whenClass = name: guard (pred.class name);
         whenTagEq = tag: value: guard (pred.tagEq tag value);
@@ -147,11 +162,16 @@ in
       # `instanceOf` / `instancesFor`, which carry them).
       applyGuard =
         ctx: g:
-        applyGuardWith {
+        applyGuardWithCore {
           context = ctx;
           sources = null;
           scope = { };
         } g;
-    }
+    };
+in
+{
+  inherit pred guard guardVocabOf;
+  mkGuardVocab = cnfDoor prelude "gen-aspects.mkGuardVocab" (
+    cnf: removeAttrs (guardVocabOf cnf) [ "applyGuardScopedCore" ]
   );
 }

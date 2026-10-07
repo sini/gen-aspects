@@ -17,8 +17,17 @@
 }:
 let
   t = merge.types;
-  inherit (import ./cnf.nix) extendCnf checkedEntry cnfKeys;
-  checkedOpts = door: prelude.checkOptions "gen-aspects.mkAspectSchema.${door}";
+  inherit (import ./cnf.nix) extendCnf cnfDoor cnfKeys;
+  # The two options doors' specs (den-hoag-7gp66 P2 L5: `args:` doors move to `prelude.door`, shape
+  # unchanged, contract published), bound once here rather than per `mkAspectSchema cnf`.
+  providerPrefixDoor =
+    door:
+    prelude.door {
+      name = "gen-aspects.mkAspectSchema.${door}";
+      optional = [ "providerPrefix" ];
+    };
+  aspectOptionDoor = providerPrefixDoor "mkAspectOption";
+  aspectModuleDoor = providerPrefixDoor "mkAspectModule";
   # The entry reservation rides on a functor's record (den-hoag-r05lc), which only a gen-merge
   # publishing it in `moduleSyntax.functorRecord` reads; any other would drop it silently. Bound
   # once, as gen-schema binds its own pairing test.
@@ -129,7 +138,7 @@ let
     };
 in
 {
-  mkAspectSchema = checkedEntry (
+  mkAspectSchema = cnfDoor prelude "gen-aspects.mkAspectSchema" (
     cnf:
     let
       # A collection named for a construction formal would make that formal's key on a kind entry
@@ -164,65 +173,64 @@ in
       # schema's keySemantics (the single-authority read; see lib/types.nix keyCategory).
       keyCategory = keyCategory cnf;
 
-      # Three options doors (every field optional, the set closed). Each refuses an unknown field by
-      # name through the shared check, and forces that check at the call rather than inside the type,
-      # where a native closed formal refused it uncatchably.
-      mkAspectOption =
+      # Two options doors (every field optional, the set closed), each a `prelude.door` refusing an
+      # unknown field by name at the call rather than inside the type, where a native closed formal
+      # refused it uncatchably.
+      mkAspectOption = aspectOptionDoor (
         opts:
         let
-          providerPrefix = (checkedOpts "mkAspectOption" [ "providerPrefix" ] opts).providerPrefix or [ ];
+          providerPrefix = opts.providerPrefix or [ ];
         in
-        builtins.seq providerPrefix merge.mkOption {
+        merge.mkOption {
           description = "Aspects";
           default = { };
           # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
           type = aspectsRoot (extendCnf cnf { inherit providerPrefix; });
-        };
+        }
+      );
 
       # mkAspectModule is a NixOS module that declares options.aspects and
       # options.schema together, lazily threading schema-declared options
       # (e.g. options.priority on schema.aspect) into each aspect instance.
       # Use instead of mkAspectOption when schema extension should propagate
       # to instances.
-      mkAspectModule =
+      mkAspectModule = aspectModuleDoor (
         opts:
         let
-          providerPrefix = (checkedOpts "mkAspectModule" [ "providerPrefix" ] opts).providerPrefix or [ ];
+          providerPrefix = opts.providerPrefix or [ ];
         in
-        builtins.seq providerPrefix (
-          { config, ... }:
-          {
-            options.aspects = merge.mkOption {
-              description = "Aspects";
-              default = { };
-              # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
-              type = aspectsRoot (
-                extendCnf cnf {
-                  inherit providerPrefix;
-                  # Lazily inject schema-declared option modules into every instance.
-                  # config.schema.aspect.__defsModule carries the merged module built
-                  # from caller defs on the schema kind entry (e.g. options.priority).
-                  # Stated as a term, not appended to `aspectModules`: the type relation must
-                  # not read `config` (lib/cnf.nix `schemaDefs`).
-                  schemaDefs = schemaDefsOf config;
-                }
-              );
-            };
-          }
-        );
+        { config, ... }:
+        {
+          options.aspects = merge.mkOption {
+            description = "Aspects";
+            default = { };
+            # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
+            type = aspectsRoot (
+              extendCnf cnf {
+                inherit providerPrefix;
+                # Lazily inject schema-declared option modules into every instance.
+                # config.schema.aspect.__defsModule carries the merged module built
+                # from caller defs on the schema kind entry (e.g. options.priority).
+                # Stated as a term, not appended to `aspectModules`: the type relation must
+                # not read `config` (lib/cnf.nix `schemaDefs`).
+                schemaDefs = schemaDefsOf config;
+              }
+            );
+          };
+        }
+      );
 
-      # `config` (required) is the enclosing evaluation's config: a namespace's aspects are of the one
-      # `aspect` kind, so they read that evaluation's kind extensions, the same `schemaDefs` term
-      # `mkAspectModule` threads (ADR-0012 clause 1: a kind is one declared datum).
+      # `config` is the enclosing evaluation's config: a namespace's aspects are of the one `aspect`
+      # kind, so they read that evaluation's kind extensions, the same `schemaDefs` term
+      # `mkAspectModule` threads (ADR-0012 clause 1: a kind is one declared datum). POSITIONAL
+      # (den-hoag-7gp66 P2 L5, rule 4): the one required field is the operand itself, so its arity is
+      # structural and the P1 record check retires.
       mkNamespaceType =
-        opts:
+        config:
         let
-          checked = checkedOpts "mkNamespaceType" [ "config" ] (
-            prelude.checkRequired "gen-aspects.mkAspectSchema.mkNamespaceType" [ "config" ] opts
-          );
-          defs.schemaDefs = schemaDefsOf checked.config;
+          defs.schemaDefs = schemaDefsOf config;
         in
-        builtins.seq checked merge.submodule (
+        merge.submodule (
           { name, ... }:
           {
             options.schema = merge.mkOption {

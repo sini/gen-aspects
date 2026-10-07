@@ -189,6 +189,7 @@ in
     expr = liveReads;
     expected = [
       "lib/can-take.nix"
+      "lib/cnf.nix"
       "lib/default.nix"
       "lib/facts.nix"
       "lib/guard.nix"

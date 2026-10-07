@@ -1,5 +1,5 @@
-# THE INSTANCE MINT (den-hoag-0cmbt spec §2.5): `instanceOf cnf { aspect; value; context; sources;
-# scope ? { }; }` → `{ id; entry; formals; scope; }`. A parametric aspect applied to a context is a
+# THE INSTANCE MINT (den-hoag-0cmbt spec §2.5): `instanceOf cnf { scope ? { }; } { aspect; context;
+# sources; } value` → `{ id; entry; formals; scope; }`. A parametric aspect applied to a context is a
 # node of its own, the instance, whose identity is its declaration and what it was handed (design
 # §3): two contexts that hand it different values are two instances, and two that differ only in keys
 # it never receives are one.
@@ -25,8 +25,8 @@
 # minted)" arm: the applicator's functor keeps its arity (`w ctx`), and the sources travel here.
 #
 # THE DOORS, each a catchable `throw` naming this entry:
-# - the argument is not the closed record `{ aspect; value; context; sources; }`, or `aspect` is not a
-#   string, or `context`, `sources` or `scope` is not an attrset;
+# - the options are not `{ scope ? { }; }`, or the record lacks one of `aspect`, `context`,
+#   `sources` (an option given on it is refused by name), or `aspect` is not a string, or `context`, `sources` or `scope` is not an attrset;
 # - the value is not parametric (not a guard record or carrier);
 # - a received key has no source (design §3, "a formal with no known supplier refuses by name");
 # - a source is not identity-shaped (`<kind>:<64 hex>`): the honest mistake of handing the context
@@ -66,39 +66,49 @@
 {
   prelude,
   hashIdentity,
-  mkGuardVocab,
+  guardVocabOf,
   GT,
   graphCore,
   aspectId,
 }:
 let
-  inherit (import ./cnf.nix) checkedEntry;
+  inherit (import ./cnf.nix) cnfDoor;
   inherit (import ./walk.nix) isGuardLeaf;
   door = "gen-aspects.instanceOf";
   fields = [
     "aspect"
-    "value"
     "context"
     "sources"
   ];
+  # THE STEPS AFTER `cnf` (den-hoag-7gp66 P2 L5, orchestrator-ruled Q2 (A)): each curried step is its
+  # own door. `cnf` is the library-construction step; the door it returns takes one closed options
+  # set, `{ scope ? { }; }`, then the three configuration operands as one keyed open record (the
+  # keyed-record ruling: no natural order among them), guarded by the options step so `scope` given
+  # on it is refused by name, then the value minted, the subject, last. Both specs are bound once.
+  instanceOptions = prelude.door {
+    name = door;
+    optional = [ "scope" ];
+    next = instanceRecordSpec;
+  };
+  instanceRecordSpec = {
+    name = door;
+    required = fields;
+    open = true;
+    # Only the options door's `__contract` is read, and it does not depend on the body.
+    optionsStep = instanceOptions (o: o);
+  };
+  instanceRecord = prelude.door instanceRecordSpec;
   names = prelude.concatStringsSep ", ";
   kindOf = s: if builtins.isString s then builtins.match "([^:]+):[0-9a-f]{64}" s else null;
-  # The mint over a constructed `cnf`; `instanceOf` is it behind `checkedEntry`.
+  # The mint over a constructed `cnf`, unchecked (`instancesFor` calls it per instance); `instanceOf`
+  # is it behind the doors.
   mint =
     cnf:
     let
-      inherit (mkGuardVocab cnf) applyGuardScoped;
+      inherit (guardVocabOf cnf) applyGuardScopedCore;
     in
-    args:
+    scope: aspect: context: sources: value:
     let
-      a = prelude.checkOptions door (fields ++ [ "scope" ]) (prelude.checkRequired door fields args);
-      inherit (a)
-        aspect
-        value
-        context
-        sources
-        ;
-      scope = a.scope or { };
       guarded = builtins.isAttrs value && (value.__guard or false);
       carrier = guarded && value ? fragments;
       fragments = if carrier then value.fragments else [ ];
@@ -140,7 +150,7 @@ let
       refuse "was handed a source for formal(s) `${names notIdentity}` that is not an identity (`<kind>:<sha256>`); hand the identity of the entity or argument binding that supplied it, never its value."
     else
       let
-        fired = applyGuardScoped { inherit context sources scope; } value;
+        fired = applyGuardScopedCore { inherit context sources scope; } value;
       in
       {
         id = hashIdentity "aspect-instance" [ "aspect" "formals" ] (l: { inherit aspect formals; }.${l});
@@ -148,174 +158,16 @@ let
         inherit (fired) scope;
         inherit formals;
       };
-in
-{
-  instanceOf = checkedEntry mint;
-
-  # THE INSTANCE RELATION (den-hoag-0cmbt spec §2.6, owner-ruled C1; den-hoag-8g2rn): `instancesFor cnf
-  # aspects { suppliers; scopes; containment; }`,
-  #   suppliers   = { <source identity> = { <key> = <value>; … }; … }
-  #   scopes      = { <node> = { members; sources; }; }
-  #   containment = { <identifier> = { parent; key; identity; marked; bindings; }; }
-  #   ⇒ { vertices.<iid> = { formals; entry; scope; };          one content cell per instance id
-  #       instantiates.<iid> = [ <aspect> ];               instance → declaration, exactly one
-  #       reaches.<node>.<aspect> = [ <iid> … ];           scope → instance edges
-  #       nestedAt.<node>.<iid>.<aspect> = [ <iid> … ];    reaching edges FROM vertices, per reading node
-  #       declined = { reaches.<node> = [ <aspect> … ];    the walked guards decided FALSE, per
-  #                    nestedAt.<node>.<iid> = [ … ]; }; } handed scope and per (node, vertex), ascending
-  # the materialised view (ADR-0012 clause 2) gen-delivery's `project` reads. Instances are nodes: the
-  # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `<aspect>` is the facts id of
-  # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, the adjacency shape
-  # gen-graph's classical doors read); `reaches` and `nestedAt` are grouped by `<aspect>` (`id → aspect
-  # → [ids]`), their ids in minting order, each at its first occurrence. Never by id: ADR-0016 r5 lets
-  # nothing durable depend on an `id_hash`, and an instance id moves when its aspect is renamed. A
-  # vertex is shared by every node reaching it (one id, one application); its nested EDGES are per
-  # reading node, because a nested include fans out at the meet of the vertex and the node (S3c).
-  # ORDER IS CANONICAL (ruling 13, den-hoag-8g2rn). A fan-out's siblings are the descendants in the
-  # order of their IDENTIFIERS, `containment`'s attribute names (ADR-0016 r5's readable vertex names),
-  # so ADR-0029's invariance under presentation is discharged here, by construction: the order reads
-  # only the attribute names, never an identity and never an instance id.
-  #
-  # THE CONTAINMENT. `containment` is the entity graph's ONE-STEP containment, handed as data: one
-  # record per entity under its identifier, its parent's identifier (null at a root), the key it
-  # binds, its identity, whether its containment edge carries a boundary mark (ADR-0026), and the
-  # argument bindings declared AT it. The closure is DERIVED, never handed (gate C1): an entity's
-  # COORDINATE is its own key and bindings and every ancestor's; its descendants are every entity whose
-  # upward walk reaches it without leaving a marked entity. An argument binding inherits down the
-  # chain, and one re-declared below SHADOWS the ancestor's for the re-declaring entity and its
-  # descendants, as a new binding id (owner-ruled 2026-10-05, gen-scope `argumentBinding` R10); an
-  # ENTITY key is a level and is bound once along a chain.
-  #
-  # THE INSTANTIATION EDGE (ADR-0010 §4(a) clauses 1–3; van Antwerpen 2018 §2.5, (F-TApp), Fig. 11).
-  # An instance is its own scope (one vertex per id); its `I` edge, `instantiates`, points at its
-  # declaration, whose members stay reachable through it (`instantiates · includes`, the members
-  # `graphFacts.includeSitesOf` publishes from the checked body term); the substitution σ is the
-  # vertex's `formals`, a datum on the node and never a payload on the edge (ADR-0016 r3), applied to
-  # each field where it is read (`entry` is resolved per field, gen-algebra `resolveFields`), so one
-  # unsound member refuses at its own read and nothing else. The query returns the RESOLVED members
-  # only: a context-dependent element is a `deferred` site (ADR-0010 §4(b)'s σ-dependent target), found
-  # in `unresolvedIncludesOf` and, per instance, in `nested`.
-  # Clause 4, reverse-order normalisation along a projection path, is VACUOUS by construction: no term
-  # former binds a coordinate (gen-algebra cell `known-formers-bind-no-coordinate`), a nested
-  # instance's σ restricts its parent's meet with the reading node, extended by one containment
-  # descendant's coordinate whose crossed levels it takes; a descendant extends its ancestors'
-  # coordinate (an entity key bound twice refuses), a node never binds against its entities'
-  # coordinates, and a descendant rebinding an entity key a tuple binds refuses at a node and at a
-  # meet; and the one place a path could carry two substitutions for one key, a nested door rebinding
-  # an outer source, is refused (gen-rules `mkApply`). Cells `instance-scope.test-rebound-refused-whichever-scope` and the path-consistency
-  # cells in `instances.nix` hold each premise.
-  #
-  # ONLY REACHED PAIRS ARE EDGES. A node's `members` (facts ids) are walked over `graphFacts`' local
-  # include sites, through static nodes and inline `content`, stopping at parametric ones; those are
-  # minted at the node's scope. A slot per (scope, parametric node) would be an edge where no scope
-  # reaches, which a query following instance edges would deliver.
-  #
-  # A TUPLE'S CONTEXT IS DERIVED, never handed: `context = mapAttrs (k: src: suppliers.${src}.${k})
-  # sources`. One source names one value per key by attrset construction, so two scopes sharing a
-  # source cannot carry two values for it, and one scope never reads another's content (gate C-1). The
-  # value lives on the node its source names (ADR-0016 r6); how several emissions of one supplier
-  # compose is its assembler's, under the minting phase spec R§4.4 (spec §4.1 O4), never this relation's.
-  #
-  # THE DECISION (den-hoag-n8wb5). The edges are the reaches whose condition was decided TRUE. A
-  # walked first-order guard with no edge is DECLINED, listed in `declined.reaches.<node>` (or
-  # `declined.nestedAt.<node>.<iid>`), iff its condition was decided FALSE at every tuple tried: the
-  # scope's and each descendant tried at node scope (the static targets of vertices included, htfv3
-  # Open 4), the meet and each descendant tried there when nested. The third outcome is the evaluator's REFUSAL R (quf7g OQ1, design
-  # Section 2): under the open world `has` over a coordinate the scope lacks is refused by name, and
-  # `GT.decide` carries that refusal as `null`, which is neither TRUE nor FALSE, so the guard is in
-  # neither set and the consumer refuses the reach. Under a declared coordinate set the same absence
-  # is FALSE (Clark completion), and `eq` over an absent coordinate does not fire, FALSE in both
-  # worlds. A carrier admits every tuple, so it is never declined. A guard never walked at a scope is
-  # in neither set too. `declined` selects only between "no edge" and "refuse" for an empty reach:
-  # a declined reach is no edge (ADR-0019), so a reader never folds, counts or orders over it. Each
-  # entry reads only its own scope's or vertex's tuples, so the restriction property below holds.
-  #
-  # FAN-OUT (design §3; ruling 7, T1). `admits` decides whether a tuple can mint at all: a
-  # first-order guard where its condition holds at the tuple's context (`GT.holds`), a carrier always.
-  # At a tuple (a node's, or a meet): the tuple when it admits; otherwise each descendant of its
-  # innermost held entities whose coordinate admits AND whose chain crosses, below the entities the
-  # reading node binds, only levels whose key the minted instance takes (`crosses`); otherwise no edge,
-  # and the consumer's door names it. A descendant's tuple is its coordinate, a function of the entity
-  # alone, so a nested instance minted from it shares the direct instance's id.
-  #
-  # THE PASSES (spec §2.5's depth passes). Pass d+1 reads only the MEMBERS of pass-d vertices, through
-  # each vertex's `instantiates` edge: its declaration's published sites (`graphCore`'s
-  # `instanceSites`, the classification `project` descends, inline `content` included), each `deferred`
-  # one classified at its own position of the vertex's fired `includes` and no other field read. Its
-  # parametric targets are minted, per node reaching the vertex, at THE MEET of the vertex's tuple and
-  # the node's (den-hoag-8g2rn S3c, den v1's binding order): what the node binds is bound before any
-  # fan-out is tried, so an instance inconsistent with the node is never minted on its account, and the
-  # levels already crossed are the node's, never the vertex's. The meet is built once per (node,
-  # vertex), in the pass that reaches the pair, and the decision reads that stored meet. Its STATIC
-  # targets resolve at NODE
-  # scope (htfv3 Open 4): their parametric includes become `reaches.<node>` edges for every node
-  # reaching the vertex, never `nested` ones. One vertex index over all depths at once diverges
-  # (ADR-0033 clause 1), so each pass's index is built from the previous pass's alone.
-  #
-  # TERMINATION. Containment is a finite forest (a cycle refuses). Every vertex's aspect is a node of
-  # this finite tree, and its formals are a sub-map of a node's tuple, a meet or a containment
-  # coordinate, so the id space is finite. A pass that mints no new id and reaches no new (node, vertex) pair ends the
-  # loop, and every other pass adds one of the two. A self-including aspect re-mints its own id.
-  #
-  # WHAT IS MINTED WHERE. A first-order guard is minted where its condition holds at the tuple's
-  # context (`GT.holds`), keyed on its derived reads (den-hoag-lwbb1). A sealed or foreign include site
-  # is not walked.
-  #
-  # THE SOURCE DOOR (den-hoag-fkkzk, owner-ruled 2026-10-05, arm (d)). A source is refused iff it is
-  # a node id of THIS relation's own graph: an aspect node's id (`aspectIdOf`) or one of its vertices.
-  # Such a node supplies no argument: the reaching instance is an edge, never a formal's source
-  # (design §3), and a vertex id as a source is a same-pass relatum, which r7 forbids. Every other id is
-  # admitted, whatever its kind tag spells (ADR-0035): membership is by the exact id string, so an
-  # honest framework kind `aspect` is never taken for a node, and only an identical preimage, the
-  # forger's case, matches. STATED DIVERGENCES (ADR-0025 item 1), the limbs the retired spelling list
-  # covered and membership cannot: an instance id minted by an EARLIER relation, not a vertex of this
-  # one, is admitted; and `instanceOf` alone holds no graph, so it refuses no source by kind.
-  # Checked once over the final vertices, so a vertex is minted before its source is read against them.
-  # The kind tag only EXCLUDES: `aspectId` mints every node id under the kind `aspect`, so a source of
-  # another kind cannot be one and is admitted without reading the node ids, while a source of kind
-  # `aspect` is admitted or refused by membership alone.
-  #
-  # WHAT IT FORCES. Reading any field forces every pass: each reached instance is applied once (its
-  # body decides the next pass) and hashed once, so a mint refusal (a non-identity source), the source
-  # door or the supplier door fires on any read, shared by every node, as `realize`'s `_contentCheck`
-  # already shares it. The source door forces no unreached node unless a minted formal's source is
-  # of kind `aspect` (den-hoag-biefe). Only then does it force every node's `aspectIdOf`, once per
-  # relation, because a digest is one-way: a source can be shown to differ from a node's id only by
-  # minting that id. ITS BOUND, enumerated (ADR-0025 item 1): with such a source, a node with no
-  # identity (an unchecked first-order guard, never placed at an aspect position) refuses the
-  # relation even where no scope reaches it.
-  #
-  # ONE ID, SEVERAL CONTRIBUTIONS. Equal ids from several reaching identifiers (nodes, or parent
-  # vertices) are one vertex, whose content is the contribution of the earliest pass and, within a
-  # pass, of the least reaching identifier under string order (spec §2.5, obligation 2). Equal ids
-  # mean equal formals, so the same source per received key, so the same `suppliers` value: the
-  # contributions are one declaration applied to one input, identical by construction, and the order
-  # picks among identical values. No content rule is exercised (ADR-0016 OPEN 2.C is not reached).
-  #
-  # THE DOORS, each a catchable `throw` naming the node or the containment entity: the input is not
-  # `{ suppliers; scopes; containment; }`; `suppliers`, `scopes` or `containment` is not an attrset; a
-  # scope is not `{ members; sources; }` (the retired `context` and `descendants` are unknown fields);
-  # `members` is not a list or names an id that is not a node of this tree; `sources` is not an
-  # attrset; a containment record is not exactly `{ parent; key; identity; marked; bindings; }`, its
-  # `parent` neither null nor an identifier, its `key` not a string, its `bindings` not an attrset, its
-  # `marked` not a bool, or it is keyed by its own identity; two identifiers carry one identity; a
-  # parent chain is a cycle; an entity key is bound twice along a chain; a node binds an entity under
-  # another key than its own, or binds a key against the coordinate of an entity it binds (the
-  # override belongs on a containment record, where it shadows); a descendant rebinds an entity key a
-  # node or a meet binds; a tuple key whose source is not a string, is not a name in `suppliers`, or
-  # names an entry that is not an attrset holding that key. The containment doors and the supplier
-  # door over every coordinate refuse at every call, whichever nodes are read. The supplier door reads
-  # key names only, so no supplied value is forced.
-  #
-  # COST (derived; spec §3b G1 measures it): one application and one hash per distinct reached
-  # instance, one attribute lookup per (tuple, key), the static walk per node, the members'
-  # classification once per DECLARATION, and per vertex only its `deferred` positions. Two routes: the whole relation is O(Σ reach) over every handed scope,
-  # and a reader of one node pays all of it, the price of sharing a vertex across nodes; handed ONE
-  # scope, it is O(reach(n)), constant in N. The RESTRICTION PROPERTY: the relation handed a subset of
-  # the scopes equals the whole relation's slice for them, because a scope's values derive from its
-  # own sources through `suppliers` and never from which other scopes are handed.
-  instancesFor = checkedEntry (
-    cnf: aspects: input:
+  instancesForRecord = prelude.door {
+    name = "gen-aspects.instancesFor";
+    required = [
+      "suppliers"
+      "containment"
+    ];
+    open = true;
+  };
+  instancesForCore =
+    cnf: aspects: suppliers: containment: scopes:
     let
       core = graphCore cnf aspects;
       inherit (core.facts) nodeData includeSitesOf;
@@ -333,16 +185,6 @@ in
       unique = xs: builtins.attrNames (set xs);
 
       # ── the doors ──
-      top =
-        let
-          fields = [
-            "suppliers"
-            "scopes"
-            "containment"
-          ];
-        in
-        prelude.checkOptions rdoor fields (prelude.checkRequired rdoor fields input);
-      inherit (top) suppliers scopes containment;
       supplied =
         src: k:
         builtins.isString src
@@ -658,11 +500,7 @@ in
       mintOne =
         a: t:
         let
-          i = mintAt {
-            aspect = aspectIdOf.${a};
-            value = nodeData.${a};
-            inherit (t) context sources;
-          };
+          i = mintAt { } aspectIdOf.${a} t.context t.sources nodeData.${a};
           tuple = {
             context = builtins.intersectAttrs i.formals t.context;
             sources = builtins.intersectAttrs i.formals t.sources;
@@ -880,6 +718,191 @@ in
         ) final.handled;
         nestedAt = declinedNestedAt;
       };
-    }
+    };
+in
+{
+  instanceOf = cnfDoor prelude "gen-aspects.instanceOf" (
+    cnf:
+    let
+      mintAt = mint cnf;
+    in
+    instanceOptions (o: instanceRecord (r: mintAt (o.scope or { }) r.aspect r.context r.sources))
+  );
+
+  # THE INSTANCE RELATION (den-hoag-0cmbt spec §2.6, owner-ruled C1; den-hoag-8g2rn): `instancesFor cnf
+  # aspects { suppliers; containment; } scopes`,
+  #   suppliers   = { <source identity> = { <key> = <value>; … }; … }
+  #   scopes      = { <node> = { members; sources; }; }
+  #   containment = { <identifier> = { parent; key; identity; marked; bindings; }; }
+  #   ⇒ { vertices.<iid> = { formals; entry; scope; };          one content cell per instance id
+  #       instantiates.<iid> = [ <aspect> ];               instance → declaration, exactly one
+  #       reaches.<node>.<aspect> = [ <iid> … ];           scope → instance edges
+  #       nestedAt.<node>.<iid>.<aspect> = [ <iid> … ];    reaching edges FROM vertices, per reading node
+  #       declined = { reaches.<node> = [ <aspect> … ];    the walked guards decided FALSE, per
+  #                    nestedAt.<node>.<iid> = [ … ]; }; } handed scope and per (node, vertex), ascending
+  # the materialised view (ADR-0012 clause 2) gen-delivery's `project` reads. Instances are nodes: the
+  # reaching node is an edge, never a field of a vertex (ADR-0010 §4(a)). `<aspect>` is the facts id of
+  # the parametric node. `instantiates` is an adjacency map (`id → [ids]`, the adjacency shape
+  # gen-graph's classical doors read); `reaches` and `nestedAt` are grouped by `<aspect>` (`id → aspect
+  # → [ids]`), their ids in minting order, each at its first occurrence. Never by id: ADR-0016 r5 lets
+  # nothing durable depend on an `id_hash`, and an instance id moves when its aspect is renamed. A
+  # vertex is shared by every node reaching it (one id, one application); its nested EDGES are per
+  # reading node, because a nested include fans out at the meet of the vertex and the node (S3c).
+  # ORDER IS CANONICAL (ruling 13, den-hoag-8g2rn). A fan-out's siblings are the descendants in the
+  # order of their IDENTIFIERS, `containment`'s attribute names (ADR-0016 r5's readable vertex names),
+  # so ADR-0029's invariance under presentation is discharged here, by construction: the order reads
+  # only the attribute names, never an identity and never an instance id.
+  #
+  # THE CONTAINMENT. `containment` is the entity graph's ONE-STEP containment, handed as data: one
+  # record per entity under its identifier, its parent's identifier (null at a root), the key it
+  # binds, its identity, whether its containment edge carries a boundary mark (ADR-0026), and the
+  # argument bindings declared AT it. The closure is DERIVED, never handed (gate C1): an entity's
+  # COORDINATE is its own key and bindings and every ancestor's; its descendants are every entity whose
+  # upward walk reaches it without leaving a marked entity. An argument binding inherits down the
+  # chain, and one re-declared below SHADOWS the ancestor's for the re-declaring entity and its
+  # descendants, as a new binding id (owner-ruled 2026-10-05, gen-scope `argumentBinding` R10); an
+  # ENTITY key is a level and is bound once along a chain.
+  #
+  # THE INSTANTIATION EDGE (ADR-0010 §4(a) clauses 1–3; van Antwerpen 2018 §2.5, (F-TApp), Fig. 11).
+  # An instance is its own scope (one vertex per id); its `I` edge, `instantiates`, points at its
+  # declaration, whose members stay reachable through it (`instantiates · includes`, the members
+  # `graphFacts.includeSitesOf` publishes from the checked body term); the substitution σ is the
+  # vertex's `formals`, a datum on the node and never a payload on the edge (ADR-0016 r3), applied to
+  # each field where it is read (`entry` is resolved per field, gen-algebra `resolveFields`), so one
+  # unsound member refuses at its own read and nothing else. The query returns the RESOLVED members
+  # only: a context-dependent element is a `deferred` site (ADR-0010 §4(b)'s σ-dependent target), found
+  # in `unresolvedIncludesOf` and, per instance, in `nested`.
+  # Clause 4, reverse-order normalisation along a projection path, is VACUOUS by construction: no term
+  # former binds a coordinate (gen-algebra cell `known-formers-bind-no-coordinate`), a nested
+  # instance's σ restricts its parent's meet with the reading node, extended by one containment
+  # descendant's coordinate whose crossed levels it takes; a descendant extends its ancestors'
+  # coordinate (an entity key bound twice refuses), a node never binds against its entities'
+  # coordinates, and a descendant rebinding an entity key a tuple binds refuses at a node and at a
+  # meet; and the one place a path could carry two substitutions for one key, a nested door rebinding
+  # an outer source, is refused (gen-rules `mkApply`). Cells `instance-scope.test-rebound-refused-whichever-scope` and the path-consistency
+  # cells in `instances.nix` hold each premise.
+  #
+  # ONLY REACHED PAIRS ARE EDGES. A node's `members` (facts ids) are walked over `graphFacts`' local
+  # include sites, through static nodes and inline `content`, stopping at parametric ones; those are
+  # minted at the node's scope. A slot per (scope, parametric node) would be an edge where no scope
+  # reaches, which a query following instance edges would deliver.
+  #
+  # A TUPLE'S CONTEXT IS DERIVED, never handed: `context = mapAttrs (k: src: suppliers.${src}.${k})
+  # sources`. One source names one value per key by attrset construction, so two scopes sharing a
+  # source cannot carry two values for it, and one scope never reads another's content (gate C-1). The
+  # value lives on the node its source names (ADR-0016 r6); how several emissions of one supplier
+  # compose is its assembler's, under the minting phase spec R§4.4 (spec §4.1 O4), never this relation's.
+  #
+  # THE DECISION (den-hoag-n8wb5). The edges are the reaches whose condition was decided TRUE. A
+  # walked first-order guard with no edge is DECLINED, listed in `declined.reaches.<node>` (or
+  # `declined.nestedAt.<node>.<iid>`), iff its condition was decided FALSE at every tuple tried: the
+  # scope's and each descendant tried at node scope (the static targets of vertices included, htfv3
+  # Open 4), the meet and each descendant tried there when nested. The third outcome is the evaluator's REFUSAL R (quf7g OQ1, design
+  # Section 2): under the open world `has` over a coordinate the scope lacks is refused by name, and
+  # `GT.decide` carries that refusal as `null`, which is neither TRUE nor FALSE, so the guard is in
+  # neither set and the consumer refuses the reach. Under a declared coordinate set the same absence
+  # is FALSE (Clark completion), and `eq` over an absent coordinate does not fire, FALSE in both
+  # worlds. A carrier admits every tuple, so it is never declined. A guard never walked at a scope is
+  # in neither set too. `declined` selects only between "no edge" and "refuse" for an empty reach:
+  # a declined reach is no edge (ADR-0019), so a reader never folds, counts or orders over it. Each
+  # entry reads only its own scope's or vertex's tuples, so the restriction property below holds.
+  #
+  # FAN-OUT (design §3; ruling 7, T1). `admits` decides whether a tuple can mint at all: a
+  # first-order guard where its condition holds at the tuple's context (`GT.holds`), a carrier always.
+  # At a tuple (a node's, or a meet): the tuple when it admits; otherwise each descendant of its
+  # innermost held entities whose coordinate admits AND whose chain crosses, below the entities the
+  # reading node binds, only levels whose key the minted instance takes (`crosses`); otherwise no edge,
+  # and the consumer's door names it. A descendant's tuple is its coordinate, a function of the entity
+  # alone, so a nested instance minted from it shares the direct instance's id.
+  #
+  # THE PASSES (spec §2.5's depth passes). Pass d+1 reads only the MEMBERS of pass-d vertices, through
+  # each vertex's `instantiates` edge: its declaration's published sites (`graphCore`'s
+  # `instanceSites`, the classification `project` descends, inline `content` included), each `deferred`
+  # one classified at its own position of the vertex's fired `includes` and no other field read. Its
+  # parametric targets are minted, per node reaching the vertex, at THE MEET of the vertex's tuple and
+  # the node's (den-hoag-8g2rn S3c, den v1's binding order): what the node binds is bound before any
+  # fan-out is tried, so an instance inconsistent with the node is never minted on its account, and the
+  # levels already crossed are the node's, never the vertex's. The meet is built once per (node,
+  # vertex), in the pass that reaches the pair, and the decision reads that stored meet. Its STATIC
+  # targets resolve at NODE
+  # scope (htfv3 Open 4): their parametric includes become `reaches.<node>` edges for every node
+  # reaching the vertex, never `nested` ones. One vertex index over all depths at once diverges
+  # (ADR-0033 clause 1), so each pass's index is built from the previous pass's alone.
+  #
+  # TERMINATION. Containment is a finite forest (a cycle refuses). Every vertex's aspect is a node of
+  # this finite tree, and its formals are a sub-map of a node's tuple, a meet or a containment
+  # coordinate, so the id space is finite. A pass that mints no new id and reaches no new (node, vertex) pair ends the
+  # loop, and every other pass adds one of the two. A self-including aspect re-mints its own id.
+  #
+  # WHAT IS MINTED WHERE. A first-order guard is minted where its condition holds at the tuple's
+  # context (`GT.holds`), keyed on its derived reads (den-hoag-lwbb1). A sealed or foreign include site
+  # is not walked.
+  #
+  # THE SOURCE DOOR (den-hoag-fkkzk, owner-ruled 2026-10-05, arm (d)). A source is refused iff it is
+  # a node id of THIS relation's own graph: an aspect node's id (`aspectIdOf`) or one of its vertices.
+  # Such a node supplies no argument: the reaching instance is an edge, never a formal's source
+  # (design §3), and a vertex id as a source is a same-pass relatum, which r7 forbids. Every other id is
+  # admitted, whatever its kind tag spells (ADR-0035): membership is by the exact id string, so an
+  # honest framework kind `aspect` is never taken for a node, and only an identical preimage, the
+  # forger's case, matches. STATED DIVERGENCES (ADR-0025 item 1), the limbs the retired spelling list
+  # covered and membership cannot: an instance id minted by an EARLIER relation, not a vertex of this
+  # one, is admitted; and `instanceOf` alone holds no graph, so it refuses no source by kind.
+  # Checked once over the final vertices, so a vertex is minted before its source is read against them.
+  # The kind tag only EXCLUDES: `aspectId` mints every node id under the kind `aspect`, so a source of
+  # another kind cannot be one and is admitted without reading the node ids, while a source of kind
+  # `aspect` is admitted or refused by membership alone.
+  #
+  # WHAT IT FORCES. Reading any field forces every pass: each reached instance is applied once (its
+  # body decides the next pass) and hashed once, so a mint refusal (a non-identity source), the source
+  # door or the supplier door fires on any read, shared by every node, as `realize`'s `_contentCheck`
+  # already shares it. The source door forces no unreached node unless a minted formal's source is
+  # of kind `aspect` (den-hoag-biefe). Only then does it force every node's `aspectIdOf`, once per
+  # relation, because a digest is one-way: a source can be shown to differ from a node's id only by
+  # minting that id. ITS BOUND, enumerated (ADR-0025 item 1): with such a source, a node with no
+  # identity (an unchecked first-order guard, never placed at an aspect position) refuses the
+  # relation even where no scope reaches it.
+  #
+  # ONE ID, SEVERAL CONTRIBUTIONS. Equal ids from several reaching identifiers (nodes, or parent
+  # vertices) are one vertex, whose content is the contribution of the earliest pass and, within a
+  # pass, of the least reaching identifier under string order (spec §2.5, obligation 2). Equal ids
+  # mean equal formals, so the same source per received key, so the same `suppliers` value: the
+  # contributions are one declaration applied to one input, identical by construction, and the order
+  # picks among identical values. No content rule is exercised (ADR-0016 OPEN 2.C is not reached).
+  #
+  # THE DOORS, each a catchable `throw` naming the node or the containment entity: the input is not
+  # `{ suppliers; scopes; containment; }`; `suppliers`, `scopes` or `containment` is not an attrset; a
+  # scope is not `{ members; sources; }` (the retired `context` and `descendants` are unknown fields);
+  # `members` is not a list or names an id that is not a node of this tree; `sources` is not an
+  # attrset; a containment record is not exactly `{ parent; key; identity; marked; bindings; }`, its
+  # `parent` neither null nor an identifier, its `key` not a string, its `bindings` not an attrset, its
+  # `marked` not a bool, or it is keyed by its own identity; two identifiers carry one identity; a
+  # parent chain is a cycle; an entity key is bound twice along a chain; a node binds an entity under
+  # another key than its own, or binds a key against the coordinate of an entity it binds (the
+  # override belongs on a containment record, where it shadows); a descendant rebinds an entity key a
+  # node or a meet binds; a tuple key whose source is not a string, is not a name in `suppliers`, or
+  # names an entry that is not an attrset holding that key. The containment doors and the supplier
+  # door over every coordinate refuse at every call, whichever nodes are read. The supplier door reads
+  # key names only, so no supplied value is forced.
+  #
+  # COST (derived; spec §3b G1 measures it): one application and one hash per distinct reached
+  # instance, one attribute lookup per (tuple, key), the static walk per node, the members'
+  # classification once per DECLARATION, and per vertex only its `deferred` positions. Two routes: the whole relation is O(Σ reach) over every handed scope,
+  # and a reader of one node pays all of it, the price of sharing a vertex across nodes; handed ONE
+  # scope, it is O(reach(n)), constant in N. The RESTRICTION PROPERTY: the relation handed a subset of
+  # the scopes equals the whole relation's slice for them, because a scope's values derive from its
+  # own sources through `suppliers` and never from which other scopes are handed.
+  #
+  # THE STEPS (den-hoag-7gp66 P2 L5, rules 4 and the keyed-record ruling): the aspect tree is
+  # configuration (the registry the relation resolves against, built once when partially applied);
+  # `suppliers` and `containment`, the entity side with no natural order between them, are one keyed
+  # open record (R5: a missing field refused by name at its application, an extra one admitted); the
+  # SCOPES are the subject, positional and last, since the restriction property below makes the
+  # relation a function of the scopes handed: `instancesFor cnf aspects env` maps over scope sets.
+  instancesFor = cnfDoor prelude "gen-aspects.instancesFor" (
+    cnf: aspects:
+    instancesForRecord (
+      { suppliers, containment, ... }:
+      scopes: instancesForCore cnf aspects suppliers containment scopes
+    )
   );
 }

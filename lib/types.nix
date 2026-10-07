@@ -225,7 +225,7 @@ let
       d;
   inherit (import ./cnf.nix)
     extendCnf
-    checkedEntry
+    cnfDoor
     mergedKeys
     ;
   cnfConstruction = (import ./cnf.nix).cnfConstruction schema.keySemanticsRecords;
@@ -972,7 +972,7 @@ let
             builtins.length loc - builtins.length anchor - 1
           );
           # The declared class keys in full, rendered from `keySemantics` and never restated: no
-          # edit-distance "did you mean" (`lib/cnf.nix` `cnfRefusal`, the same reasoning).
+          # edit-distance "did you mean": the recognised set in full answers the same question exactly.
           classKeys = builtins.attrNames (
             prelude.filterAttrs (_: e: builtins.isAttrs e && (e.category or null) == "class") cnf.keySemantics
           );
@@ -1687,18 +1687,18 @@ let
 
 in
 {
-  # PUBLIC entry points — every export whose first argument is a `cnf` constructs it through
-  # `checkedEntry`, so a key outside the vocabulary refuses BY NAME here instead of being silently
+  # PUBLIC entry points — every export whose first argument is a `cnf` takes it through `cnfDoor`
+  # (a `prelude.door` over `checkedEntry`), so a key outside the vocabulary refuses BY NAME here instead of being silently
   # inert. The recursion above (aspectType ↔ aspectSubmodule, gatedFreeformElem, includesElemType,
   # aspectsRoot's per-key mergeDefs) refers to the LOCAL bindings, which already hold a constructed
   # record: the check runs once per consumer call, not once per aspect node.
-  aspectType = checkedEntry aspectType;
-  aspectSubmodule = checkedEntry aspectSubmodule;
-  aspectsType = checkedEntry aspectsType;
-  aspectsRoot = checkedEntry aspectsRoot;
-  aspectOrFn = checkedEntry aspectOrFn;
-  mkIsModuleFn = checkedEntry mkIsModuleFn;
-  keyCategory = checkedEntry keyCategory;
+  aspectType = cnfDoor prelude "gen-aspects.aspectType" aspectType;
+  aspectSubmodule = cnfDoor prelude "gen-aspects.aspectSubmodule" aspectSubmodule;
+  aspectsType = cnfDoor prelude "gen-aspects.aspectsType" aspectsType;
+  aspectsRoot = cnfDoor prelude "gen-aspects.aspectsRoot" aspectsRoot;
+  aspectOrFn = cnfDoor prelude "gen-aspects.aspectOrFn" aspectOrFn;
+  mkIsModuleFn = cnfDoor prelude "gen-aspects.mkIsModuleFn" mkIsModuleFn;
+  keyCategory = cnfDoor prelude "gen-aspects.keyCategory" keyCategory;
   # Not entry points, and the reason is structural rather than per-name: `canTake` carries no
   # configuration at all, `aspectId` takes an origin path, `hasClassContent`'s is a class value, and
   # `structuralKeys` is a value. `wrapFn` and `wrapGatedFn` are retired aliases that refuse at once.

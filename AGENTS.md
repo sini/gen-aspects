@@ -66,9 +66,9 @@ through one content-address encoding.
 
 **Instances** — `lib/instance.nix`
 
-| Export       | Signature                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `instanceOf` | `cnf -> { aspect, value, context, sources, scope ? { } } -> { id, entry, formals, scope }` — the instance mint (0cmbt spec §2.5): `formals` maps each key `value` receives at `context` to its source, `id` = `hashIdentity "aspect-instance"` over `{ aspect; formals; }`; `scope` is the instantiation scope (den-hoag-ohvjc), never in the id: a deferred door node in `entry`, fired later handed it, reads its closure there instead of re-applying the outer |
+| Export       | Signature                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `instanceOf` | `cnf -> { scope ? { } } -> { aspect, context, sources } -> value -> { id, entry, formals, scope }` — the instance mint (0cmbt spec §2.5): `formals` maps each key `value` receives at `context` to its source, `id` = `hashIdentity "aspect-instance"` over `{ aspect; formals; }`; `scope` is the instantiation scope (den-hoag-ohvjc), never in the id: a deferred door node in `entry`, fired later handed it, reads its closure there instead of re-applying the outer |
 
 `value` is a first-order guard (its DERIVED READS that the context carries: the coordinates its
 condition and body terms read, and each door registration's declared reads, `lib/guard-term.nix`
@@ -88,7 +88,7 @@ The id reads only the sources, so a mismatch mints one id with two different ent
 cannot be handed that input, since it derives each context from one `suppliers` map.
 Tests: `ci/tests/instances.nix`, `ci/tests/instance-scope.nix`; `instance-doors.*` and `instance-scope.*` in `ci/tests-error.nix`.
 
-`instancesFor cnf aspects { suppliers; scopes; containment; }` → `{ vertices; instantiates; reaches; nestedAt; declined; }` is the
+`instancesFor cnf aspects { suppliers; containment; } scopes` → `{ vertices; instantiates; reaches; nestedAt; declined; }` is the
 instance relation (0cmbt spec §2.6; den-hoag-8g2rn), with `suppliers.<source>.<key> = <value>`,
 `scopes.<node> = { members; sources; }` and the entity graph's one-step containment
 `containment.<identifier> = { parent; key; identity; marked; bindings; }` (required, `{ }` when there is none). A tuple's context is derived,
@@ -163,13 +163,13 @@ Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doo
 
 **Guard vocabulary** — `lib/guard.nix`
 
-| Export                      | Signature                                                                                                                                                                                                                                                                           |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guard`                     | `condition -> body -> { __guard = true; condition; body; }` — the condition a term of gen-algebra's algebra, the body a term or first-order data, lifted and checked where the guard meets its `cnf` (`lib/guard-term.nix` `checkGuard`)                                            |
-| `pred`                      | `{ class, tagEq, eq, has, all, any, always, not, custom }` — constructors emitting core terms (`class v` = `eq [ "class" ] v`, `tagEq k v` = `eq [ "tags" k ] v`); `pred.always` is a value; `pred.custom` is the retired form's refused-by-name alias                              |
-| `mkGuardVocab`              | `cnf -> { pred, guard, fires, vocab, applyGuard, applyGuardWith, applyGuardScoped }` — `applyGuardWith { context; sources; scope; }` is the firing a door node needs (its door keys its output on the sources); `applyGuardScoped` is the same firing answering `{ value; scope; }` |
-| `mkGuardVocab cnf` `.vocab` | `{ whenClass, whenTagEq, whenEq, whenAll, whenAny, always }` — each is `args -> body -> guardRecord`                                                                                                                                                                                |
-| `applyGuard`                | `ctx -> guardRecord \| closure \| wrappedFn -> value` — the top-level binding is `(mkGuardVocab { }).applyGuard`; no sources, so a door node refuses here by name                                                                                                                   |
+| Export                      | Signature                                                                                                                                                                                                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guard`                     | `condition -> body -> { __guard = true; condition; body; }` — the condition a term of gen-algebra's algebra, the body a term or first-order data, lifted and checked where the guard meets its `cnf` (`lib/guard-term.nix` `checkGuard`)                                                                                              |
+| `pred`                      | `{ class, tagEq, eq, has, all, any, always, not, custom }` — constructors emitting core terms (`class v` = `eq [ "class" ] v`, `tagEq k v` = `eq [ "tags" k ] v`); `pred.always` is a value; `pred.custom` is the retired form's refused-by-name alias                                                                                |
+| `mkGuardVocab`              | `cnf -> { pred, guard, fires, vocab, applyGuard, applyGuardWith, applyGuardScoped }` — `applyGuardWith { context; sources; scope; } guard` (an open record door, den-hoag-7gp66 P2 L5) is the firing a door node needs (its door keys its output on the sources); `applyGuardScoped` is the same firing answering `{ value; scope; }` |
+| `mkGuardVocab cnf` `.vocab` | `{ whenClass, whenTagEq, whenEq, whenAll, whenAny, always }` — each is `args -> body -> guardRecord`                                                                                                                                                                                                                                  |
+| `applyGuard`                | `ctx -> guardRecord \| closure \| wrappedFn -> value` — the top-level binding is `(mkGuardVocab { }).applyGuard`; no sources, so a door node refuses here by name                                                                                                                                                                     |
 
 **Introspection and registry** — `lib/can-take.nix`, `lib/walk.nix`, `lib/flatten.nix`, `lib/facts.nix`
 
@@ -183,16 +183,16 @@ Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doo
 
 **Schema bridge** — `lib/schema.nix`
 
-| Export                         | Signature                                                                                                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mkAspectSchema`               | `cnf -> schemaRecord`                                                                                                                                                         |
-| `schemaRecord.schemaOption`    | option built from `genSchema.mkSchemaOption`                                                                                                                                  |
-| `schemaRecord.mkAspectOption`  | `{ providerPrefix ? [] } -> option`                                                                                                                                           |
-| `schemaRecord.mkAspectModule`  | `{ providerPrefix ? [] } -> module` — declares `options.aspects` and injects `config.schema.aspect.__defsModule` into `aspectModules`                                         |
-| `schemaRecord.mkNamespaceType` | `{ config } -> optionType` — `config` is REQUIRED (`prelude.checkRequired`): the enclosing evaluation's config, whose `schema.aspect` extensions the namespace's aspects read |
-| `schemaRecord.keyCategory`     | `key -> category` — `keyCategory` already closed over this schema's `cnf`                                                                                                     |
-| `schemaRecord.identity`        | `{ aspectPath, pathKey, key, isMeaningfulName }`                                                                                                                              |
-| re-exports                     | `aspectType`, `aspectPath`, `pathKey`, `key`, `isMeaningfulName`, `canTake`, `mkIsModuleFn`                                                                                   |
+| Export                         | Signature                                                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mkAspectSchema`               | `cnf -> schemaRecord`                                                                                                                                        |
+| `schemaRecord.schemaOption`    | option built from `genSchema.mkSchemaOption`                                                                                                                 |
+| `schemaRecord.mkAspectOption`  | `{ providerPrefix ? [] } -> option`                                                                                                                          |
+| `schemaRecord.mkAspectModule`  | `{ providerPrefix ? [] } -> module` — declares `options.aspects` and injects `config.schema.aspect.__defsModule` into `aspectModules`                        |
+| `schemaRecord.mkNamespaceType` | `config -> optionType` — positional (den-hoag-7gp66 P2 L5): the enclosing evaluation's config, whose `schema.aspect` extensions the namespace's aspects read |
+| `schemaRecord.keyCategory`     | `key -> category` — `keyCategory` already closed over this schema's `cnf`                                                                                    |
+| `schemaRecord.identity`        | `{ aspectPath, pathKey, key, isMeaningfulName }`                                                                                                             |
+| re-exports                     | `aspectType`, `aspectPath`, `pathKey`, `key`, `isMeaningfulName`, `canTake`, `mkIsModuleFn`                                                                  |
 
 **A construction formal on the kind entry refuses by name** (`lib/schema.nix`, bindings `formalNamed`
 in `mkType` and `formalCollections` in `mkAspectSchema`; `den-hoag-q17cc`): a top-level key of a
@@ -205,7 +205,7 @@ shared names; `den-hoag-8x97u`), carried on the record of a functor module wrapp
 imports anything, never in a module nixpkgs collects (`den-hoag-r05lc`). Tests: `construction-formal-refusals.*` and
 `imports-route-refusals.*` in `ci/tests-error.nix`, `ci/tests/construction-formals.nix`.
 
-**`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset:
+**`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset, through a `prelude.door` closed over `cnfKeys` (den-hoag-7gp66 P2 L5: an unknown key refused by name with the recognised set, the retired `classes` naming its replacement, `__contract` published):
 `keySemantics : { <key> = { category = "class" | "channel" | "facet"; option ? ; module ? ; }; }`,
 `aspectModules : [module]`, `metaModules : [module]`, `moduleArgs : { <arg> = bool; }`,
 `providerPrefix : [string]`, `collections`, and three booleans — `closedKeys`, `recursiveClosed`,
@@ -213,7 +213,7 @@ imports anything, never in a module nixpkgs collects (`den-hoag-r05lc`). Tests: 
 `entityKinds : null | [string] | { <name> = bool; }` (the DECLARED COORDINATE SET, with the entity
 kinds a marked subset; den-hoag-lwbb1, design Q5: `null` is the open world, a list declares its names
 as coordinates that are all entity kinds, `[ ]` included, an attrset declares its names and marks an
-entity kind `true`; anything else refuses by name at the public entry, `checkedEntry`). A guard is
+entity kind `true`; anything else refuses by name at the public entry, `checkedEntry`, behind the `cnf` door). A guard is
 checked and fired under one set, `D ++ [ "class" "tags" ]` when `D` is not `null`: a read of an
 undeclared coordinate refuses at declaration, and a guard fired under another set refuses
 `one-declared-set`. The ENTITY KINDS (ADR-0027; a context key IS the name of the entity kind it

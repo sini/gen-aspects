@@ -78,9 +78,9 @@ let
   rOf =
     scopes:
     aspects.instancesFor { } tree {
-      inherit suppliers scopes;
+      inherit suppliers;
       containment = { };
-    };
+    } scopes;
   rScopes = {
     n1 = at "h1" [ "s" ];
     n2 = at "h2" [ "s" ];
@@ -129,13 +129,12 @@ let
     };
   };
   pathRel = aspects.instancesFor { } pathTree {
-    containment = { };
     suppliers = {
       ${entity "h1"}.host = "h1";
       ${entity "u1"}.user = "u1";
     };
-    scopes = pathScopes;
-  };
+    containment = { };
+  } pathScopes;
   # every nested edge at every reading node, with the MEET it was minted at: the node's sources
   # overridden by the parent vertex's formals (den-hoag-8g2rn S3c)
   nestedPairs =
@@ -164,9 +163,13 @@ let
         modules = [ { config.aspects.p = p; } ];
       }).config.aspects
       {
+        suppliers = {
+          ${entity "server"}.host = "server";
+        };
         containment = { };
-        suppliers.${entity "server"}.host = "server";
-        scopes.server = {
+      }
+      {
+        server = {
           members = [ "p" ];
           sources.host = entity "server";
         };
@@ -220,12 +223,15 @@ in
                 value = g (has "host") { bad = t.readCtx "host" [ "deep" ]; };
               }
             ];
-        x = aspects.instanceOf { } {
+        x = aspects.instanceOf { } { } {
           aspect = "c";
-          value = carrier;
-          context.host = "h1";
-          sources.host = entity "h1";
-        };
+          context = {
+            host = "h1";
+          };
+          sources = {
+            host = entity "h1";
+          };
+        } carrier;
       in
       {
         expr = {
@@ -366,20 +372,24 @@ in
           # the scope reaches `qu` itself, with `user` (control: it is admissible where supplied)
           quAtNode =
             let
-              x = aspects.instancesFor { } pathTree {
-                containment = { };
-                suppliers = {
-                  ${entity "h1"}.host = "h1";
-                  ${entity "u1"}.user = "u1";
-                };
-                scopes.n = {
-                  members = [ "qu" ];
-                  sources = {
-                    host = entity "h1";
-                    user = entity "u1";
+              x =
+                aspects.instancesFor { } pathTree
+                  {
+                    suppliers = {
+                      ${entity "h1"}.host = "h1";
+                      ${entity "u1"}.user = "u1";
+                    };
+                    containment = { };
+                  }
+                  {
+                    n = {
+                      members = [ "qu" ];
+                      sources = {
+                        host = entity "h1";
+                        user = entity "u1";
+                      };
+                    };
                   };
-                };
-              };
             in
             map (i: x.vertices.${i}.entry.who) x.reaches.n.qu;
           consistent = builtins.all consistent pairs;

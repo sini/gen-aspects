@@ -143,10 +143,11 @@ let
   };
   inst =
     cnf: value: context: sources:
-    a.instanceOf cnf {
+    a.instanceOf cnf { } {
       aspect = "x";
-      inherit value context sources;
-    };
+      inherit context;
+      inherit sources;
+    } value;
 
   cells = {
     # Design Section 3, `tuck`'s target and C116 per regime.
@@ -493,23 +494,25 @@ let
             };
             inherit tuck;
           };
-          r = a.instancesFor { } aspects {
-            containment = { };
-            suppliers = {
-              ${src "pewter"}.thimble = "pewter";
-              ${src "none"}.bobbin = "b";
-            };
-            scopes = {
-              with_ = {
-                members = [ "host" ];
-                sources.thimble = src "pewter";
+          r =
+            a.instancesFor { } aspects
+              {
+                suppliers = {
+                  ${src "pewter"}.thimble = "pewter";
+                  ${src "none"}.bobbin = "b";
+                };
+                containment = { };
+              }
+              {
+                with_ = {
+                  members = [ "host" ];
+                  sources.thimble = src "pewter";
+                };
+                without = {
+                  members = [ "host" ];
+                  sources.bobbin = src "none";
+                };
               };
-              without = {
-                members = [ "host" ];
-                sources.bobbin = src "none";
-              };
-            };
-          };
         in
         {
           withEdges = builtins.length (r.reaches.with_.tuck or [ ]);
