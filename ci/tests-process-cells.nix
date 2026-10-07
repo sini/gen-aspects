@@ -177,6 +177,34 @@ let
           )).config.aspects;
       in
       builtins.deepSeq (map (k: builtins.seq tree.${k} null) ids) (builtins.length ids);
+
+    # den-hoag-gkar9 term 2: a fired GROUND guard serves its body as written, so delivering it costs the
+    # same at every body width. One guard of n fields is placed and checked once, then fired 32 times at
+    # a context where its condition holds (`-true`) and where it fails (`-false`). The verdict is the
+    # difference of the two thunk counts, the body's delivery, at two widths, read by the runner.
+    guard-fire-true = fireWidth { thimble = "p"; };
+    guard-fire-false = fireWidth { };
   };
+  fireWidth =
+    ctx:
+    let
+      w = builtins.fromJSON n;
+      gv = ga.mkGuardVocab { };
+      g =
+        (spiedDoored.evalModuleTree { } [
+          { options.aspects = (ga.mkAspectSchema { }).mkAspectOption { }; }
+          {
+            aspects.d = ga.guard (ga.pred.eq [ "thimble" ] "p") (
+              builtins.listToAttrs (
+                builtins.genList (i: {
+                  name = "x${toString i}";
+                  value = "v${toString i}";
+                }) w
+              )
+            );
+          }
+        ]).config.aspects.d;
+    in
+    builtins.deepSeq (builtins.genList (_: gv.applyGuard ctx g) 32) w;
 in
 cells.${arm}

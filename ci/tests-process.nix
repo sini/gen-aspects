@@ -129,9 +129,34 @@
           [ $((100 * (t3 - t2))) -le $((201 * (t2 - t1))) ] \
             || die aspects-root-linear "thunks grow faster than linear in n: $t1 / $t2 / $t3 at n = 100 / 200 / 400"
 
+          # den-hoag-gkar9 term 2: delivering a fired ground guard's body costs the same at every width.
+          # fireAt <arm> <n> leaves `thunks` set, read as above.
+          fireAt() {
+            rm -f "$TMPDIR/stats"
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            evalArm "$1" "$2"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die guard-fire-width "$1 n=$2: expected exit 0, got $rc"
+            [ "$val" = "$2" ] || die guard-fire-width "$1 n=$2: expected $2, got '$val'"
+            [ -s "$TMPDIR/stats" ] || die guard-fire-width "$1 n=$2: could not measure, no statistics written"
+            thunks=$(sed -n 's/.*"nrThunks": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
+            [ -n "$thunks" ] || die guard-fire-width "$1 n=$2: could not measure, no nrThunks in the statistics"
+          }
+          fireAt guard-fire-true 16; a1=$thunks
+          fireAt guard-fire-false 16; b1=$thunks
+          fireAt guard-fire-true 64; a2=$thunks
+          fireAt guard-fire-false 64; b2=$thunks
+          d1=$((a1 - b1)); d2=$((a2 - b2))
+          echo "guard-fire-width: delivery $d1 / $d2 thunks over 32 firings at width 16 / 64"
+          # Served as written, the delivery is the same at both widths; resolving the body back from its
+          # term costs per field per firing. 1% slack.
+          [ "$d1" -gt 0 ] || die guard-fire-width "could not measure: no delivery at width 16 ($a1 - $b1)"
+          [ $((100 * d2)) -le $((101 * d1)) ] \
+            || die guard-fire-width "delivery grows with body width: $d1 / $d2 thunks over 32 firings at width 16 / 64"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "5" ] || die runner "expected 5 evaluations, ran $ran"
-          echo "tests-process: 3 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "9" ] || die runner "expected 9 evaluations, ran $ran"
+          echo "tests-process: 4 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
