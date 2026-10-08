@@ -3,7 +3,7 @@
 # Before this construction a `cnf` was an ordinary attrset read with `or` defaults, so an
 # unrecognised key was not reinterpreted — it was INERT, and whatever it meant to declare stayed
 # undeclared and fell through the aspect submodule's freeform fallback into a nested aspect tree.
-# The retired `classes` spelling is the measured instance: `mkAspectSchema { classes = { nixos = { }; }; }`
+# The former `classes` spelling is the measured instance: `mkAspectSchema { classes = { nixos = { }; }; }`
 # computed exactly `mkAspectSchema { }`, and an aspect's `nixos` content then acquired a nested
 # aspect's `description = "Aspect nixos"`.
 #
@@ -16,8 +16,8 @@
 # ★ WHAT THESE CELLS CANNOT SEE, stated rather than left silent. (1) Nix cannot recover a thrown
 # message through `tryEval`, so catchability is asserted here and the message is pinned byte for byte
 # on the error plane (`ci/tests-error.nix`, `cnf-door`): since den-hoag-7gp66 P2 L5 every `cnf` step
-# is a `prelude.door` and the refusal is the shared check's, its retired key named through the door's
-# `retired` (orchestrator-ruled Q1 (C)). (2) None of these cells can catch a key declared
+# is a `prelude.door` and the refusal is the shared check's unknown-option text, `classes` included
+# (den-hoag-c54n4). (2) None of these cells can catch a key declared
 # in `cnfDefaults` that nothing in `lib/` reads: they all assert that a declared key CONSTRUCTS, and
 # a vestigial key constructs. That direction is pinned lexically in CI, against the read set derived
 # from `lib/` itself.
@@ -87,7 +87,7 @@ in
     expected = true;
   };
 
-  flake.tests.cnf-refusal.test-retired-classes-key-refuses = {
+  flake.tests.cnf-refusal.test-former-classes-key-refuses = {
     expr = refuses (
       aspects.mkAspectSchema {
         classes = {

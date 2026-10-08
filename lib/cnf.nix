@@ -166,21 +166,6 @@ let
   # whose grammar is gen-schema's and has no union.
   mergedKeys = keysIn "merged";
 
-  # A key the library RETIRED, mapped to the text naming its replacement: the `retired` arm of the
-  # shared options check (gen-prelude `door`, den-hoag-7gp66 P2 L5), which refuses the old key by
-  # name with this text where any other unknown key gets the plain refusal naming the recognised set.
-  # A future retirement adds an entry here and nothing else.
-  #
-  # Each text is stored WITHOUT a leading `cnf.<key>`: spelling it here would put the literal token
-  # `cnf.classes` in `lib/`, where the CI guard that derives the vocabulary from the reads themselves
-  # would pick it up as a phantom member of the recognised set — the retirement record manufacturing
-  # its own false evidence.
-  retiredCnfKeys = {
-    classes =
-      "`keySemantics` (retired at gen-aspects 9a855c9, 2026-07-15: a class is a keySemantics entry, "
-      + "so `classes = { nixos = { }; }` becomes `keySemantics = { nixos = { category = \"class\"; }; }`)";
-  };
-
   # The record the internals hold: every key, its default where the caller gave none. The key set
   # was checked at the door, so this is total by construction.
   constructed = cnf: cnfDefaults // cnf;
@@ -193,8 +178,8 @@ let
     c // overrides;
 
   # A PUBLIC entry point: the `cnf` step is a `prelude.door` (den-hoag-7gp66 P2 L5) — closed over
-  # `cnfKeys`, refusing an unknown key by name with the recognised set and a retired one naming its
-  # replacement, its contract published as data — whose body constructs the record and puts that
+  # `cnfKeys`, refusing an unknown key by name with the recognised set (a key the library no longer
+  # reads is an unknown key like any other, den-hoag-c54n4), its contract published as data — whose body constructs the record and puts that
   # construction on the STRICT path of the result, so the refusal is reachable by forcing the result to WHNF rather than only by evaluating
   # a configuration through it. This placement is load-bearing: forcing a returned option DECLARATION
   # does not force validation buried inside its type, so a check placed there would be a landmine
@@ -222,7 +207,6 @@ let
     prelude.door {
       inherit name;
       optional = cnfKeys;
-      retired = retiredCnfKeys;
     } (checkedEntry f);
 
   # `cnf.ref`, the framework's door: `null`, or a function the resolver can call with
@@ -317,7 +301,6 @@ in
     cnfDefaults
     cnfKeys
     mergedKeys
-    retiredCnfKeys
     extendCnf
     checkedEntry
     cnfDoor

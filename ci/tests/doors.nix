@@ -17,7 +17,6 @@
 # goldens naming each door (R6) live in `ci/tests-error.nix`'s `flake.testsError.doors`.
 {
   aspects,
-  cnfInternals,
   genIdentity,
   prelude,
   ...
@@ -144,7 +143,6 @@ in
         open = false;
         optional = cnfKeys;
         required = [ ];
-        retired = cnfInternals.retiredCnfKeys;
       });
     };
     test-each-cnf-door-reads-its-keys-through-the-functor-aware-reader = {
@@ -155,7 +153,7 @@ in
       expr = perCnf (n: firesAtApplication (aspects.${n} { ${stranger} = 1; }));
       expected = perCnf (_: true);
     };
-    test-the-retired-cnf-key-is-refused-at-each-door = {
+    test-the-former-classes-key-is-refused-at-each-door = {
       expr = perCnf (n: firesAtApplication (aspects.${n} { classes.nixos = { }; }));
       expected = perCnf (_: true);
     };

@@ -212,7 +212,7 @@ shared names; `den-hoag-8x97u`), carried on the record of a functor module wrapp
 imports anything, never in a module nixpkgs collects (`den-hoag-r05lc`). Tests: `construction-formal-refusals.*` and
 `imports-route-refusals.*` in `ci/tests-error.nix`, `ci/tests/construction-formals.nix`.
 
-**`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset, through a `prelude.door` closed over `cnfKeys` (den-hoag-7gp66 P2 L5: an unknown key refused by name with the recognised set, the retired `classes` naming its replacement, `__contract` published):
+**`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset, through a `prelude.door` closed over `cnfKeys` (den-hoag-7gp66 P2 L5: an unknown key refused by name with the recognised set, `__contract` published; a class is a `keySemantics` entry of category `"class"`, and a `classes` key is an unknown key, den-hoag-c54n4):
 `keySemantics : { <key> = { category = "class" | "channel" | "facet"; option ? ; module ? ; }; }`,
 `aspectModules : [module]`, `metaModules : [module]`, `moduleArgs : { <arg> = bool; }`,
 `providerPrefix : [string]`, `collections`, and three booleans — `closedKeys`, `recursiveClosed`,
