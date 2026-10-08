@@ -118,9 +118,12 @@ let
                 # Plain attrset survivors' fields fold as `lazyAttrsOf anything` (den-hoag-15wnx). Each
                 # field's definitions take gen-merge's spine, so a property marker a raw fragment holds at a
                 # nested key is discharged at fire time, where a fired record's content can meet its
-                # priority. So is the coerced fragment's: its typed body keeps, at each nested key, the
-                # priority that selected its winners (gen-merge `partialAttrsOf`, den-hoag-fjdnf), so the
-                # typed half, the remainders and the fired content meet in one priority pass; one survivor takes the law as several do, because the law is not the identity
+                # priority. So is the coerced fragment's: its typed body keeps, at each nested key and at
+                # each declared `includes`, the priority that selected its winners (gen-merge
+                # `partialAttrsOf`, den-hoag-fjdnf; `partialSubmodule`, den-hoag-5ov3p), and an `includes`
+                # nobody wrote is its declared default at `mkOptionDefault`, so the typed half, the
+                # remainders and the fired content meet in one priority pass, as T4's definitions do; one
+                # survivor takes the law as several do, because the law is not the identity
                 # on one definition. The field level is LAZY, as the aspect type's own freeform slot (T4)
                 # is: a field whose every definition discharges to nothing is kept and refused by name
                 # where it is read, and reading one field never forces another (ADR-0010 §4(a),

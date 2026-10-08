@@ -497,10 +497,21 @@ rec {
             records = builtins.filter (f: f.kind == "record") v.fragments;
             # The unconditional fragments' members are static whichever arm is taken, so they are classified
             # here, and a term among them refuses at the declaration, never only when an instance fires.
+            # A typed body's `includes` keeps its priority (gen-merge `partialSubmodule`, den-hoag-5ov3p),
+            # so it is read through an override definition; a priority is resolved at fire time, never here.
             unconditional = sitesOf id null [ ] (
-              builtins.concatMap (f: if builtins.isAttrs f.body then f.body.includes or [ ] else [ ]) (
-                builtins.filter (f: f.kind != "record") v.fragments
-              )
+              builtins.concatMap (
+                f:
+                let
+                  i = if builtins.isAttrs f.body then f.body.includes or [ ] else [ ];
+                in
+                if builtins.isList i then
+                  i
+                else if (i._type or null) == "override" then
+                  i.content
+                else
+                  [ ]
+              ) (builtins.filter (f: f.kind != "record") v.fragments)
             );
             # `seq` each site's kind: a list of thunks is not forced by its length.
             forced = builtins.foldl' (acc: s: builtins.seq s.kind acc) wholeDeferred unconditional;

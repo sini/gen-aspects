@@ -760,12 +760,14 @@ let
       # carrier is not an aspect submodule (F4(a): its fragments' bodies are held raw), so an aspect
       # module's content reaches no carrier, as before; each element is a full include element, so
       # the aspect modules apply inside it, as they do to T4's.
-      carrierSub = merge.submodule {
+      carrierSub = merge.partialSubmodule {
         # a nested key is a position of the same shape, an `includes` list and nested keys, and nothing else
         # A nested position's typed body is a PARTIAL fold: the plain definitions' positions, merged here,
         # meet the remainders and a fired record's content at fire time. So each nested key keeps the
         # priority that selected its winners (`partialAttrsOf`), and the content law's one priority pass
-        # ranges over all of them, as the module system's does (ADR-0029; den-hoag-fjdnf).
+        # ranges over all of them, as the module system's does (ADR-0029; den-hoag-fjdnf). The declared
+        # `includes` folds partially too (`partialSubmodule`, den-hoag-5ov3p): its value is its winners
+        # under their priority, and with no definition the declared default at `mkOptionDefault`.
         freeformType = merge.partialAttrsOf carrierSub;
         options.includes = merge.mkOption {
           type = t.listOf (includesElemType cnf);
