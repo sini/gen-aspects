@@ -290,7 +290,7 @@ A framework builds the graph from these with `gen-graph.fromRegistry`, or lifts 
 
 ## API Reference
 
-The `.lib` value exposes the five aspect types (incl. `aspectsRoot`, the re-rooting container), the value-shape introspection (`canTake`), the retired `wrapFn` and `wrapGatedFn` (refused by name), the instance mint and relation (`instanceOf`, `instancesFor`), the identity/introspection utilities plus `guardKey` and `keyRef`, the schema-and-registry entry points (`mkAspectSchema`, `flatten`, `graphFacts`, `includeSitesOfInstance`, `isGuardLeaf`, `keyCategory`, `structuralKeys`, `cnfKeys`), and the guard vocabulary (`mkGuardVocab`, `applyGuard`, `pred`, `guard`). The roster itself is the binding, not a count restated in prose — read `lib/default.nix`.
+The `.lib` value exposes the five aspect types (incl. `aspectsRoot`, the re-rooting container), the value-shape introspection (`canTake`), the retired `wrapFn` and `wrapGatedFn` and the renamed `includeSitesOfEntry` (each refused by name; `includeSitesOfEntry`'s refusal names its successor `includeSitesOfInstance`), the instance mint and relation (`instanceOf`, `instancesFor`), the identity/introspection utilities plus `guardKey` and `keyRef`, the schema-and-registry entry points (`mkAspectSchema`, `flatten`, `graphFacts`, `includeSitesOfInstance`, `isGuardLeaf`, `keyCategory`, `structuralKeys`, `cnfKeys`), and the guard vocabulary (`mkGuardVocab`, `applyGuard`, `pred`, `guard`). The roster itself is the binding, not a count restated in prose — read `lib/default.nix`.
 
 ```nix
 aspects = gen-aspects.lib;
