@@ -6,6 +6,7 @@
 # scope the door returns. It stores no closure and applies none: the door and its scope are runtime
 # parameters (design G5 scope ruling).
 {
+  prelude,
   T,
   hashIdentity,
   identityOf,
@@ -286,81 +287,82 @@ let
   # defined for it only.
   checkGuardAt =
     cnf: at: depth: g:
-    if g ? pred then
-      throw "gen-aspects.guard: ${at}: a guard record built by the retired predicate vocabulary (`pred`); build its condition with `pred.*`, which now emit terms (den-hoag-lwbb1)."
-    else if g.__checked or false then
+    if g.__checked or false then
       g
     else
-      let
-        lifted = liftAt cnf at depth [ ] g.body;
-        body = lifted.term;
-        r = T.checkClause (instanceFor cnf) {
-          inherit (g) condition;
-          body =
-            if lifted.bare or false then
-              g.body
-            else if lifted.checked == [ ] then
-              groundBody
-            else
-              tm.list lifted.checked;
-        };
-        # A door reference sits only in a term the author wrote: the lift's own references name a nested
-        # guard or a module slot, never a door. So the scans read the authored terms, not the lifted body.
-        authoredNodes = builtins.concatMap nodes lifted.authored;
-        bad = misplacedDoorRef (if T.isTerm g.body then builtins.tail authoredNodes else authoredNodes);
-        malformed = malformedDoorRef authoredNodes;
-        # The terms' identities, read through gen-algebra's `identityOf` and selected by `isExact`;
-        # never `__mint` raw (the contract on gen-algebra's `__mint` line).
-        cm = identityOf g.condition;
-        bm = identityOf body;
-        innerUnmintable = builtins.filter (i: builtins.isAttrs i && !(isExact (identityOf i))) (
-          builtins.attrValues lifted.nested
-        );
-      in
-      if isRefusal r then
-        throw (render at r.left)
-      else if malformed != [ ] then
-        throw "gen-aspects.guard: ${at}: ref-id-domain: a door registration reference's identifier is outside refId's grammar (or longer than ${toString maxIdLength} characters), so it cannot be read back: ${shortId (builtins.head malformed).id}; build it with gen-algebra's `refId`."
-      else if bad != [ ] then
-        throw "gen-aspects.guard: ${at}: ref-position: a door registration reference is admitted only as the whole body of a door node; found below the root: ${shortId (builtins.head bad).id}"
-      else
-        g
-        // {
-          __checked = true;
-          # The D this guard was checked under; the resolver must read the same one (P3).
-          __declared = declaredFor cnf;
-          __nested = lifted.nested;
-          # A body that is THE LIFT'S IMAGE OF PLAIN DATA (no term its author wrote, nothing nested but
-          # module slots) resolves to the data it was lifted from at every context: `resolveFields` takes
-          # each lift-made node back to its datum, and a slot's `ref` to its function as written (`envOf`).
-          # So firing serves that data and never walks the term back. A nested guard resolves to its
-          # CHECKED record, not its source, and an authored term, closed or not (`t.lit "x"`), is a term
-          # record whose source is not its value: both resolve.
-          __served =
-            if lifted.authored == [ ] && builtins.all isSlotId (builtins.attrNames lifted.nested) then
-              { value = g.body; }
-            else
-              null;
-          inherit body;
-          __mint =
-            if isExact cm && isExact bm && innerUnmintable == [ ] then
-              {
-                minted = hashIdentity "guard" [ "condition" "body" ] (
-                  l:
-                  {
-                    condition = cm.minted;
-                    body = bm.minted;
-                  }
-                  .${l}
-                );
-              }
-            else
-              {
-                unmintable = "gen-aspects.guard: ${at}: the guard has no identity: ${
-                  cm.unmintable or bm.unmintable or (identityOf (builtins.head innerUnmintable)).unmintable
-                }";
-              };
-        };
+      builtins.seq (prelude.checkRequired "gen-aspects.guard: ${at}" [ "condition" "body" ] g) (
+        let
+          lifted = liftAt cnf at depth [ ] g.body;
+          body = lifted.term;
+          r = T.checkClause (instanceFor cnf) {
+            inherit (g) condition;
+            body =
+              if lifted.bare or false then
+                g.body
+              else if lifted.checked == [ ] then
+                groundBody
+              else
+                tm.list lifted.checked;
+          };
+          # A door reference sits only in a term the author wrote: the lift's own references name a nested
+          # guard or a module slot, never a door. So the scans read the authored terms, not the lifted body.
+          authoredNodes = builtins.concatMap nodes lifted.authored;
+          bad = misplacedDoorRef (if T.isTerm g.body then builtins.tail authoredNodes else authoredNodes);
+          malformed = malformedDoorRef authoredNodes;
+          # The terms' identities, read through gen-algebra's `identityOf` and selected by `isExact`;
+          # never `__mint` raw (the contract on gen-algebra's `__mint` line).
+          cm = identityOf g.condition;
+          bm = identityOf body;
+          innerUnmintable = builtins.filter (i: builtins.isAttrs i && !(isExact (identityOf i))) (
+            builtins.attrValues lifted.nested
+          );
+        in
+        if isRefusal r then
+          throw (render at r.left)
+        else if malformed != [ ] then
+          throw "gen-aspects.guard: ${at}: ref-id-domain: a door registration reference's identifier is outside refId's grammar (or longer than ${toString maxIdLength} characters), so it cannot be read back: ${shortId (builtins.head malformed).id}; build it with gen-algebra's `refId`."
+        else if bad != [ ] then
+          throw "gen-aspects.guard: ${at}: ref-position: a door registration reference is admitted only as the whole body of a door node; found below the root: ${shortId (builtins.head bad).id}"
+        else
+          g
+          // {
+            __checked = true;
+            # The D this guard was checked under; the resolver must read the same one (P3).
+            __declared = declaredFor cnf;
+            __nested = lifted.nested;
+            # A body that is THE LIFT'S IMAGE OF PLAIN DATA (no term its author wrote, nothing nested but
+            # module slots) resolves to the data it was lifted from at every context: `resolveFields` takes
+            # each lift-made node back to its datum, and a slot's `ref` to its function as written (`envOf`).
+            # So firing serves that data and never walks the term back. A nested guard resolves to its
+            # CHECKED record, not its source, and an authored term, closed or not (`t.lit "x"`), is a term
+            # record whose source is not its value: both resolve.
+            __served =
+              if lifted.authored == [ ] && builtins.all isSlotId (builtins.attrNames lifted.nested) then
+                { value = g.body; }
+              else
+                null;
+            inherit body;
+            __mint =
+              if isExact cm && isExact bm && innerUnmintable == [ ] then
+                {
+                  minted = hashIdentity "guard" [ "condition" "body" ] (
+                    l:
+                    {
+                      condition = cm.minted;
+                      body = bm.minted;
+                    }
+                    .${l}
+                  );
+                }
+              else
+                {
+                  unmintable = "gen-aspects.guard: ${at}: the guard has no identity: ${
+                    cm.unmintable or bm.unmintable or (identityOf (builtins.head innerUnmintable)).unmintable
+                  }";
+                };
+          }
+      );
+
   checkGuard = cnf: at: checkGuardAt cnf at 0;
 
   # The coordinates a checked guard reads (ADR-0008 :150): its terms' heads, and a door reference's

@@ -192,6 +192,7 @@ in
       "lib/cnf.nix"
       "lib/default.nix"
       "lib/facts.nix"
+      "lib/guard-term.nix"
       "lib/guard.nix"
       "lib/identity.nix"
       "lib/instance.nix"

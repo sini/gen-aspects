@@ -1166,6 +1166,33 @@ in
           (
             exactly "gen-aspects.guard: aspect `d`: term-not-constructed: {\"former\":\"Lit\",\"remedy\":\"a term is built by the formers (`term.lit`, `term.attrs`, ...), which mint it; a record that spells `__bodyTerm` by hand is not a term\"}"
           );
+      # A guard record requires `condition` and `body` and is otherwise open (R5). A record with no
+      # `condition`, including one that spells some other key where the condition belongs, is
+      # refused by name and catchably, where it used to abort on `attribute 'condition' missing`
+      # (ADR-0025 item 1). A key beside a present `condition` is admitted (`ci/tests/guard.nix`).
+      test-a-guard-record-without-condition-is-refused-by-name =
+        thrown
+          (aspects.applyGuard { class = "nixos"; } {
+            __guard = true;
+            body.x = 1;
+          })
+          (
+            exactly (
+              refusals.missingField "gen-aspects.guard: aspect `<guard>`" [ "condition" "body" ] "condition"
+            )
+          );
+      test-a-guard-record-with-pred-for-condition-is-refused-by-name =
+        thrown
+          (aspects.applyGuard { class = "nixos"; } {
+            __guard = true;
+            pred = aspects.pred.class "nixos";
+            body.x = 1;
+          })
+          (
+            exactly (
+              refusals.missingField "gen-aspects.guard: aspect `<guard>`" [ "condition" "body" ] "condition"
+            )
+          );
       test-door-functor-not-a-function = thrown (go { __functor = 5; }) (
         door "received: a set whose `__functor` is of type int, not a function"
       );

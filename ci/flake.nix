@@ -116,6 +116,7 @@
           # `render` (it reads only the refusal it is handed, so the instance's inputs stay unforced).
           T = null;
           GT = import ../lib/guard-term.nix {
+            prelude = gen-prelude.lib;
             T = null;
             hashIdentity = null;
             identityOf = null;
@@ -148,6 +149,7 @@
         guardTermInternals =
           let
             GT = import ../lib/guard-term.nix {
+              prelude = gen-prelude.lib;
               T = genAlgebra.term genIdentity.hashIdentity;
               inherit (genIdentity) hashIdentity;
               inherit (genAlgebra) identityOf isExact;

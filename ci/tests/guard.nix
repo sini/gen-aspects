@@ -31,6 +31,20 @@ in
       ok = true;
     };
   };
+  # A guard record is open beyond `condition` and `body` (R5's stated price: an extra field on a
+  # data record is never reported), so a `pred` key beside a present `condition` is admitted and
+  # not read: the condition decides. Pinned as a SUCCESS, so that a later closure is visible.
+  flake.tests.guard.test-an-extra-key-beside-condition-is-admitted-and-not-read = {
+    expr = v.applyGuard ctxCortex {
+      __guard = true;
+      condition = aspects.pred.class "nixos";
+      pred = aspects.pred.class "darwin";
+      body.ok = true;
+    };
+    expected = {
+      ok = true;
+    };
+  };
   flake.tests.guard.test-applyguard-not-fires = {
     expr = v.applyGuard ctxCortex (v.vocab.whenEq [ "thimble" "name" ] "blade" { ok = true; });
     expected = null;

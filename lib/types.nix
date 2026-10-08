@@ -335,6 +335,7 @@ let
   # classification surface, so a guard's module slots are exactly the keys `keyCategory` calls classes.
   GT = import ./guard-term.nix {
     inherit
+      prelude
       T
       hashIdentity
       identityOf
