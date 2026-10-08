@@ -2,9 +2,10 @@
 # every published step of gen-aspects that takes a RECORD catches its own violations, at its own
 # application, catchably, and publishes its contract as data.
 #
-# After P2 a door step is one of three kinds (spec §p2.3.1; orchestrator rulings Q1 (C), Q2 (A)):
+# After P2 a door step is one of three kinds (spec §p2.3.1; orchestrator ruling Q2 (A); Q1 (C)'s
+# retired arm was dropped at den-hoag-c54n4):
 #   · the `cnf` step — the library-construction options set, closed over `cnfKeys`, first at every
-#     entry point; a retired key (`classes`) is refused naming its replacement (`retired`);
+#     entry point; a key outside `cnfKeys`, `classes` included, is refused as a plain unknown key;
 #   · an OPTIONS step after it — `mkAspectSchema`'s `mkAspectOption { providerPrefix?; }` and
 #     `mkAspectModule { providerPrefix?; }`, and `instanceOf cnf { scope?; }`;
 #   · a RECORD step — open, all fields required (R5), the keyed-record ruling's configuration
@@ -135,7 +136,7 @@ in
       expected = false;
     };
 
-    # ── THE `cnf` STEP (Q1 (C)) ──
+    # ── THE `cnf` STEP (no retired keys, den-hoag-c54n4) ──
     test-each-cnf-door-publishes-its-contract = {
       expr = perCnf (n: aspects.${n}.__contract);
       expected = perCnf (n: {
