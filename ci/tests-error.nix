@@ -128,19 +128,16 @@ in
     let
       schema = aspects.mkAspectSchema { };
       unknown = door: accepted: exactly (refusals.unknownOption door accepted "notAnOption");
-      retiredClasses = (import ../lib/cnf.nix).retiredCnfKeys.classes;
     in
     {
-      # The `cnf` step (P2 L5, Q1 (C)): an unknown key is the shared check's refusal, naming the door
-      # and the recognised set; the retired `classes` is refused naming its replacement.
+      # The `cnf` step (P2 L5): an unknown key is the shared check's refusal, naming the door and the
+      # recognised set. A key the library no longer reads (`classes`, now a `keySemantics` entry of
+      # category "class") is that same refusal, with no replacement text (den-hoag-c54n4).
       test-cnf-unknown-key = thrown (aspects.mkGuardVocab { notAnOption = 1; }) (
         unknown "gen-aspects.mkGuardVocab" aspects.cnfKeys
       );
-      test-cnf-retired-key = thrown (aspects.aspectsType { classes.nixos = { }; }) (
-        exactly (refusals.retiredOption "gen-aspects.aspectsType" retiredClasses "classes")
-      );
-      test-cnf-retired-key-text = thrown (aspects.aspectsType { classes.nixos = { }; }) (
-        "^gen-aspects[.]aspectsType: 'classes' is a retired option of this door; its replacement is `keySemantics` [(]retired at gen-aspects 9a855c9"
+      test-cnf-former-key-is-an-unknown-key = thrown (aspects.aspectsType { classes.nixos = { }; }) (
+        exactly (refusals.unknownOption "gen-aspects.aspectsType" aspects.cnfKeys "classes")
       );
       # The firing record (P2 L5): a missing field is refused by name at its application.
       test-applyguardwith-missing-field =
