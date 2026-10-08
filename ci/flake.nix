@@ -179,6 +179,14 @@
       extraModules = [
         ./tests-error.nix
         ./tests-process.nix
+        # `includeSitesOfEntry` is a TOMBSTONE (lib/default.nix, `── THE RETIRED NAME ──`):
+        # `checks.root-surface` excludes it from the walk, and the generated
+        # `root-surface-retired.test-retired-includeSitesOfEntry` cell pins this exact message at the
+        # root seam, so a resurrected or reworded tombstone reds.
+        {
+          gen.ci.rootSurface.retired.includeSitesOfEntry =
+            "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance id before the value: `includeSitesOfInstance cnf aspects iid entry`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`); for a node's value, pass the node's own id and the result is its `graphFacts` `includeSitesOf`.";
+        }
       ];
     };
 }

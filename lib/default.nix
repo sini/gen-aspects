@@ -146,6 +146,10 @@ in
   # sites its consumer descends, and a node's value under its own id its `includeSitesOf`. One
   # function for both, so the relation and its reader cannot disagree.
   inherit (factsModule) includeSitesOfInstance;
+  # ── THE RETIRED NAME ── `includeSitesOfEntry` is a tombstone rather than a silent alias, as
+  # gen-product's `cell`: refused by name, naming its replacement. A published value, not a lambda, so
+  # reaching the name refuses as well as applying it; the message interpolates nothing.
+  includeSitesOfEntry = throw "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance id before the value: `includeSitesOfInstance cnf aspects iid entry`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`); for a node's value, pass the node's own id and the result is its `graphFacts` `includeSitesOf`.";
   inherit (guardModule)
     mkGuardVocab
     pred
