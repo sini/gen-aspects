@@ -1458,9 +1458,11 @@ let
             type = t.str;
           };
 
+          # Not `readOnly`: a readOnly option counts its default as a setting, as nixpkgs does, so a write
+          # equal to the stamped value would be refused by gen-merge's generic message. The `apply` is
+          # the enforcer, accepting the equal write and refusing any other by name (den-hoag-1gv6r).
           key = merge.mkOption {
             internal = true;
-            readOnly = true;
             type = t.str;
             default = stampedKey;
             apply =
@@ -1478,7 +1480,6 @@ let
           # records (no submodule, no option); consumers id them uniformly via `aspects.aspectId`.
           id_hash = merge.mkOption {
             internal = true;
-            readOnly = true;
             type = t.str;
             default = stampedId;
             apply =
