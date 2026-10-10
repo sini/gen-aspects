@@ -1269,7 +1269,7 @@ in
           }).n.description
           (
             "^"
-            + lib.escapeRegex "gen-merge: module `<gen-merge>' is a function whose result is lambda, not an attribute set"
+            + lib.escapeRegex "gen-merge: module `<unknown-file>' is a function whose result is lambda, not an attribute set"
           );
       test-pred-custom-retired = thrown (aspects.pred.custom "x" { }) (
         exactly "gen-aspects.pred.custom was RETIRED by den-hoag-lwbb1: a custom condition is a term built from `pred.has`, `pred.eq`, `pred.all`, `pred.any` and `pred.not`; one no term can state is a context closure, which crosses the gen-rules door: declare the aspect through the framework's surface."
@@ -1635,8 +1635,8 @@ in
         "^"
         + lib.escapeRegex (
           "gen-merge: the option `x.meta.loc' has conflicting definitions:\n"
-          + "- In `<gen-merge>': <a list>\n"
-          + "- In `<gen-merge>': ${got}"
+          + "- In `<unknown-file>': <a list>\n"
+          + "- In `<unknown-file>': ${got}"
         );
       contradicts =
         chain:

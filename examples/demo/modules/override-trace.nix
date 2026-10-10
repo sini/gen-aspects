@@ -50,7 +50,7 @@ in
     # Real shape here: mode="warm"; reused=["haberdashery.environments" "haberdashery.thimbles"] (the marked haberdashery,
     # SPLICED); remerged={aspects,namespaces,schema,scopeSettings} (the dirty function modules — e.g.
     # scopeSettings re-merges as `dirty-decl settings.nix`, NOT because the edit touched it);
-    # modules.clean=["<gen-merge>"] is the marked-pure haberdashery entry. NB "<gen-merge>" is the label for ANY
+    # modules.clean=["<unknown-file>"] is the marked-pure haberdashery entry. NB "<unknown-file>" is the label for ANY
     # module without a source path (the marked-pure inner fn AND the inline edit both), so it recurs
     # across clean/dirty/edited — it does not always denote the haberdashery.
     overrideTrace = {
