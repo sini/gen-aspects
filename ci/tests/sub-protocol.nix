@@ -127,8 +127,9 @@ in
   # aspect to, `aspectSubmodule` (den-hoag-shdvu, ruled arm A: delegate). `delegateAtThreadedPrefix`
   # is that branch asked directly — same library, same `cnf`, same prefix — so the cell reads the
   # agreement rather than pinning one side: an `aspectType` left on the protocol's `{ }` default reads
-  # ATTRS{0} on `root` and the element while the delegate still reads ATTRS{7}. `ctlDeclares` proves
-  # the read path can see a declared surface; `ctlLeaf` is the leaf's answer the subject used to share.
+  # ATTRS{0} on `root` and the element while the delegate still reads ATTRS{8}, the count carrying the
+  # engine-owned `_module` group nixpkgs serves (den-hoag-a67l3). `ctlDeclares` proves the read path
+  # can see a declared surface; `ctlLeaf` is the leaf's answer the subject used to share.
   flake.tests.sub-protocol.test-getsuboptions-is-the-elements-answer = {
     expr = {
       root = shape (
@@ -155,9 +156,9 @@ in
       ctlLeaf = shape (t.str.getSubOptions [ ]);
     };
     expected = {
-      root = "ATTRS{7}";
-      elementAtThreadedPrefix = "ATTRS{7}";
-      delegateAtThreadedPrefix = "ATTRS{7}";
+      root = "ATTRS{8}";
+      elementAtThreadedPrefix = "ATTRS{8}";
+      delegateAtThreadedPrefix = "ATTRS{8}";
       ctlDeclares = "ATTRS{1}";
       ctlLeaf = "ATTRS{0}";
     };
