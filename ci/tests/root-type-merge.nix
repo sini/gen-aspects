@@ -469,17 +469,22 @@ in
     };
   };
 
-  # den-hoag-plm1h: the element join is gen-merge's `mergeTypes`, so the check-family witness judges
-  # it. Asking the element's own foreign `typeMerge` joined `port ∥ int` to `int` and accepted 70000
-  # for a `port`, in either order.
-  flake.tests.root-type-merge.test-an-element-join-that-drops-a-check-refuses = {
+  # den-hoag-plm1h: the element join is gen-merge's `mergeTypes`, so no check is dropped. Asking the
+  # element's own foreign `typeMerge` joined `port ∥ int` to `int` and accepted 70000 for a `port`, in
+  # either order. Under the meet (den-hoag-rmxbx) the join merges and is met with both elements'
+  # checks: 70000, which `port` rejects, is refused at the value, and 80 is served.
+  flake.tests.root-type-merge.test-an-element-join-enforces-both-checks = {
     expr = {
       portInt = ev [ (rootWith nt.port) (rootWith nt.int) ] { a = 70000; };
       intPort = ev [ (rootWith nt.int) (rootWith nt.port) ] { a = 70000; };
+      portIntGood = ev [ (rootWith nt.port) (rootWith nt.int) ] { a = 80; };
+      intPortGood = ev [ (rootWith nt.int) (rootWith nt.port) ] { a = 80; };
     };
     expected = {
-      portInt = "REFUSED";
-      intPort = "REFUSED";
+      portInt = "MERGED aspectsRoot / REJECTED";
+      intPort = "MERGED aspectsRoot / REJECTED";
+      portIntGood = "MERGED aspectsRoot / ACCEPTED";
+      intPortGood = "MERGED aspectsRoot / ACCEPTED";
     };
   };
 

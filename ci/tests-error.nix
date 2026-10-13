@@ -103,8 +103,9 @@ in
     };
   };
 
-  # den-hoag-plm1h: `aspectsRoot(port) ∥ aspectsRoot(int)` is refused BY NAME at the declaration.
-  flake.testsError.root-element-join-refusal.test-port-int =
+  # den-hoag-plm1h: `aspectsRoot(port) ∥ aspectsRoot(int)` merges and is met (den-hoag-rmxbx), so a
+  # value `port` rejects is refused BY NAME at the value, naming the element option.
+  flake.testsError.root-element-join-refusal.test-port-int-refuses-the-value =
     let
       rootWith = (aspects.aspectsRoot { keySemantics.a.category = "class"; }).functor.type;
       res = genMerge.evalModuleTree { } [
@@ -114,12 +115,10 @@ in
       ];
     in
     {
-      expr = res.options.p.type.name;
+      expr = builtins.deepSeq res.config.p res.config.p;
       expectedError = {
         type = "ThrownError";
-        msg =
-          "^"
-          + lib.escapeRegex "gen-merge: option `p' is declared with types that do not merge (`aspectsRoot' and `aspectsRoot'";
+        msg = "^" + lib.escapeRegex "gen-merge: a definition for option `a' is not of type";
       };
     };
 

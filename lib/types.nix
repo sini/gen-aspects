@@ -1568,7 +1568,8 @@ let
   # element's own foreign `typeMerge`. The difference is the check-family witness: asked directly, a
   # foreign `port`'s `typeMerge` joins `port ∥ int` to bare `int` and nothing sees the dropped check,
   # so `aspectsRoot(port) ∥ aspectsRoot(int)` accepted 70000 (den-hoag-plm1h). Through `mergeTypes`
-  # the join is judged and that drop is refused by name (ADR-0025 item 1). gen-schema's `refined`
+  # the join is met with every operand (ADR-0039, the meet; den-hoag-rmxbx), so `port`'s check is
+  # still owed and 70000 is refused by name at the value (ADR-0025 item 1). gen-schema's `refined`
   # joins its base the same way.
   #
   # ★ IT IS TOTAL ON WHAT IT IS CALLED WITH, and that is a property of the caller, not a guard here:
