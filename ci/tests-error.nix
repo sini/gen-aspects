@@ -439,7 +439,34 @@ in
           (
             exactly "gen-aspects: mkAspectSchema: collection 'providerPrefix' is reserved — it is an mkAspectSchema construction formal"
           );
+
+      # den-hoag-erq8j G5 · a collection named for a key the aspect kind value writes. Before the
+      # refusal the native module replaced it, and its value was lost without a word.
+      test-collection-named-for-a-written-key-is-reserved =
+        thrown
+          (builtins.attrNames
+            (mkSchemaEval {
+              collections.__defsModule.default = "COLLECTION";
+              modules = [ { config.schema.aspect = { }; } ];
+            }).config.schema.aspect
+          )
+          (
+            exactly "gen-aspects: mkAspectSchema: collection '__defsModule' is reserved — the aspect kind value writes it"
+          );
     };
+
+  # den-hoag-erq8j · a keySemantics key naming a structural option of the aspect type, and a
+  # keySemantics that is no attrset, refused by name at WHNF of the entry point.
+  flake.testsError.keysemantics-door = {
+    test-structural-key-names-the-collision =
+      thrown (aspects.mkAspectSchema { keySemantics.meta.category = "channel"; })
+        (
+          exactly "gen-aspects: keySemantics key 'meta' names a structural option of the aspect type (name, description, key, id_hash, meta, includes); a keySemantics entry declares a key beside them, never over one."
+        );
+    test-non-attrset-names-its-type = thrown (aspects.mkAspectSchema { keySemantics = [ ]; }) (
+      exactly "gen-aspects: cnf.keySemantics must be an attrset of keySemantics entries keyed by the aspect key each declares; received: list."
+    );
+  };
 
   # ★ THE SAME NAMES IN A MODULE THE KIND ENTRY IMPORTS (den-hoag-8x97u). `mkType` marks the instance
   # modules it builds with gen-merge's `__reservedKeys` (`cnfKeys` ∪ gen-schema's `entryReservation`),

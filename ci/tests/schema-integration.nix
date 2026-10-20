@@ -174,6 +174,17 @@ in
     expected = true;
   };
 
+  # The control for `__defsModule`'s reservation (ci/tests-error.nix, construction-formal-refusals): a
+  # collection under any other name reads back its own value on the kind.
+  flake.tests.schema-integration.test-collection-reads-back-its-value = {
+    expr =
+      (mkSchemaEval {
+        collections.tags.default = "COLLECTION";
+        modules = [ { config.schema.aspect = { }; } ];
+      }).config.schema.aspect.tags;
+    expected = "COLLECTION";
+  };
+
   # Schema extension fields are readable on actual aspect instances
   flake.tests.schema-integration.test-schema-extension-on-instance = {
     expr = eval.config.aspects.networking.priority;

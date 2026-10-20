@@ -209,11 +209,16 @@ reads DIRECT defs; a formal inside a module a def imports refuses at gen-merge's
 `mkType` marks the instance modules it builds with gen-merge's `__reservedKeys` (binding
 `reservation`: `cnfKeys` ∪ gen-schema's exported `entryReservation kind`, gen-schema's text winning on
 shared names; `den-hoag-8x97u`), carried on the record of a functor module wrapping each def that
-imports anything, never in a module nixpkgs collects (`den-hoag-r05lc`). Tests: `construction-formal-refusals.*` and
+imports anything, never in a module nixpkgs collects (`den-hoag-r05lc`). A `cnf.collections` entry
+named `__defsModule`, the key `mkType` writes onto the kind value, refuses by name beside them (binding
+`writtenCollections`; `den-hoag-erq8j`). Tests: `construction-formal-refusals.*` and
 `imports-route-refusals.*` in `ci/tests-error.nix`, `ci/tests/construction-formals.nix`.
 
 **`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset, through a `prelude.door` closed over `cnfKeys` (den-hoag-7gp66 P2 L5: an unknown key refused by name with the recognised set, `__contract` published; a class is a `keySemantics` entry of category `"class"`, and a `classes` key is an unknown key, den-hoag-c54n4):
-`keySemantics : { <key> = { category = "class" | "channel" | "facet"; option ? ; module ? ; }; }`,
+`keySemantics : { <key> = { category = "class" | "channel" | "facet"; option ? ; module ? ; }; }`
+(an attrset whose names are never one of `structuralKeys`: a non-attrset, and a name of a structural
+option, refuse by name at `checkedEntry`, names only, no entry forced; `den-hoag-erq8j`, tests
+`cnf-refusal.test-structural-key-*` and `keysemantics-door.*` in `ci/tests-error.nix`),
 `aspectModules : [module]`, `metaModules : [module]`, `moduleArgs : { <arg> = bool; }`,
 `providerPrefix : [string]`, `collections`, and three booleans — `closedKeys`, `recursiveClosed`,
 `rejectBareModuleInclude`, plus `freeformKeys : [string]` (two grammars: an attribute NAME exempts that key from the `closedKeys` gate; a node ID, the rendered origin-qualified walk key a `/` joins, declares that dead nested node intended and silences `graphFacts`' warning for it alone; it carries the `providerPrefix` of the `cnf` the facts are read with, and it opens no gate for an ordinary attribute name, since it holds a `/`) and

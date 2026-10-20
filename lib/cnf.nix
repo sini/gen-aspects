@@ -18,9 +18,10 @@
 # pinned in CI against the read set derived from `lib/` itself, since Nix offers no static reflection
 # over reads.
 #
-# THE CHECK IS SHALLOW AND MUST STAY SHALLOW: `attrNames` plus a membership filter, no value forced,
-# nothing deep-seq'd. It inspects names, never contents, so it cannot make one bad value throw while
-# reading an unrelated aspect's `name` — the defect keySemantics category validation had while it was
+# THE KEY-SET CHECKS ARE SHALLOW AND MUST STAY SHALLOW: `attrNames` plus a membership filter, no value
+# forced, nothing deep-seq'd. There are two: the record's own keys against `cnfKeys`, and the names of
+# `keySemantics` against the aspect type's structural options (`checkKeySemanticsNames`). They inspect
+# names, never contents, so they cannot make one bad value throw while reading an unrelated aspect's `name` — the defect keySemantics category validation had while it was
 # eager (den-hoag-2ejx; it now refuses per key, lib/types.nix `refusedOptions`). It runs once per public entry call, not once per aspect node: the internals
 # receive an already-constructed record and are never re-checked.
 let
@@ -185,7 +186,8 @@ let
   # does not force validation buried inside its type, so a check placed there would be a landmine
   # firing at whatever unrelated read first happens to build the submodule.
   #
-  # `entityKinds` is the one VALUE checked here, beside the key set: a framework whose closures all
+  # Beside the key sets, two VALUES are checked here: `ref` (`checkRef`, below) and `entityKinds`.
+  # `entityKinds`, because a framework whose closures all
   # declare formals never reads a narrowed context, so a shape check at the first read would never
   # fire for it. `[ ]` is refused with the off-shape values: it would hand every context shape `{ }`.
   # `null` does not declare "no kinds": it leaves the kinds UNDECLARED and hands the whole context.
@@ -197,8 +199,40 @@ let
       c = constructed cnf;
     in
     builtins.seq c (
-      builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef c.ref) (f c))
+      builtins.seq (checkKeySemanticsNames c.keySemantics) (
+        builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef c.ref) (f c))
+      )
     );
+
+  # The native structural option SET — the six options every aspect submodule hardwires
+  # (name/description/key/id_hash/meta/includes, lib/types.nix `aspectSubmoduleAt`). ONE binding:
+  # `keyCategory`, the submodule's option names (a ci drift-pin asserts equality) and the door below
+  # read it. Everything else is a declared keySemantics class/channel/facet, or unregistered.
+  nativeStructuralKeys = [
+    "name"
+    "description"
+    "key"
+    "id_hash"
+    "meta"
+    "includes"
+  ];
+  # `keySemantics` itself when it is an attrset none of whose names is a structural option, a
+  # refusal by name otherwise. Each keySemantics name becomes an option of the aspect type beside the
+  # six structural ones, joined by `//`; a name equal to one REPLACES the structural option while
+  # `keyCategory` still answers "structural" (den-hoag-erq8j). Refused here, the collision forms in no
+  # constructed cnf, so every reader of keySemantics is rid of it and the `//` is disjoint by
+  # invariant. Names only: no entry is forced (den-hoag-2ejx).
+  checkKeySemanticsNames =
+    ks:
+    let
+      shadowing = builtins.filter (k: builtins.elem k nativeStructuralKeys) (builtins.attrNames ks);
+    in
+    if !builtins.isAttrs ks then
+      throw "gen-aspects: cnf.keySemantics must be an attrset of keySemantics entries keyed by the aspect key each declares; received: ${builtins.typeOf ks}."
+    else if shadowing != [ ] then
+      throw "gen-aspects: keySemantics key '${builtins.head shadowing}' names a structural option of the aspect type (${builtins.concatStringsSep ", " nativeStructuralKeys}); a keySemantics entry declares a key beside them, never over one."
+    else
+      ks;
 
   # `cnfDoor prelude name f` — the published door over `checkedEntry f`, named for the entry point
   # (R6). The spec is the same at every entry point, so each binds it once, where it is built.
@@ -295,6 +329,7 @@ in
 {
   inherit
     checkEntityKinds
+    nativeStructuralKeys
     declaredOf
     entityKindsOf
     cnfConstruction

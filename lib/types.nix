@@ -227,6 +227,7 @@ let
     extendCnf
     cnfDoor
     mergedKeys
+    nativeStructuralKeys
     ;
   cnfConstruction = (import ./cnf.nix).cnfConstruction schema.keySemanticsRecords;
 
@@ -1218,18 +1219,6 @@ let
           { member = builtins.elemAt alternatives 1; };
     };
 
-  # The native structural option SET — the six options every aspect submodule hardwires
-  # (name/description/key/id_hash/meta/includes, below). ONE binding, so keyCategory and the submodule option
-  # names cannot drift (a ci drift-pin asserts equality). Everything else is a declared keySemantics
-  # class/channel/facet, or unregistered.
-  nativeStructuralKeys = [
-    "name"
-    "description"
-    "key"
-    "id_hash"
-    "meta"
-    "includes"
-  ];
   # keyCategory cnf key : "structural" | "class" | "channel" | "facet" | null. The single classification
   # surface — a consumer reads a key's category from HERE, never a parallel membership list. null = the key is
   # neither native-structural nor a declared keySemantics key (a typo, a freeform nested-aspect child, or an

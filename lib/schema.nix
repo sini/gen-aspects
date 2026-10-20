@@ -144,9 +144,14 @@ in
       # A collection named for a construction formal would make that formal's key on a kind entry
       # read as a collection, and the door in `mkType` would no longer see it.
       formalCollections = builtins.filter (k: cnf.collections ? ${k}) cnfKeys;
+      # A collection named for a key `mkType` writes onto the kind value would be replaced by it, its
+      # value lost without a word.
+      writtenCollections = builtins.filter (k: cnf.collections ? ${k}) [ "__defsModule" ];
       schemaOpt =
         if formalCollections != [ ] then
           throw "gen-aspects: mkAspectSchema: collection '${builtins.head formalCollections}' is reserved — it is an mkAspectSchema construction formal"
+        else if writtenCollections != [ ] then
+          throw "gen-aspects: mkAspectSchema: collection '${builtins.head writtenCollections}' is reserved — the aspect kind value writes it"
         else
           genSchema.mkSchemaOption {
             collections = cnf.collections;

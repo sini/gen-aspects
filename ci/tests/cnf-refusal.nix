@@ -24,6 +24,7 @@
 {
   aspects,
   cnfInternals,
+  genMerge,
   lib,
   mkSchemaEval,
   ...
@@ -37,7 +38,7 @@ let
 
   refuses = e: !(builtins.tryEval (builtins.seq e null)).success;
 
-  # The nine public entry points — every export whose first argument is a `cnf`.
+  # The thirteen public entry points — every export whose first argument is a `cnf` (every `cnfDoor`).
   entryPoints = {
     inherit (aspects)
       aspectType
@@ -49,8 +50,43 @@ let
       keyCategory
       mkAspectSchema
       mkGuardVocab
+      graphFacts
+      includeSitesOfInstance
+      instanceOf
+      instancesFor
       ;
   };
+
+  # Every keySemantics entry form that declares an option of the aspect type, by the key it names:
+  # each of the four generated option sets (class, channel, facet option, facet module) and the
+  # malformed entry (`refusedOptions`).
+  entryForms = {
+    class = _: { category = "class"; };
+    channel = _: { category = "channel"; };
+    facetOption = _: {
+      category = "facet";
+      option = genMerge.mkOption {
+        type = genMerge.types.raw;
+        default = null;
+      };
+    };
+    facetModule = n: {
+      category = "facet";
+      module.options.${n} = genMerge.mkOption {
+        type = genMerge.types.raw;
+        default = null;
+      };
+    };
+    malformed = _: { category = "bogus"; };
+  };
+  # An aspect `a` under a cnf whose only keySemantics entry is `n` in `form`, with `modules` added.
+  aspectUnder =
+    n: form: modules:
+    (mkSchemaEval {
+      fixtureKeySemantics = { };
+      keySemantics.${n} = entryForms.${form} n;
+      modules = [ { config.aspects.a = { }; } ] ++ modules;
+    }).config.aspects.a;
 
   # The two harness caller shapes R§4.0 measured in opposite directions: a caller that passes
   # `keySemantics` and no fixture must still see the fixture's classes declared, and a caller that
@@ -135,7 +171,7 @@ in
     expected = true;
   };
 
-  # ── the reach: ALL nine entry points, and the same nine still accept a recognised record ──────
+  # ── the reach: ALL thirteen entry points, and the same thirteen still accept a recognised record ──
   flake.tests.cnf-refusal.test-every-entry-point-refuses = {
     expr = builtins.mapAttrs (
       _: f:
@@ -154,6 +190,159 @@ in
       })
     ) entryPoints;
     expected = builtins.mapAttrs (_: _: false) entryPoints;
+  };
+
+  # ── a keySemantics name never names a structural option (den-hoag-erq8j) ─────────────────────
+  # Each name became an option beside the six structural ones and, by `//`, replaced it: a channel
+  # `meta` made every aspect's `key` throw blaming a write never made, a channel `key` made every
+  # identity key `null`, while `keyCategory` answered "structural". Every collision, every form.
+  flake.tests.cnf-refusal.test-structural-key-in-keysemantics-refuses = {
+    expr = builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value = builtins.mapAttrs (
+          _: form: refuses (aspects.mkAspectSchema { keySemantics.${n} = form n; })
+        ) entryForms;
+      }) aspects.structuralKeys
+    );
+    expected = builtins.listToAttrs (
+      map (n: {
+        name = n;
+        value = builtins.mapAttrs (_: _: true) entryForms;
+      }) aspects.structuralKeys
+    );
+  };
+
+  flake.tests.cnf-refusal.test-structural-key-refuses-at-every-entry-point = {
+    expr = builtins.mapAttrs (
+      _: f:
+      refuses (f {
+        keySemantics.meta.category = "channel";
+      })
+    ) entryPoints;
+    expected = builtins.mapAttrs (_: _: true) entryPoints;
+  };
+
+  # The control, in the same forms under a non-structural name: the door admits it, the key reads its
+  # category (a malformed entry still refuses by name, at `checkCategory`), and every aspect keeps its
+  # identity.
+  flake.tests.cnf-refusal.test-non-structural-key-keeps-the-structural-options = {
+    expr = builtins.mapAttrs (
+      form: _:
+      let
+        a = aspectUnder "records" form [ ];
+        category = builtins.tryEval (
+          aspects.keyCategory { keySemantics.records = entryForms.${form} "records"; } "records"
+        );
+      in
+      {
+        door = refuses (aspects.mkAspectSchema { keySemantics.records = entryForms.${form} "records"; });
+        category = if category.success then category.value else "refused";
+        inherit (a) key name;
+      }
+    ) entryForms;
+    expected = {
+      class = {
+        door = false;
+        category = "class";
+        key = "a";
+        name = "a";
+      };
+      channel = {
+        door = false;
+        category = "channel";
+        key = "a";
+        name = "a";
+      };
+      facetOption = {
+        door = false;
+        category = "facet";
+        key = "a";
+        name = "a";
+      };
+      facetModule = {
+        door = false;
+        category = "facet";
+        key = "a";
+        name = "a";
+      };
+      malformed = {
+        door = false;
+        category = "refused";
+        key = "a";
+        name = "a";
+      };
+    };
+  };
+
+  flake.tests.cnf-refusal.test-non-structural-channel-reads-its-write = {
+    expr =
+      (aspectUnder "records" "channel" [
+        {
+          config.aspects.a.records = {
+            x = 1;
+          };
+        }
+      ]).records;
+    expected = {
+      x = 1;
+    };
+  };
+
+  # The door reads keySemantics' NAMES and forces no entry (den-hoag-2ejx): an entry that throws
+  # when forced still constructs.
+  flake.tests.cnf-refusal.test-door-forces-no-keysemantics-entry = {
+    expr = builtins.seq (aspects.keyCategory { keySemantics.records = throw "x"; }) true;
+    expected = true;
+  };
+
+  # A keySemantics that is not an attrset declares no key, and was admitted as declaring none.
+  flake.tests.cnf-refusal.test-non-attrset-keysemantics-refuses = {
+    expr = builtins.mapAttrs (_: ks: refuses (aspects.mkAspectSchema { keySemantics = ks; })) {
+      list = [ ];
+      nothing = null;
+      string = "meta";
+    };
+    expected = {
+      list = true;
+      nothing = true;
+      string = true;
+    };
+  };
+
+  # ONE binding: the structural set the door refuses is the one `keyCategory` and the submodule read.
+  flake.tests.cnf-refusal.test-structural-keys-one-binding = {
+    expr = {
+      published = aspects.structuralKeys;
+      door = cnfInternals.nativeStructuralKeys;
+      definitions =
+        builtins.filter
+          (f: lib.hasInfix "nativeStructuralKeys = [" (builtins.readFile (../../lib + "/${f}")))
+          (
+            builtins.attrNames (
+              lib.filterAttrs (f: t: t == "regular" && lib.hasSuffix ".nix" f) (builtins.readDir ../../lib)
+            )
+          );
+    };
+    expected = {
+      published = [
+        "name"
+        "description"
+        "key"
+        "id_hash"
+        "meta"
+        "includes"
+      ];
+      door = [
+        "name"
+        "description"
+        "key"
+        "id_hash"
+        "meta"
+        "includes"
+      ];
+      definitions = [ "cnf.nix" ];
+    };
   };
 
   # ── the vocabulary stays total ──────────────────────────────────────────────────────────────
