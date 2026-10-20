@@ -216,9 +216,13 @@ named `__defsModule`, the key `mkType` writes onto the kind value, refuses by na
 
 **`cnf` contract** (consumed, not exported). Every type constructor takes one `cnf` attrset, through a `prelude.door` closed over `cnfKeys` (den-hoag-7gp66 P2 L5: an unknown key refused by name with the recognised set, `__contract` published; a class is a `keySemantics` entry of category `"class"`, and a `classes` key is an unknown key, den-hoag-c54n4):
 `keySemantics : { <key> = { category = "class" | "channel" | "facet"; option ? ; module ? ; }; }`
-(an attrset whose names are never one of `structuralKeys`: a non-attrset, and a name of a structural
-option, refuse by name at `checkedEntry`, names only, no entry forced; `den-hoag-erq8j`, tests
-`cnf-refusal.test-structural-key-*` and `keysemantics-door.*` in `ci/tests-error.nix`),
+(an attrset whose names are never one of `structuralKeys` nor a key the module engine owns in every
+aspect's option tree: a non-attrset, a name of a structural option, and a name gen-merge publishes
+for the aspect's own shape, a freeform `merge.submodule` (`_module`, `_freeformOptions`; read off
+gen-merge's `engineOptionNames` in `lib/default.nix`, never listed), refuse by name at `checkedEntry`,
+names only, no entry forced; `den-hoag-erq8j`, `den-hoag-jbddy`, tests
+`cnf-refusal.test-structural-key-*`, `cnf-refusal.test-engine-*` and `keysemantics-door.*` in
+`ci/tests-error.nix`),
 `aspectModules : [module]`, `metaModules : [module]`, `moduleArgs : { <arg> = bool; }`,
 `providerPrefix : [string]`, `collections`, and three booleans — `closedKeys`, `recursiveClosed`,
 `rejectBareModuleInclude`, plus `freeformKeys : [string]` (two grammars: an attribute NAME exempts that key from the `closedKeys` gate; a node ID, the rendered origin-qualified walk key a `/` joins, declares that dead nested node intended and silences `graphFacts`' warning for it alone; it carries the `providerPrefix` of the `cnf` the facts are read with, and it opens no gate for an ordinary attribute name, since it holds a `/`) and
@@ -236,7 +240,9 @@ the closure (den-hoag-lwbb1 stage 2b). `ref : null | door` is the framework's do
 not return one, and a set pattern the call would refuse (`{ }:` included) are refused by name at
 `checkedEntry`. The pattern is gen-prelude's `patternOf` of the lambda the call applies, never a
 functor's published `__functionArgs`, and a pattern it cannot read propagates its named refusal
-(`gen-prelude.patternOf: …`); a malformed answer refuses `door-result-shape` at firing. `ref` is in no construction (regime
+(`gen-prelude.patternOf: …`); at firing, an answer that is no `Either` refuses `ref-result-shape`
+(gen-algebra's resolver, rendered here), and a `right` that is not `{ output; scope; }` refuses
+`door-result-shape`. `ref` is in no construction (regime
 `excluded`).
 
 **Record markers** (produced and consumed, not exports): `__guard` (defunctionalized guard record),

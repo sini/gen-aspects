@@ -3,6 +3,7 @@
 # Ported: genSchema is the pure (gen-merge-backed) gen-schema; types/mkOption come from gen-merge.
 {
   prelude,
+  cnfDoor,
   merge,
   genSchema,
   aspectType,
@@ -17,7 +18,7 @@
 }:
 let
   t = merge.types;
-  inherit (import ./cnf.nix) extendCnf cnfDoor cnfKeys;
+  inherit (import ./cnf.nix) extendCnf cnfKeys;
   # The two options doors' specs (den-hoag-7gp66 P2 L5: `args:` doors move to `prelude.door`, shape
   # unchanged, contract published), bound once here rather than per `mkAspectSchema cnf`.
   providerPrefixDoor =

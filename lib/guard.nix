@@ -5,12 +5,12 @@
 # closure. A context closure crosses the gen-rules door, never this one (den-hoag-lwbb1 stage 2b).
 {
   prelude,
+  cnfDoor,
   merge,
   T,
   GT,
 }:
 let
-  inherit (import ./cnf.nix) cnfDoor;
   tm = T.term;
 
   # The condition vocabulary (design Section 3): constructors emitting terms of the one algebra.

@@ -15,8 +15,15 @@
 let
   # The one first-order term algebra, minted by the ecosystem's one formula (den-hoag-lwbb1).
   T = algebra.term identity.hashIdentity;
+  # The option names the module engine owns in every aspect's option tree, as the engine publishes
+  # them for the shape the aspect type IS: a freeform `merge.submodule` (`aspectSubmoduleAt`), whose
+  # tree holds `_module` and `_freeformOptions` beside the declared options. The cnf door refuses a
+  # keySemantics key naming one (den-hoag-jbddy). Plain data: no submodule is evaluated to read it.
+  engineOptionNames = merge.engineOptionNames.freeformSubmodule;
+  cnfDoor = (import ./cnf.nix).cnfDoor engineOptionNames;
   types = import ./types.nix {
     inherit
+      cnfDoor
       prelude
       merge
       schema
@@ -39,7 +46,7 @@ let
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value
   factsModule = import ./facts.nix {
-    inherit prelude T;
+    inherit prelude T cnfDoor;
     inherit (types)
       includesDefault
       keyCategory
@@ -48,11 +55,16 @@ let
       ;
   };
   guardModule = import ./guard.nix {
-    inherit prelude merge T;
+    inherit
+      prelude
+      merge
+      T
+      cnfDoor
+      ;
     inherit (types) GT;
   };
   instanceModule = import ./instance.nix {
-    inherit prelude;
+    inherit prelude cnfDoor;
     inherit (identity) hashIdentity;
     inherit (guardModule) guardVocabOf;
     inherit (types) GT;
@@ -60,7 +72,7 @@ let
     inherit (types) aspectId;
   };
   schemaModule = import ./schema.nix {
-    inherit prelude merge;
+    inherit prelude merge cnfDoor;
     genSchema = schema;
     inherit (types)
       aspectType
