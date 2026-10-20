@@ -1260,12 +1260,16 @@ in
           (
             door "its formals omit `context`, `sources`, `captured` and take no `...`, so the call would be refused"
           );
-      # A pattern the reader cannot read propagates gen-prelude's named refusal, catchably, rather
-      # than being admitted unread (den-hoag-gtwxg U2b's ruling). The boundary is prelude's: an
-      # `@`-name up to 943 characters (930 with `...`) is read.
-      test-door-pattern-prelude-cannot-read = thrown (go (import (builtins.toFile "long-name.nix" "${builtins.concatStringsSep "" (builtins.genList (_: "x") 1100)}@{ id, context, sources, captured }: { }"))) (
-        exactly "gen-prelude.patternOf: the head of the function's XML rendering is not inside its first 1024 characters"
-      );
+      # gen-prelude reads a pattern past any length of `@`-name (den-hoag-590wt), so a door whose
+      # 1100-character name pushes its head past prelude's prefix is admitted by its pattern, and it
+      # meets this library's own refusal of its answer (`{ }` is no `Either`) when it fires.
+      test-door-long-name-is-read-and-its-answer-refused = thrown (go (
+        import (
+          builtins.toFile "long-name.nix" "${
+            builtins.concatStringsSep "" (builtins.genList (_: "x") 1100)
+          }@{ id, context, sources, captured }: { }"
+        )
+      )) ("^" + lib.escapeRegex "gen-aspects.guard: aspect `<guard>`: ref-result-shape: " + ".*$");
       test-door-formals-foreign = thrown (go (
         {
           id,

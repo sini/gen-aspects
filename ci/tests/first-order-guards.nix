@@ -956,7 +956,9 @@ let
               captured = false;
             };
           };
-          patternUnreadable = go (
+          # gen-prelude reads a pattern past any length of name (den-hoag-590wt), so a conforming
+          # door whose 1100-character `@`-name pushes its head past prelude's prefix is served.
+          longNamePastThePrefix = go (
             import (
               builtins.toFile "long-name.nix" "${
                 builtins.concatStringsSep "" (builtins.genList (_: "x") 1100)
@@ -1042,13 +1044,13 @@ let
           formalsMissing = false;
           formalsEmptySet = false;
           functorPublishedFormals = false;
-          patternUnreadable = false;
           formalsForeign = false;
           malformedIdBody = false;
           okDoor.description = "o";
           okFormals.description = "f";
           okEllipsisOnly.description = "e";
           okLongName.description = "l";
+          longNamePastThePrefix = true;
         };
       };
     # ── build (gate contact 2) ──
