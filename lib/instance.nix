@@ -65,7 +65,6 @@
 # cost K outer applications where the scope costs none.
 {
   prelude,
-  cnfDoor,
   hashIdentity,
   guardVocabOf,
   GT,
@@ -73,6 +72,7 @@
   aspectId,
 }:
 let
+  inherit (import ./cnf.nix) cnfDoor;
   inherit (import ./walk.nix) isGuardLeaf;
   door = "gen-aspects.instanceOf";
   fields = [

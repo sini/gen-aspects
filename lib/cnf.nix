@@ -195,12 +195,12 @@ let
   # Whether a declared empty set differs from undeclared, and whether a kind NAME is one the
   # framework has, wait on a declared vocabulary (den-hoag-closed-world-guards-uir7d).
   checkedEntry =
-    engineOptionNames: prelude: f: cnf:
+    prelude: f: cnf:
     let
       c = constructed cnf;
     in
     builtins.seq c (
-      builtins.seq (checkKeySemanticsNames engineOptionNames c.keySemantics) (
+      builtins.seq (checkKeySemanticsNames c.keySemantics) (
         builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef prelude c.ref) (f c))
       )
     );
@@ -222,35 +222,27 @@ let
   # six structural ones, joined by `//`; a name equal to one REPLACES the structural option while
   # `keyCategory` still answers "structural" (den-hoag-erq8j). Refused here, the collision forms in no
   # constructed cnf, so every reader of keySemantics is rid of it and the `//` is disjoint by
-  # invariant. The same holds for a name the module engine owns in every aspect's option tree
-  # (`engineOptionNames`, derived from gen-merge in lib/default.nix and passed in as data, so this
-  # file takes no dependency): a channel `_module` made every aspect read throw, and a channel
-  # `_freeformOptions` silently replaced the declared option (den-hoag-jbddy). Names only: no entry
-  # is forced (den-hoag-2ejx).
+  # invariant. Names only: no entry is forced (den-hoag-2ejx).
   checkKeySemanticsNames =
-    engineOptionNames: ks:
+    ks:
     let
       shadowing = builtins.filter (k: builtins.elem k nativeStructuralKeys) (builtins.attrNames ks);
-      engineOwned = builtins.filter (k: builtins.elem k engineOptionNames) (builtins.attrNames ks);
     in
     if !builtins.isAttrs ks then
       throw "gen-aspects: cnf.keySemantics must be an attrset of keySemantics entries keyed by the aspect key each declares; received: ${builtins.typeOf ks}."
     else if shadowing != [ ] then
       throw "gen-aspects: keySemantics key '${builtins.head shadowing}' names a structural option of the aspect type (${builtins.concatStringsSep ", " nativeStructuralKeys}); a keySemantics entry declares a key beside them, never over one."
-    else if engineOwned != [ ] then
-      throw "gen-aspects: keySemantics key '${builtins.head engineOwned}' names a key the module engine owns in every aspect's option tree (${builtins.concatStringsSep ", " engineOptionNames}); a keySemantics entry declares a key beside them, never over one."
     else
       ks;
 
-  # `cnfDoor engineOptionNames prelude name f` — the published door over `checkedEntry f`, named for
-  # the entry point (R6). lib/default.nix applies it to `engineOptionNames` once and hands the result
-  # to every importer; the spec is the same at every entry point, so each binds it once, where it is built.
+  # `cnfDoor prelude name f` — the published door over `checkedEntry f`, named for the entry point
+  # (R6). The spec is the same at every entry point, so each binds it once, where it is built.
   cnfDoor =
-    engineOptionNames: prelude: name: f:
+    prelude: name: f:
     prelude.door {
       inherit name;
       optional = cnfKeys;
-    } (checkedEntry engineOptionNames prelude f);
+    } (checkedEntry prelude f);
 
   # `cnf.ref`, the framework's door: `null`, or a function the resolver can call with
   # `{ id; context; sources; captured; }` without aborting. The pattern is read by
@@ -272,9 +264,6 @@ let
       functor = builtins.isAttrs door && door ? __functor;
       callable = builtins.isFunction door || functor && builtins.isFunction door.__functor;
       raw = if functor then door.__functor door else door;
-      # Read once per entry call, never cached across calls: each `cnfDoor` application re-reads the
-      # door's pattern. Measured with a four-formal lambda door, Nix 2.34.9: +16 thunks and +16 calls
-      # per call over `ref = null`.
       p = prelude.patternOf raw;
       formals = p.formals;
       required = builtins.filter (n: !formals.${n}) (builtins.attrNames formals);
