@@ -19,6 +19,7 @@
 # (den-hoag-lwbb1 stage 2b): gen-aspects holds terms only.
 {
   prelude,
+  cnfDoor,
   merge,
   schema,
   hashIdentity,
@@ -225,7 +226,6 @@ let
       d;
   inherit (import ./cnf.nix)
     extendCnf
-    cnfDoor
     mergedKeys
     nativeStructuralKeys
     ;

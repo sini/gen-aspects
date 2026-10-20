@@ -42,6 +42,7 @@
 # which is the engine drift one gen-scope exists to prevent (ADR-0006, ADR-0008).
 {
   prelude,
+  cnfDoor,
   T,
   GT,
   includesDefault,
@@ -49,7 +50,6 @@
   hasClassContent,
 }:
 let
-  inherit (import ./cnf.nix) cnfDoor;
   inherit (import ./walk.nix) walk isGuardLeaf;
 
   inherit (import ./path.nix) render;

@@ -11,6 +11,7 @@
 {
   lib,
   aspects,
+  cnfInternals,
   mkSchemaEval,
   genMerge,
   genSchema,
@@ -463,6 +464,27 @@ in
         (
           exactly "gen-aspects: keySemantics key 'meta' names a structural option of the aspect type (name, description, key, id_hash, meta, includes); a keySemantics entry declares a key beside them, never over one."
         );
+    # den-hoag-jbddy · a name the module engine owns in every aspect's option tree.
+    test-engine-key-module-names-the-collision =
+      thrown (aspects.mkAspectSchema { keySemantics._module.category = "channel"; })
+        (
+          exactly "gen-aspects: keySemantics key '_module' names a key the module engine owns in every aspect's option tree (_freeformOptions, _module); a keySemantics entry declares a key beside them, never over one."
+        );
+    test-engine-key-freeform-options-names-the-collision =
+      thrown (aspects.mkAspectSchema { keySemantics._freeformOptions.category = "channel"; })
+        (
+          exactly "gen-aspects: keySemantics key '_freeformOptions' names a key the module engine owns in every aspect's option tree (_freeformOptions, _module); a keySemantics entry declares a key beside them, never over one."
+        );
+    # The rendered set IS the aspect's option tree less the structural six, computed, not spelled.
+    test-engine-keys-render-the-aspect-shape =
+      let
+        shape = builtins.filter (n: !(builtins.elem n aspects.structuralKeys)) (
+          builtins.attrNames ((aspects.aspectSubmodule cnfInternals.cnfDefaults).getSubOptions [ ])
+        );
+      in
+      thrown (aspects.mkAspectSchema { keySemantics._module.category = "channel"; }) (
+        exactly "gen-aspects: keySemantics key '_module' names a key the module engine owns in every aspect's option tree (${builtins.concatStringsSep ", " shape}); a keySemantics entry declares a key beside them, never over one."
+      );
     test-non-attrset-names-its-type = thrown (aspects.mkAspectSchema { keySemantics = [ ]; }) (
       exactly "gen-aspects: cnf.keySemantics must be an attrset of keySemantics entries keyed by the aspect key each declares; received: list."
     );
@@ -1276,6 +1298,15 @@ in
         }:
         { }
       )) (door "it requires `extra`, which the call never supplies");
+      # An answer that is no `Either` is gen-algebra's resolver's refusal, rendered at the guard; only a
+      # `right` off the record shape is this door's `door-result-shape`.
+      test-door-answer-not-an-either =
+        thrown
+          (go (_: {
+            output = { };
+            scope = { };
+          }))
+          (exactly "gen-aspects.guard: aspect `<guard>`: ref-result-shape: ${builtins.toJSON { id = rid; }}");
       test-door-right-int = thrown (go (_: {
         right = 5;
       })) (shape "a `right` that is not { output; scope; } (got int)");

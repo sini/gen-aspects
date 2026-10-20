@@ -25,6 +25,10 @@
   aspects,
   cnfInternals,
   genMerge,
+  genSchema,
+  genIdentity,
+  genAlgebra,
+  prelude,
   lib,
   mkSchemaEval,
   ...
@@ -87,6 +91,32 @@ let
       keySemantics.${n} = entryForms.${form} n;
       modules = [ { config.aspects.a = { }; } ] ++ modules;
     }).config.aspects.a;
+
+  # The names the module engine owns in every aspect's option tree, read where the collision is:
+  # the aspect type's own option tree, less the six it declares itself (den-hoag-jbddy).
+  engineKeysOfTheAspect = builtins.filter (n: !(builtins.elem n aspects.structuralKeys)) (
+    builtins.attrNames ((aspects.aspectSubmodule cnfDefaults).getSubOptions [ ])
+  );
+  # The library built over an engine whose submodule owns one more name, `planted`: a door that
+  # derives the set from the engine refuses it, and a list written against today's engine does not.
+  plantedAspects = import ../../lib {
+    inherit prelude;
+    merge = genMerge // {
+      submodule =
+        m:
+        genMerge.submodule {
+          imports = [ m ];
+          options.planted = genMerge.mkOption {
+            type = genMerge.types.raw;
+            default = null;
+          };
+        };
+    };
+    schema = genSchema;
+    identity = genIdentity;
+    algebra = genAlgebra;
+  };
+  plantedEntryPoints = builtins.mapAttrs (n: _: plantedAspects.${n}) entryPoints;
 
   # The two harness caller shapes R§4.0 measured in opposite directions: a caller that passes
   # `keySemantics` and no fixture must still see the fixture's classes declared, and a caller that
@@ -294,6 +324,106 @@ in
   flake.tests.cnf-refusal.test-door-forces-no-keysemantics-entry = {
     expr = builtins.seq (aspects.keyCategory { keySemantics.records = throw "x"; }) true;
     expected = true;
+  };
+
+  # ── a keySemantics name never names a key the module engine owns (den-hoag-jbddy) ───────────
+  # The aspect is a freeform `merge.submodule`, and the engine owns `_module` and `_freeformOptions`
+  # in its option tree. A channel `_module` made every aspect read throw gen-merge's per-read
+  # refusal while `keyCategory` answered "channel"; a channel `_freeformOptions` silently replaced
+  # the declared option. Both names, every form, every entry point.
+  flake.tests.cnf-refusal.test-engine-key-in-keysemantics-refuses = {
+    expr = prelude.genAttrs [ "_module" "_freeformOptions" ] (
+      n:
+      builtins.mapAttrs (
+        _: form: refuses (aspects.mkAspectSchema { keySemantics.${n} = form n; })
+      ) entryForms
+    );
+    expected = prelude.genAttrs [ "_module" "_freeformOptions" ] (
+      _: builtins.mapAttrs (_: _: true) entryForms
+    );
+  };
+
+  flake.tests.cnf-refusal.test-engine-key-refuses-at-every-entry-point = {
+    expr = prelude.genAttrs [ "_module" "_freeformOptions" ] (
+      n:
+      builtins.mapAttrs (
+        _: f:
+        refuses (f {
+          keySemantics.${n}.category = "channel";
+        })
+      ) entryPoints
+    );
+    expected = prelude.genAttrs [ "_module" "_freeformOptions" ] (
+      _: builtins.mapAttrs (_: _: true) entryPoints
+    );
+  };
+
+  # The set the door refuses is the engine's at the shape the aspect IS: every name the aspect's
+  # option tree holds beside the structural six is refused. The rendered set is pinned equal to it on
+  # the error plane (`keysemantics-door.test-engine-keys-render-the-aspect-shape`).
+  flake.tests.cnf-refusal.test-engine-keys-are-the-aspect-shape = {
+    expr = {
+      nonEmpty = engineKeysOfTheAspect != [ ];
+      refused = builtins.filter (
+        n: refuses (aspects.mkAspectSchema { keySemantics.${n}.category = "channel"; })
+      ) engineKeysOfTheAspect;
+    };
+    expected = {
+      nonEmpty = true;
+      refused = engineKeysOfTheAspect;
+    };
+  };
+
+  # Derived, not listed: over an engine owning `planted`, the door refuses it at every entry point,
+  # and the library over the real engine admits it.
+  flake.tests.cnf-refusal.test-engine-key-planted-in-the-engine-refuses = {
+    expr = {
+      planted = builtins.mapAttrs (
+        _: f:
+        refuses (f {
+          keySemantics.planted.category = "channel";
+        })
+      ) plantedEntryPoints;
+      control = builtins.mapAttrs (
+        _: f:
+        refuses (f {
+          keySemantics.records.category = "channel";
+        })
+      ) plantedEntryPoints;
+      unplanted = refuses (aspects.mkAspectSchema { keySemantics.planted.category = "channel"; });
+    };
+    expected = {
+      planted = builtins.mapAttrs (_: _: true) entryPoints;
+      control = builtins.mapAttrs (_: _: false) entryPoints;
+      unplanted = false;
+    };
+  };
+
+  # A module-syntax KEY is not an option the engine declares: `imports` constructs at every entry
+  # point and reads its write back, as `records` does.
+  flake.tests.cnf-refusal.test-engine-module-syntax-key-is-admitted = {
+    expr = {
+      door = builtins.mapAttrs (
+        _: f:
+        refuses (f {
+          keySemantics.imports.category = "channel";
+        })
+      ) entryPoints;
+      read =
+        (aspectUnder "imports" "channel" [
+          {
+            config.aspects.a.imports = {
+              x = 1;
+            };
+          }
+        ]).imports;
+    };
+    expected = {
+      door = builtins.mapAttrs (_: _: false) entryPoints;
+      read = {
+        x = 1;
+      };
+    };
   };
 
   # A keySemantics that is not an attrset declares no key, and was admitted as declaring none.
