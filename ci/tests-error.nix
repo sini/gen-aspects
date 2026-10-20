@@ -1238,6 +1238,34 @@ in
       test-door-formals-omit = thrown (go ({ id }: { })) (
         door "its formals omit `context`, `sources`, `captured` and take no `...`, so the call would be refused"
       );
+      # den-hoag-gtwxg U2a: the pattern is read by `prelude.patternOf`, so an empty set pattern is a
+      # set pattern naming none of the four fields. RED at gen-aspects 70d554e: admitted, and the
+      # resolver's call then aborted past `tryEval` (`called with unexpected argument`).
+      test-door-empty-set-pattern = thrown (go ({ }: { })) (
+        door "its formals omit `id`, `context`, `sources`, `captured` and take no `...`, so the call would be refused"
+      );
+      # Gate C1: a functor is read at the lambda its `__functor` returns, which is what the call
+      # applies; its published `__functionArgs` is a claim the call never checks.
+      test-door-functor-published-formals-are-not-read =
+        thrown
+          (go {
+            __functor = self: { id }: id;
+            __functionArgs = {
+              id = false;
+              context = false;
+              sources = false;
+              captured = false;
+            };
+          })
+          (
+            door "its formals omit `context`, `sources`, `captured` and take no `...`, so the call would be refused"
+          );
+      # A pattern the reader cannot read propagates gen-prelude's named refusal, catchably, rather
+      # than being admitted unread (den-hoag-gtwxg U2b's ruling). The boundary is prelude's: an
+      # `@`-name up to 943 characters (930 with `...`) is read.
+      test-door-pattern-prelude-cannot-read = thrown (go (import (builtins.toFile "long-name.nix" "${builtins.concatStringsSep "" (builtins.genList (_: "x") 1100)}@{ id, context, sources, captured }: { }"))) (
+        exactly "gen-prelude.patternOf: the head of the function's XML rendering is not inside its first 1024 characters"
+      );
       test-door-formals-foreign = thrown (go (
         {
           id,

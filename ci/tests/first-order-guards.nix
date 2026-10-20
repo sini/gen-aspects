@@ -939,6 +939,30 @@ let
               };
             }
           );
+          formalsEmptySet = go (
+            { }: {
+              right = {
+                output = { };
+                scope = { };
+              };
+            }
+          );
+          functorPublishedFormals = go {
+            __functor = self: { id }: id;
+            __functionArgs = {
+              id = false;
+              context = false;
+              sources = false;
+              captured = false;
+            };
+          };
+          patternUnreadable = go (
+            import (
+              builtins.toFile "long-name.nix" "${
+                builtins.concatStringsSep "" (builtins.genList (_: "x") 1100)
+              }@{ id, context, sources, captured }: { right = { output = { }; scope = { }; }; }"
+            )
+          );
           formalsForeign = go (
             {
               id,
@@ -982,6 +1006,27 @@ let
                   };
                 };
             } dn ctx2 srcs2).entry;
+          # `{ ... }:` and `{ }:` differ, which `functionArgs` alone cannot tell (den-hoag-gtwxg).
+          okEllipsisOnly =
+            (inst {
+              ref =
+                { ... }:
+                {
+                  right = {
+                    output.description = "e";
+                    scope = { };
+                  };
+                };
+            } dn ctx2 srcs2).entry;
+          # The served side of prelude's prefix boundary: a 900-character `@`-name is read.
+          okLongName =
+            (inst {
+              ref = import (
+                builtins.toFile "long-name.nix" "${
+                  builtins.concatStringsSep "" (builtins.genList (_: "x") 900)
+                }@{ id, context, sources, captured }: { right = { output.description = \"l\"; scope = { }; }; }"
+              );
+            } dn ctx2 srcs2).entry;
         };
         expected = {
           notFunction = false;
@@ -995,10 +1040,15 @@ let
           functorForgotArgs = false;
           functorNotFn = false;
           formalsMissing = false;
+          formalsEmptySet = false;
+          functorPublishedFormals = false;
+          patternUnreadable = false;
           formalsForeign = false;
           malformedIdBody = false;
           okDoor.description = "o";
           okFormals.description = "f";
+          okEllipsisOnly.description = "e";
+          okLongName.description = "l";
         };
       };
     # ── build (gate contact 2) ──

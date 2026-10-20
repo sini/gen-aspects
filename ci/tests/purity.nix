@@ -141,6 +141,13 @@ let
     ) srcs;
 
   violations = scan sources;
+
+  # The `builtins.toXML` calls in comment-stripped library code, counted as occurrences.
+  xmlCalls =
+    srcs:
+    lib.foldl' (n: s: n + lib.length (lib.splitString "toXML" s.code) - 1) 0 (
+      lib.filter (s: lib.hasPrefix "lib/" s.name) srcs
+    );
 in
 {
   flake.tests.purity.test-library-source-is-nixpkgs-free = {
@@ -228,6 +235,28 @@ in
       "<injected>: 'lib.'"
       "<injected>: 'lib.types'"
     ];
+  };
+
+  # gen's one `builtins.toXML` reading is gen-prelude's `patternOf` (den-hoag-a48xt arm (a)); this
+  # library reads a function's pattern through it and calls `toXML` nowhere (den-hoag-gtwxg P8).
+  flake.tests.purity.test-the-library-calls-no-toxml = {
+    expr = xmlCalls sources;
+    expected = 0;
+  };
+
+  # And the count reaches a call: the same count over the same sources with one planted library
+  # entry is exactly 1, its trailing comment's `toXML` stripped.
+  flake.tests.purity.test-the-toxml-count-catches-a-planted-call = {
+    expr = xmlCalls (
+      sources
+      ++ [
+        {
+          name = "lib/<injected>.nix";
+          code = stripComments "  shape = builtins.toXML f; # toXML named in a comment is stripped";
+        }
+      ]
+    );
+    expected = 1;
   };
 
   # ★ THE PREMISE HOLDS OF THE TEXT THAT WAS ACTUALLY SCANNED. This is an absence claim over text

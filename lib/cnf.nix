@@ -20,8 +20,8 @@
 #
 # THE KEY-SET CHECKS ARE SHALLOW AND MUST STAY SHALLOW: `attrNames` plus a membership filter, no value
 # forced, nothing deep-seq'd. There are two: the record's own keys against `cnfKeys`, and the names of
-# `keySemantics` against the aspect type's structural options (`checkKeySemanticsNames`). They inspect
-# names, never contents, so they cannot make one bad value throw while reading an unrelated aspect's `name` — the defect keySemantics category validation had while it was
+# `keySemantics` against the aspect type's structural options (`checkKeySemanticsNames`, which first
+# asks only that `keySemantics` is an attrset). They inspect names, never contents, so they cannot make one bad value throw while reading an unrelated aspect's `name` — the defect keySemantics category validation had while it was
 # eager (den-hoag-2ejx; it now refuses per key, lib/types.nix `refusedOptions`). It runs once per public entry call, not once per aspect node: the internals
 # receive an already-constructed record and are never re-checked.
 let
@@ -186,7 +186,8 @@ let
   # does not force validation buried inside its type, so a check placed there would be a landmine
   # firing at whatever unrelated read first happens to build the submodule.
   #
-  # Beside the key sets, two VALUES are checked here: `ref` (`checkRef`, below) and `entityKinds`.
+  # Beside the key sets, three VALUES are checked here: `keySemantics` is an attrset
+  # (`checkKeySemanticsNames`, below), `ref` (`checkRef`, below) and `entityKinds`.
   # `entityKinds`, because a framework whose closures all
   # declare formals never reads a narrowed context, so a shape check at the first read would never
   # fire for it. `[ ]` is refused with the off-shape values: it would hand every context shape `{ }`.
@@ -194,13 +195,13 @@ let
   # Whether a declared empty set differs from undeclared, and whether a kind NAME is one the
   # framework has, wait on a declared vocabulary (den-hoag-closed-world-guards-uir7d).
   checkedEntry =
-    f: cnf:
+    prelude: f: cnf:
     let
       c = constructed cnf;
     in
     builtins.seq c (
       builtins.seq (checkKeySemanticsNames c.keySemantics) (
-        builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef c.ref) (f c))
+        builtins.seq (checkEntityKinds c.entityKinds) (builtins.seq (checkRef prelude c.ref) (f c))
       )
     );
 
@@ -241,12 +242,14 @@ let
     prelude.door {
       inherit name;
       optional = cnfKeys;
-    } (checkedEntry f);
+    } (checkedEntry prelude f);
 
   # `cnf.ref`, the framework's door: `null`, or a function the resolver can call with
-  # `{ id; context; sources; captured; }` without aborting. A formals pattern is read through
-  # `toXML` (the ellipsis is invisible to `functionArgs`): without `...` it must name all four
-  # fields, and it may require no other. A functor is callable only when its `__functor` is a function
+  # `{ id; context; sources; captured; }` without aborting. The pattern is read by
+  # `prelude.patternOf` (den-hoag-gtwxg) from the lambda the call applies, never from a functor's
+  # published `__functionArgs`, which is a claim the call does not check. A set pattern, `{ }:`
+  # included, must name all four fields unless it takes `...`, and it may require no other. A
+  # pattern `patternOf` cannot read propagates its named refusal (`gen-prelude.patternOf: …`). A functor is callable only when its `__functor` is a function
   # that, given the functor, returns one (`__functor = self: { right = …; }` forgot its argument).
   # Everything else refuses here, by name, before any firing.
   doorFields = [
@@ -256,13 +259,13 @@ let
     "captured"
   ];
   checkRef =
-    door:
+    prelude: door:
     let
       functor = builtins.isAttrs door && door ? __functor;
       callable = builtins.isFunction door || functor && builtins.isFunction door.__functor;
       raw = if functor then door.__functor door else door;
-      formals = if builtins.isFunction raw then builtins.functionArgs raw else { };
-      ellipsis = builtins.match ".*<attrspat[^>]*ellipsis=\"1\".*" (builtins.toXML raw) != null;
+      p = prelude.patternOf raw;
+      formals = p.formals;
       required = builtins.filter (n: !formals.${n}) (builtins.attrNames formals);
       foreign = builtins.filter (n: !(builtins.elem n doorFields)) required;
       unnamed = builtins.filter (n: !(formals ? ${n})) doorFields;
@@ -278,11 +281,11 @@ let
       refuse "received: ${builtins.typeOf door}"
     else if !(builtins.isFunction raw) then
       refuse "received: a functor whose `__functor` returns a value of type ${builtins.typeOf raw}, not a function; a functor door is `self: { id, context, sources, captured, ... }: …`"
-    else if formals == { } then
+    else if p.kind != "set" then
       door
     else if foreign != [ ] then
       refuse "it requires `${builtins.concatStringsSep "`, `" foreign}`, which the call never supplies"
-    else if !ellipsis && unnamed != [ ] then
+    else if !p.ellipsis && unnamed != [ ] then
       refuse "its formals omit `${builtins.concatStringsSep "`, `" unnamed}` and take no `...`, so the call would be refused"
     else
       door;

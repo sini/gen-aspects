@@ -233,8 +233,10 @@ carries) are the framework's; their narrowing of a context closure moved to the 
 the closure (den-hoag-lwbb1 stage 2b). `ref : null | door` is the framework's door (unifying spec
 §2.8): `null`, or a function of `{ id; context; sources; captured; }` returning an `Either` whose
 `right` is `{ output; scope; }`. A non-function, a functor whose `__functor` is not a function or does
-not return one, and a formals pattern the call would refuse are refused by name at `checkedEntry`; a
-malformed answer refuses `door-result-shape` at firing. `ref` is in no construction (regime
+not return one, and a set pattern the call would refuse (`{ }:` included) are refused by name at
+`checkedEntry`. The pattern is gen-prelude's `patternOf` of the lambda the call applies, never a
+functor's published `__functionArgs`, and a pattern it cannot read propagates its named refusal
+(`gen-prelude.patternOf: …`); a malformed answer refuses `door-result-shape` at firing. `ref` is in no construction (regime
 `excluded`).
 
 **Record markers** (produced and consumed, not exports): `__guard` (defunctionalized guard record),
