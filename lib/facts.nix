@@ -667,13 +667,17 @@ rec {
       );
       isExactCtor =
         v: builtins.isAttrs v && algebra.hasDeclaredSubject v && builtins.attrNames v == exactNames;
+      # Rung 2 is sound under failure: a comparison that throws (a lazy leaf no graph reader demands,
+      # an unfree package's `outPath`) is NOT the same, so the two sightings stay two classes. `tryEval`
+      # catches no `abort` and no stack overflow (identity design §4 row 4).
       same =
         a: b:
         let
           va = a.elem.meta.sighting.value;
           vb = b.elem.meta.sighting.value;
+          eq = builtins.tryEval (va == vb);
         in
-        if isExactCtor va && isExactCtor vb then algebra.conservativeEq va vb else va == vb;
+        if isExactCtor va && isExactCtor vb then algebra.conservativeEq va vb else eq.success && eq.value;
 
       # Every content sighting reached from a walk node, through content, by structure alone (no id):
       # `encl` is the nearest enclosing NAMED sighting and `rel` the index path below it. A named

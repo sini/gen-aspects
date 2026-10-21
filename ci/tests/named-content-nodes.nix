@@ -528,4 +528,57 @@ in
         };
       };
     };
+
+  # N8 (rung 2 is sound under failure). A factory's two sightings at one §2 key each carry a lazy
+  # `throw` leaf no graph reader demands (an unfree package's `outPath`, say): the comparison throws,
+  # which is NOT the same, so they are two classes and the graph reads, as at base; ONE such value at
+  # two takers is still one class (`==` answers on one object without forcing it). RED (rung 2 without
+  # `tryEval`): every read of the factory's graph throws.
+  flake.tests.named-content-nodes.test-a-comparison-that-throws-is-not-the-same =
+    let
+      mkB = _: {
+        name = "t";
+        T = {
+          marks = [ "m" ];
+          boom = throw "lazy-leaf-forced";
+        };
+      };
+      one = mkB 0;
+      factory = facts [
+        {
+          config.aspects.a.includes = [ (mkB 1) ];
+          config.aspects.b.includes = [ (mkB 2) ];
+        }
+      ];
+      shared = facts [
+        {
+          config.aspects.a.includes = [ one ];
+          config.aspects.b.includes = [ one ];
+        }
+      ];
+    in
+    {
+      expr = {
+        factory = tryValue {
+          classes = builtins.length (classes factory);
+          nodes = builtins.length factory.nodes;
+          apart = factory.includesOf.a != factory.includesOf.b;
+        };
+        shared = tryValue {
+          classes = builtins.length (classes shared);
+          same = shared.includesOf.a == shared.includesOf.b;
+        };
+      };
+      expected = {
+        factory = {
+          classes = 2;
+          nodes = 4;
+          apart = true;
+        };
+        shared = {
+          classes = 1;
+          same = true;
+        };
+      };
+    };
 }
