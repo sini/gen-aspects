@@ -180,9 +180,21 @@
           [ "$s" -le $((48 * 2)) ] \
             || die guard-check-width "the declaration check costs more than 2 thunks per body field: $s over 48 fields"
 
+          # den-hoag-qxip5: the declared abort (identity design §4 row 4). Each cell dies on the
+          # evaluator's stack-overflow channel, which Nix, Determinate ("stack overflow; max-call-depth
+          # exceeded") and Lix ("stack overflow (possible infinite recursion)") all print; a value, an
+          # exit 0 or a death on another channel (a throw, the memory cap) fails the cell.
+          for arm in named-cycle named-unfolding; do
+            evalArm "$arm"
+            [ "$rc" -ne 0 ] || die "$arm" "expected the declared abort, got exit 0 and '$val'"
+            grep -q 'stack overflow' "$TMPDIR/err" \
+              || die "$arm" "expected a stack overflow (exit $rc), got: $(grep error "$TMPDIR/err" | head -2)"
+          done
+          echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "13" ] || die runner "expected 13 evaluations, ran $ran"
-          echo "tests-process: 5 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "15" ] || die runner "expected 15 evaluations, ran $ran"
+          echo "tests-process: 7 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

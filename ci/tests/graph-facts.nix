@@ -726,10 +726,12 @@ in
   # advice is "undo a feature you were invited to use".
   flake.tests.graph-facts.test-inline-include-content-is-published-not-refused = {
     expr = {
-      # The module function and the unnamed literal are anonymous nodes, so each is an edge to its
-      # node; the named literal (a position, not yet a node), the guard leaf and the guard record
-      # are not…
-      edges = inlineFacts.includesOf."app";
+      # The module function, the unnamed literal and the named literal (its class) are nodes, so each
+      # is an edge to its node; the guard leaf and the guard record are not…
+      # The named literal is its class's node (den-hoag-qxip5), read by shape: its id carries a source position.
+      edges = map (
+        e: if builtins.match "@/includes/batt@.*" e != null then "named" else e
+      ) inlineFacts.includesOf."app";
       # …and every one of their positions is stated rather than lost.
       unresolvedPositions = inlineFacts.unresolvedIncludesOf."app";
       # The whole relation EVALUATES — the reading that used to throw.
@@ -745,10 +747,10 @@ in
     expected = {
       edges = [
         "app/includes/[\"a:2\",\"aspects\",\"app\",\"includes\",0]"
+        "named"
         "app/includes/[\"a:2\",\"aspects\",\"app\",\"includes\",3]"
       ];
       unresolvedPositions = [
-        1
         2
         4
       ];
@@ -1246,8 +1248,9 @@ in
         u = [ ];
         n = 2;
       };
+      # A named literal is its class's node (den-hoag-qxip5): an edge, no longer a position.
       named = {
-        u = [ 0 ];
+        u = [ ];
         n = 1;
       };
       described = {
@@ -1270,9 +1273,9 @@ in
         u = [ 0 ];
         n = 1;
       };
+      # The named `batt` (shapesA's second element) is its class's node (den-hoag-qxip5), so an edge.
       shapesTwoDefs = {
         u = [
-          1
           3
           5
         ];
@@ -1282,7 +1285,6 @@ in
         u = [
           0
           2
-          4
         ];
         n = 6;
       };

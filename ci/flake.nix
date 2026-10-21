@@ -134,6 +134,9 @@
           # Unread here too: only `graphFacts`' `deliversOf` reads them.
           keyCategory = _: _: null;
           hasClassContent = _: false;
+          # Unread too: only `graphFacts`' named-content rung reads them.
+          algebra = null;
+          hashIdentity = null;
         };
         # The identity module, for the guarded function-scan behind `guardKey`. That scan is reachable
         # from the public surface only through a key, and a key is a string: out there, a body whose

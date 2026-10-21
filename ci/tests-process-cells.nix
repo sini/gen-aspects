@@ -198,7 +198,53 @@ let
     # the two thunk counts, the check, at two widths, read by the runner.
     guard-check-check = checkWidth true;
     guard-check-data = checkWidth false;
+
+    # den-hoag-qxip5 (identity design §4 row 4, R7's declared exception): named content whose
+    # structural comparison does not terminate aborts the whole graph. The verdict is the exit and its
+    # channel, read by the runner; base read `nodes` 2 and 1. `named-cycle`: two DISTINCT bisimilar
+    # named self-referential values (one factory, built twice) at two owners, so rung 2's `==` walks
+    # the cycle. `named-unfolding`: one taker, one named value whose `includes` builds a FRESH named
+    # value per level, each marked (no cycle, no bisimilarity), so the back-edge test's `==` descends
+    # without end (row 4 read as "a cycle or an infinite unfolding", den-hoag-idzev).
+    named-cycle =
+      let
+        mkS =
+          _:
+          let
+            s = {
+              name = "s";
+              includes = [ s ];
+            };
+          in
+          s;
+      in
+      namedNodes {
+        a.includes = [ (mkS 1) ];
+        b.includes = [ (mkS 2) ];
+      };
+    named-unfolding =
+      let
+        unfold = k: {
+          name = "u";
+          T.marks = [ (toString k) ];
+          includes = [ (unfold (k + 1)) ];
+        };
+      in
+      namedNodes { a.includes = [ (unfold 0) ]; };
   };
+  namedNodes =
+    aspects:
+    let
+      schema = ga.mkAspectSchema { keySemantics.T.category = "class"; };
+    in
+    builtins.length
+      (ga.graphFacts { }
+        (spiedDoored.evalModuleTree { } [
+          { options.schema = schema.schemaOption; }
+          (schema.mkAspectModule { })
+          { config = { inherit aspects; }; }
+        ]).config.aspects
+      ).nodes;
   checkWidth =
     guarded:
     let

@@ -101,7 +101,10 @@ let
           "key"
           "id_hash"
         ]
-        ++ prelude.optional (builtins.isAttrs (d.value.meta or null) && d.value.meta ? loc) "meta.loc";
+        ++ prelude.optional (builtins.isAttrs (d.value.meta or null) && d.value.meta ? loc) "meta.loc"
+        ++ prelude.optional (
+          builtins.isAttrs (d.value.meta or null) && d.value.meta ? sighting
+        ) "meta.sighting";
     in
     if written != [ ] then
       throw "gen-aspects: an include element named `${d.value.name or "<unnamed>"}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
@@ -118,6 +121,14 @@ let
             config.meta = rec {
               loc = includeSite d prefix;
               aspect-chain = merge.mkOverride 900 (prelude.init loc);
+              # A named element is one SIGHTING of its §2 declaration (identity design §2): the
+              # authored value as written, the rungs' operand (P2), and its inclusion site, the
+              # declaration address an unnamed element here would be keyed by. `graphFacts` groups
+              # the sightings into classes; the type sees one site and decides nothing.
+              sighting = {
+                value = d.value;
+                site = (import ./path.nix).render (unnamedSite d prefix);
+              };
             };
           };
       };
@@ -146,6 +157,7 @@ let
           meta = builtins.removeAttrs v.meta [
             "loc"
             "aspect-chain"
+            "sighting"
           ];
         };
     in

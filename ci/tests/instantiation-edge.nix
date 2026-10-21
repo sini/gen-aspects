@@ -496,7 +496,16 @@ in
           nested = refuses (nestedSitesOf (t.readCtx "host" [ ]));
           inline = refuses (inlineSitesOf (t.readCtx "host" [ ]));
           byName = sitesOf "c";
-          inlineLiteral = sitesOf { name = "i"; };
+          # A named literal is its class's node (den-hoag-qxip5); its id carries a source position.
+          inlineLiteral =
+            map
+              (
+                x:
+                removeAttrs x [ "target" ] // { classTarget = builtins.match "@/includes/i@.*" x.target != null; }
+              )
+              (sitesOf {
+                name = "i";
+              });
           parametricStillDeferred = fired;
         };
         expected = {
@@ -518,6 +527,7 @@ in
             {
               kind = "content";
               sites = [ ];
+              classTarget = true;
             }
           ];
           parametricStillDeferred = [ { kind = "deferred"; } ];

@@ -3,8 +3,9 @@
 # Inline include content is its own node of `graphFacts`, keyed by its declaration: the declaring
 # module's anchor and the structural path to the element (gen-merge `nests.declAt`), rendered
 # injectively and never minted (7gp66 OQ4 (b′)). A content site gains the `target` naming its node,
-# and `includesOf` lists it; a content position that is no node (a named element, content past the
-# depth budget) stays in `unresolvedIncludesOf`.
+# and `includesOf` lists it; a content position that is no node (content past the depth budget)
+# stays in `unresolvedIncludesOf`. A named element is its class's node, celled in
+# ci/tests/named-content-nodes.nix (den-hoag-qxip5).
 #
 # Each cell carries the arm that discriminates it: the `RED` comment names the edit that turns it.
 {
@@ -48,27 +49,7 @@ let
   marksOf = f: n: marksIn (f.nodeData.${n}.T or [ ]);
   # The node set less the walk's own nodes: the anonymous declarations.
   anonOf = f: builtins.filter (n: lib.hasInfix "/includes/" n) f.nodes;
-  # One read of a facts record that must not refuse: its node set, parents and published relations.
-  readAll =
-    f:
-    tryValue {
-      inherit (f)
-        nodes
-        parentOf
-        includesOf
-        unresolvedIncludesOf
-        ;
-    };
 
-  # A NAMED value, and a factory whose `name` sits at one source position however often it is called.
-  named = {
-    name = "t";
-    T.marks = [ "t" ];
-  };
-  mk = m: {
-    name = "t";
-    T.marks = [ m ];
-  };
   # A literal that includes itself: positions without end.
   cyc =
     let
@@ -179,125 +160,7 @@ in
       };
     };
 
-  # K1. NAMED content is a position, not a node: its §2 site (the position of its `name`) is not
-  # injective, and EVERY route by which two declarations reach one named site is celled here: one
-  # value twice in one definition, a factory applied twice, one value from two modules, one value in
-  # two `mkMerge` branches, and the same pair nested inside an inline literal. The node set and every
-  # relation read, the named positions are unresolved, and a node reaching none of them (`z`) is
-  # untouched. RED (named content keyed into the node set): every arm's `nodes` REFUSED, `z` with it.
-  flake.tests.anonymous-nodes.test-named-content-is-a-position =
-    let
-      arm =
-        mods:
-        let
-          f = facts mods;
-        in
-        {
-          read = readAll f != "REFUSED";
-          unresolved = tryValue f.unresolvedIncludesOf.a;
-          anonymous = tryValue (builtins.length (anonOf f));
-        };
-    in
-    {
-      expr = {
-        namedDup = arm [
-          {
-            config.aspects.a.includes = [
-              named
-              named
-            ];
-          }
-        ];
-        namedFactory = arm [
-          {
-            config.aspects.a.includes = [
-              (mk "1")
-              (mk "2")
-            ];
-          }
-        ];
-        namedTwoMods = arm [
-          { config.aspects.a.includes = [ named ]; }
-          { config.aspects.a.includes = [ named ]; }
-        ];
-        namedMkMerge = arm [
-          {
-            config.aspects.a.includes = genMerge.mkMerge [
-              [ named ]
-              [ named ]
-            ];
-          }
-        ];
-        namedNested = arm [
-          {
-            config.aspects.a.includes = [
-              {
-                includes = [
-                  named
-                  named
-                ];
-              }
-            ];
-          }
-        ];
-        # The blast radius: `z` reaches only `c`, beside a duplicated named value at `a`.
-        namedDupBlast =
-          let
-            f = facts [
-              {
-                config.aspects.c = marked "c";
-                config.aspects.z.includes = [ "c" ];
-                config.aspects.a.includes = [
-                  named
-                  named
-                ];
-              }
-            ];
-          in
-          tryValue f.includesOf.z;
-      };
-      expected = {
-        namedDup = {
-          read = true;
-          unresolved = [
-            0
-            1
-          ];
-          anonymous = 0;
-        };
-        namedFactory = {
-          read = true;
-          unresolved = [
-            0
-            1
-          ];
-          anonymous = 0;
-        };
-        namedTwoMods = {
-          read = true;
-          unresolved = [
-            0
-            1
-          ];
-          anonymous = 0;
-        };
-        namedMkMerge = {
-          read = true;
-          unresolved = [
-            0
-            1
-          ];
-          anonymous = 0;
-        };
-        # The unnamed literal holding them is a node; its named contents are its positions.
-        namedNested = {
-          read = true;
-          unresolved = [ ];
-          anonymous = 1;
-        };
-        namedDupBlast = [ "c" ];
-      };
-    };
+  # K1 (named content) is its own unit: ci/tests/named-content-nodes.nix (den-hoag-qxip5).
 
   # K3. An unnamed element writing `meta.loc` (here, its sibling's rendered site) refuses by name at
   # the element: its site refuses, and the node set and the sibling read. The same write at another

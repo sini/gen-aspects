@@ -46,7 +46,13 @@ let
   canTakeModule = import ./can-take.nix { inherit prelude; };
   flatten = import ./flatten.nix; # dep-free bare value
   factsModule = import ./facts.nix {
-    inherit prelude T cnfDoor;
+    inherit
+      prelude
+      T
+      cnfDoor
+      algebra
+      ;
+    inherit (identity) hashIdentity;
     inherit (types)
       includesDefault
       keyCategory

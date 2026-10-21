@@ -1564,6 +1564,34 @@ in
       );
     };
 
+  # den-hoag-qxip5 (spec gate P1): the rung compares two sightings at one §2 key by forcing their
+  # authored values (design F17), so a lazy `throw` leaf that no graph reader demands, inside two
+  # distinct sightings of one factory, now throws from `graphFacts`. Catchable, unlike the declared
+  # §4 abort (ci/tests-process.nix). RED (base, named content not compared): `nodes` reads 2.
+  flake.testsError.named-content-nodes.test-lazy-throw-in-two-sightings-is-forced =
+    let
+      mk = _: {
+        name = "t";
+        T = {
+          marks = [ "m" ];
+          boom = throw "lazy-leaf-forced";
+        };
+      };
+    in
+    thrown
+      (aspects.graphFacts { } (
+        (mkSchemaEval {
+          fixtureKeySemantics.T.category = "class";
+          modules = [
+            {
+              config.aspects.a.includes = [ (mk 1) ];
+              config.aspects.b.includes = [ (mk 2) ];
+            }
+          ];
+        }).config.aspects
+      )).nodes
+      (exactly "lazy-leaf-forced");
+
   # The unscoped arm of `instance-scope` (den-hoag-ohvjc §3a G1′): a deferred door node fired with no
   # scope takes the door's fallback, which re-applies the outer, and the poisoned door
   # (`ci/fixtures/scope-door.nix`) throws there. It pins that the out-of-domain path is still the

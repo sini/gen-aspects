@@ -48,6 +48,8 @@
   includesDefault,
   keyCategory,
   hasClassContent,
+  algebra,
+  hashIdentity,
 }:
 let
   inherit (import ./walk.nix) walk isGuardLeaf;
@@ -409,10 +411,25 @@ rec {
         let
           at = prelude.concatStringsSep "." (map toString p);
           r = resolve id at elem;
-          # An anonymous declaration's site names its node (`anon`, below): under a parent that has an
-          # identifier, within the depth budget, and not a named element (`isNamedContent`).
-          targeted = parent != null && builtins.length p < includeSitesMaxDepth && !(isNamedContent elem);
-          target = contentId parent p elem;
+          # A content site names its node (`anon`, below): under a parent that has an identifier,
+          # within the depth budget. A static node's content is read off the enumerated sightings
+          # (`recAt`), so named content names its CLASS and content inside a class is class-relative;
+          # an applied body's (no sighting) is keyed by `contentId`.
+          found =
+            if parent == null then
+              null
+            else
+              recAt.${
+                builtins.toJSON [
+                  parent
+                  (prelude.last p)
+                ]
+              } or null;
+          targeted =
+            parent != null
+            && builtins.length p < includeSitesMaxDepth
+            && (found != null || !(isNamedContent elem));
+          target = if found != null then found.id else contentId parent p elem;
         in
         if r.kind == "content" then
           prelude.optionalAttrs targeted { inherit target; }
@@ -622,7 +639,7 @@ rec {
                 builtins.isString elem.key
                 && builtins.isList (elem.meta.aspect-chain or null)
                 && isIncludeContent "" elem
-                && !(isNamedContent elem)
+                && (!(isNamedContent elem) || builtins.isAttrs (elem.meta.sighting or null))
               );
             in
             r.success && r.value
@@ -630,48 +647,201 @@ rec {
             !(isGuardLeaf elem)
         );
       listOr = v: if builtins.isList v then v else [ ];
-      anonFrom =
-        host: parent: p: elems:
+
+      # ── NAMED CONTENT: one node per CLASS of sightings (identity design §2; Q5 "yes") ────────────
+      #
+      # A named element's §2 key is the position of its `name` and the name (the last segment of the
+      # key the type wrote, `<name>@<line>:<column>:<file>`). The sightings at one §2 key are decided
+      # same-or-distinct by the RUNG over their authored values (`meta.sighting.value`, P2): two exact
+      # constructor outputs by gen-algebra's one `conservativeEq` (rung 1, C1's exact-name-set guard
+      # in front), any other pair by Nix `==` (rung 2, R7). The classes are the connected components,
+      # so they are order-free (C2). A class is ONE node: `@/includes/<§2 key>` when its §2 key holds
+      # one class, and that plus its least inclusion site (rendered as one segment) when it holds
+      # several. Content inside a class is keyed under the class (F10), so two sightings share it.
+      s2Of = elem: prelude.last (builtins.filter builtins.isString (builtins.split "/" elem.key));
+      exactNames = builtins.attrNames (
+        algebra.mkIntensional hashIdentity {
+          revision = 0;
+          members.x = _: null;
+        } "x" null
+      );
+      isExactCtor =
+        v: builtins.isAttrs v && algebra.hasDeclaredSubject v && builtins.attrNames v == exactNames;
+      same =
+        a: b:
+        let
+          va = a.elem.meta.sighting.value;
+          vb = b.elem.meta.sighting.value;
+        in
+        if isExactCtor va && isExactCtor vb then algebra.conservativeEq va vb else va == vb;
+
+      # Every content sighting reached from a walk node, through content, by structure alone (no id):
+      # `encl` is the nearest enclosing NAMED sighting and `rel` the index path below it. A named
+      # sighting the rung identifies with one on its own path is a BACK EDGE (C3): an edge to that
+      # class, never descended and never a site of it.
+      recsFrom =
+        host: parentRec: encl: rel: ancestors: p: elems:
         builtins.concatLists (
           prelude.imap0 (
             i: elem:
             let
               q = p ++ [ i ];
-              t = contentId parent q elem;
+              named = isNamedContent elem;
+              r = {
+                inherit
+                  host
+                  elem
+                  named
+                  encl
+                  ;
+                parent = parentRec;
+                rel = rel ++ [ i ];
+                pos = q;
+                addr = builtins.toJSON [
+                  host
+                  q
+                ];
+                s2 = if named then s2Of elem else null;
+                back = named && builtins.any (a: a.s2 == r.s2 && same a r) ancestors;
+              };
             in
-            if !(isContentElem elem) then
-              [ ]
-            else if builtins.length q >= includeSitesMaxDepth then
+            if !(isContentElem elem) || builtins.length q >= includeSitesMaxDepth then
               [ ]
             else
-              [
-                {
-                  name = t;
-                  value = {
-                    inherit host parent;
-                    pos = q;
-                    value = elem;
-                  };
-                }
-              ]
-              ++ anonFrom host t q (listOr (elem.includes or includesDefault))
+              [ r ]
+              ++ (
+                if r.back then
+                  [ ]
+                else
+                  recsFrom host r (if named then r else encl) (if named then [ ] else r.rel) (
+                    if named then ancestors ++ [ r ] else ancestors
+                  ) q (listOr (elem.includes or includesDefault))
+              )
           ) elems
         );
-      anonList = (
-        builtins.concatMap (
-          id:
-          let
-            v = walkNodeData.${id};
-          in
-          if isGuardLeaf v then [ ] else anonFrom id id [ ] (listOr (v.includes or includesDefault))
-        ) walkNodes
+      allRecs = builtins.concatMap (
+        id:
+        let
+          v = walkNodeData.${id};
+        in
+        if isGuardLeaf v then
+          [ ]
+        else
+          recsFrom id null null [ ] [ ] [ ] (listOr (v.includes or includesDefault))
+      ) walkNodes;
+      namedRecs = builtins.filter (r: r.named) allRecs;
+      # Connected components of the rung over one §2 key's sightings: order-free by construction.
+      componentsOf = builtins.foldl' (
+        cs: r:
+        let
+          split = builtins.partition (c: builtins.any (m: same m r) c) cs;
+        in
+        split.wrong ++ [ (builtins.concatLists split.right ++ [ r ]) ]
+      ) [ ];
+      classesAt = builtins.mapAttrs (_: componentsOf) (builtins.groupBy (r: r.s2) namedRecs);
+      classIx = builtins.listToAttrs (
+        builtins.concatLists (
+          prelude.mapAttrsToList (
+            s2: cs:
+            builtins.concatLists (
+              prelude.imap0 (
+                k: c:
+                map (m: {
+                  name = m.addr;
+                  value = k;
+                }) c
+              ) cs
+            )
+          ) classesAt
+        )
       );
-      # The backstop: `listToAttrs` keeps the first of two equal names silently, so a duplicate id
-      # (none is reachable once named content is excluded and an authored `meta.loc` refuses) is a
-      # refusal by name, never a substitution.
+      relPath =
+        r:
+        render (
+          builtins.concatMap (i: [
+            "includes"
+            (toString i)
+          ]) r.rel
+        );
+      # A sighting's inclusion site: the declaration address the type wrote, or, inside a class, the
+      # class and the index path below it (C3: well-founded, since `encl` strictly encloses).
+      siteOfRec =
+        r: if r.encl == null then qualify r.elem.meta.sighting.site else "${classIdOf r.encl}/${relPath r}";
+      leastOf =
+        c: builtins.head (builtins.sort (a: b: siteOfRec a < siteOfRec b) (builtins.filter (m: !m.back) c));
+      # One id per class, computed once and shared by every sighting's lookup.
+      classIds = builtins.mapAttrs (
+        s2: cs:
+        let
+          base = qualify "@/includes/${s2}";
+        in
+        if builtins.length cs == 1 then
+          [ base ]
+        else
+          map (c: "${base}/${(import ./path.nix).escape (siteOfRec (leastOf c))}") cs
+      ) classesAt;
+      classIdOf = r: builtins.elemAt classIds.${r.s2} classIx.${r.addr};
+      parentIdOf = r: if r.parent == null then r.host else idOfRec r.parent;
+      idOfRec =
+        r:
+        if r.named then
+          classIdOf r
+        else if r.encl == null then
+          contentId (parentIdOf r) r.pos r.elem
+        else
+          "${classIdOf r.encl}/${relPath r}";
+      recAt = builtins.listToAttrs (
+        map (r: {
+          name = builtins.toJSON [
+            (parentIdOf r)
+            (prelude.last r.pos)
+          ];
+          value.id = idOfRec r;
+        }) allRecs
+      );
+      unnamedEntries = map (r: {
+        name = idOfRec r;
+        value = {
+          inherit (r) host pos;
+          parent = parentIdOf r;
+          value = r.elem;
+          inClass = r.encl != null;
+        };
+      }) (builtins.filter (r: !r.named) allRecs);
+      classEntries = builtins.concatLists (
+        builtins.attrValues (
+          builtins.mapAttrs (
+            _: cs:
+            map (
+              c:
+              let
+                rep = leastOf c;
+              in
+              {
+                name = classIdOf rep;
+                value = {
+                  inherit (rep) host pos;
+                  parent = null;
+                  value = rep.elem;
+                  inClass = false;
+                };
+              }
+            ) cs
+          ) classesAt
+        )
+      );
+      anonList = unnamedEntries ++ classEntries;
+      # The backstop: `listToAttrs` keeps the first of two equal names silently. Content inside a
+      # class is enumerated once per sighting of it and renders one id by construction, so those
+      # repeats are one declaration; any other repeat is a refusal by name, never a substitution.
       anon0 = builtins.listToAttrs anonList;
+      byName = builtins.groupBy (x: x.name) anonList;
       anon =
-        if builtins.length anonList == builtins.length (builtins.attrNames anon0) then
+        if
+          builtins.all (
+            n: builtins.length byName.${n} == 1 || builtins.all (x: x.value.inClass) byName.${n}
+          ) (builtins.attrNames byName)
+        then
           anon0
         else
           throw (anonymousDuplicateRefusal anonList);
