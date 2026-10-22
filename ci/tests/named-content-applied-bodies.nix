@@ -494,8 +494,11 @@ in
 
   # S11. A `name` is read only by the readers of its position: a §2 key is the name and its position,
   # so a value whose `name` sits at another position is never at a reader's key, whatever the `name`
-  # evaluates to. `x`'s `name` is a missing attribute, which `tryEval` cannot catch. RED every applied
-  # candidate's `name` forced to key it (the classes grouped by §2 key over every vertex): `y` aborts.
+  # evaluates to. `x`'s `name` is a missing attribute, which `tryEval` cannot catch; in `nested`, `x`
+  # also holds `y`'s value, and `z`'s makes key `tf` hold two classes, so `y`'s id is its component's
+  # least site, one of which is written inside `x`. RED every applied candidate's `name` forced to key
+  # it (the classes grouped by §2 key over every vertex): `y` aborts; RED an applied site that asks
+  # whether it has a named ancestor (C3's `encl`): `nested` aborts.
   flake.tests.named-content-applied-bodies.test-a-name-is-read-only-at-its-own-position =
     let
       r = readY {
@@ -505,12 +508,27 @@ in
         };
         y = tmux;
       };
+      nested = readY {
+        x = {
+          name = ({ }).nope;
+          T.marks = [ "x" ];
+          includes = [ (tf "a") ];
+        };
+        y = tf "a";
+        z = tf "b";
+      };
     in
     {
-      expr = lib.mapAttrs (_: map (bare "tmux")) r;
+      expr = lib.mapAttrs (_: map (bare "tmux")) r // {
+        nested = lib.mapAttrs (_: map (suffixed "tf")) nested;
+      };
       expected = {
         handed = [ true ];
         ctx = [ true ];
+        nested = {
+          handed = [ true ];
+          ctx = [ true ];
+        };
       };
     };
 }
