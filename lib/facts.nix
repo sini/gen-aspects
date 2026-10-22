@@ -843,12 +843,14 @@ rec {
               )
             )
           ) classesAt;
-          # A sighting's inclusion site: the declaration address the type wrote, an applied body's
-          # instance-relative address, or, inside a class, the class and the index path below it (C3:
-          # well-founded, since `encl` strictly encloses).
+          # A sighting's inclusion site. On the applied stratum, its root path, the instance-relative
+          # address `<iid>/includes/<i>…`, inside a named value too (identity design §2 C3, amended for
+          # the applied stratum): a class key never embeds another, and the site reads no ancestor's
+          # `name`. Statically, the declaration address the type wrote, or, inside a class, the class
+          # and the index path below it (C3: well-founded, since `encl` strictly encloses).
           siteOfRec =
             r:
-            if prior != null && r.encl != null then
+            if prior != null then
               "${r.host}/${relPath (r // { rel = r.pos; })}"
             else if r.encl != null then
               "${classIdOf r.encl}/${relPath r}"
