@@ -46,6 +46,7 @@
   T,
   GT,
   includesDefault,
+  namedSegment,
   keyCategory,
   hasClassContent,
   algebra,
@@ -54,7 +55,7 @@
 let
   inherit (import ./walk.nix) walk isGuardLeaf;
 
-  inherit (import ./path.nix) render;
+  inherit (import ./path.nix) render escape;
   # `builtins.warn` where the evaluator has it (it honours `abort-on-warn`), a trace otherwise
   # (gen-schema `lib/entry-type.nix`, the same binding).
   warn = builtins.warn or (msg: v: builtins.trace "evaluation warning: ${msg}" v);
@@ -406,8 +407,15 @@ rec {
       # them); nothing is minted, and a nested position renders only inside a refusal. A `content`
       # site's `sites` is a thunk: a dangling reference inside inline content refuses only for a
       # reader that descends into it, and the depth budget above bounds that descent.
-      siteAt =
-        id: parent: p: elem:
+      siteAt = siteAtWith recAt;
+      siteAtWith =
+        ix: id: parent:
+        siteAtIn ix id (parent != null) parent;
+      # `hasParent` is passed beside `parent`, so a site's STRUCTURE (its kind, whether it names a
+      # node, its nested sites) never forces an identifier: only reading `target` does, and with it
+      # the classes at that one site's §2 key. A reader enumerating structure compares nothing.
+      siteAtIn =
+        ix: id: hasParent: parent: p: elem:
         let
           at = prelude.concatStringsSep "." (map toString p);
           r = resolve id at elem;
@@ -416,19 +424,17 @@ rec {
           # (`recAt`), so named content names its CLASS and content inside a class is class-relative;
           # an applied body's (no sighting) is keyed by `contentId`.
           found =
-            if parent == null then
+            if !hasParent then
               null
             else
-              recAt.${
+              ix.${
                 builtins.toJSON [
                   parent
                   (prelude.last p)
                 ]
               } or null;
           targeted =
-            parent != null
-            && builtins.length p < includeSitesMaxDepth
-            && (found != null || !(isNamedContent elem));
+            hasParent && builtins.length p < includeSitesMaxDepth && (!(isNamedContent elem) || found != null);
           target = if found != null then found.id else contentId parent p elem;
         in
         if r.kind == "content" then
@@ -439,7 +445,7 @@ rec {
               if builtins.length p >= includeSitesMaxDepth then
                 throw (includeSitesDepthRefusal id at)
               else
-                sitesOf id (if targeted then target else null) p (
+                sitesOfIn ix id targeted target p (
                   expectList (includesDoor id at) "includes" (elem.includes or includesDefault)
                 );
           }
@@ -455,9 +461,13 @@ rec {
           qualify elem.key
         else
           "${parent}/includes/${toString (builtins.elemAt p (builtins.length p - 1))}";
-      sitesOf =
-        id: parent: pos:
-        prelude.imap0 (i: siteAt id parent (pos ++ [ i ]));
+      sitesOf = sitesOfWith recAt;
+      sitesOfWith =
+        ix: id: parent:
+        sitesOfIn ix id (parent != null) parent;
+      sitesOfIn =
+        ix: id: hasParent: parent: pos:
+        prelude.imap0 (i: siteAtIn ix id hasParent parent (pos ++ [ i ]));
 
       # ── a PARAMETRIC DECLARATION'S MEMBERS, published without firing it (ADR-0010 §4(a) clause 2) ──
       #
@@ -672,25 +682,42 @@ rec {
       # catches no `abort` and no stack overflow (identity design §4 row 4).
       same =
         a: b:
-        let
-          va = a.elem.meta.sighting.value;
-          vb = b.elem.meta.sighting.value;
-          eq = builtins.tryEval (va == vb);
-        in
-        if isExactCtor va && isExactCtor vb then algebra.conservativeEq va vb else eq.success && eq.value;
+        if a.exact && b.exact then
+          algebra.conservativeEq a.val b.val
+        else
+          let
+            eq = builtins.tryEval (a.val == b.val);
+          in
+          eq.success && eq.value;
 
       # Every content sighting reached from a walk node, through content, by structure alone (no id):
       # `encl` is the nearest enclosing NAMED sighting and `rel` the index path below it. A named
       # sighting the rung identifies with one on its own path is a BACK EDGE (C3): an edge to that
       # class, never descended and never a site of it.
-      recsFrom =
-        host: parentRec: encl: rel: ancestors: p: elems:
+      staticNamed =
+        elem:
+        if isNamedContent elem then
+          {
+            named = true;
+            s2 = s2Of elem;
+            val = elem.meta.sighting.value;
+          }
+        else
+          null;
+      recsFrom = recsFromWith staticNamed false;
+      # `structural`: the spine is decided by structure alone, never by the rung, so enumerating it
+      # compares nothing (identity design §4 row 4's abort stays with the readers of its key). A back
+      # edge is a value reached again inside itself, so its spine is infinite and meets the depth
+      # budget, which then refuses by name; no back edge is left to decide.
+      recsFromWith =
+        namedOf: structural: host: parentRec: encl: rel: ancestors: p: elems:
         builtins.concatLists (
           prelude.imap0 (
             i: elem:
             let
               q = p ++ [ i ];
-              named = isNamedContent elem;
+              nm = namedOf elem;
+              named = nm != null && nm.named;
               r = {
                 inherit
                   host
@@ -705,19 +732,29 @@ rec {
                   host
                   q
                 ];
-                s2 = if named then s2Of elem else null;
-                back = named && builtins.any (a: a.s2 == r.s2 && same a r) ancestors;
+                s2 = if named then nm.s2 else null;
+                val = if named then nm.val else null;
+                pk = if nm == null then null else nm.pk or null;
+                exact = named && isExactCtor nm.val;
+                back = !structural && named && builtins.any (a: a.s2 == r.s2 && same a r) ancestors;
               };
             in
-            if !(isContentElem elem) || builtins.length q >= includeSitesMaxDepth then
+            if !(isContentElem elem) then
               [ ]
+            else if builtins.length q >= includeSitesMaxDepth then
+              (
+                if structural then
+                  throw (includeSitesDepthRefusal host (prelude.concatStringsSep "." (map toString q)))
+                else
+                  [ ]
+              )
             else
               [ r ]
               ++ (
                 if r.back then
                   [ ]
                 else
-                  recsFrom host r (if named then r else encl) (if named then [ ] else r.rel) (
+                  recsFromWith namedOf structural host r (if named then r else encl) (if named then [ ] else r.rel) (
                     if named then ancestors ++ [ r ] else ancestors
                   ) q (listOr (elem.includes or includesDefault))
               )
@@ -733,7 +770,6 @@ rec {
         else
           recsFrom id null null [ ] [ ] [ ] (listOr (v.includes or includesDefault))
       ) walkNodes;
-      namedRecs = builtins.filter (r: r.named) allRecs;
       # Connected components of the rung over one §2 key's sightings: order-free by construction.
       componentsOf = builtins.foldl' (
         cs: r:
@@ -742,23 +778,6 @@ rec {
         in
         split.wrong ++ [ (builtins.concatLists split.right ++ [ r ]) ]
       ) [ ];
-      classesAt = builtins.mapAttrs (_: componentsOf) (builtins.groupBy (r: r.s2) namedRecs);
-      classIx = builtins.listToAttrs (
-        builtins.concatLists (
-          prelude.mapAttrsToList (
-            s2: cs:
-            builtins.concatLists (
-              prelude.imap0 (
-                k: c:
-                map (m: {
-                  name = m.addr;
-                  value = k;
-                }) c
-              ) cs
-            )
-          ) classesAt
-        )
-      );
       relPath =
         r:
         render (
@@ -767,42 +786,349 @@ rec {
             (toString i)
           ]) r.rel
         );
-      # A sighting's inclusion site: the declaration address the type wrote, or, inside a class, the
-      # class and the index path below it (C3: well-founded, since `encl` strictly encloses).
-      siteOfRec =
-        r: if r.encl == null then qualify r.elem.meta.sighting.site else "${classIdOf r.encl}/${relPath r}";
-      leastOf =
-        c: builtins.head (builtins.sort (a: b: siteOfRec a < siteOfRec b) (builtins.filter (m: !m.back) c));
-      # One id per class, computed once and shared by every sighting's lookup.
-      classIds = builtins.mapAttrs (
-        s2: cs:
+      # THE CLASSES over a set of sightings, staged (ADR-0016 r7; ADR-0033). `prior` is a strictly
+      # earlier stratum's classes, frozen: a sighting the rung identifies with a member of one of them
+      # JOINS it (the least such id) and keys nothing, and only the rest form new components here, so
+      # no earlier id moves. The static tree's classes have no prior; an applied body's are classed over
+      # the instance relation with the static classes as their prior.
+      #
+      # A DECLARED RESIDUE (ADR-0025 item 1; ADR-0034's quotient paragraph), retiring when store
+      # dependencies become graph edges (den-hoag-gkrtw): the rung is Nix `==`, which ignores string
+      # context, so a class collapsing `==`-equal sightings that differ in context keeps ONE sighting's
+      # context, not their union. Pinned by gen-delivery's
+      # `test-a-collapsed-class-keeps-one-sightings-context`.
+      classing =
+        prior: recs:
         let
-          base = qualify "@/includes/${s2}";
+          joinOf = builtins.listToAttrs (
+            map (r: {
+              name = r.addr;
+              value =
+                if prior == null then
+                  null
+                else
+                  let
+                    hits = builtins.filter (k: builtins.any (m: same m r) (builtins.elemAt prior.classesAt.${r.s2} k)) (
+                      builtins.genList (k: k) (builtins.length (prior.classesAt.${r.s2} or [ ]))
+                    );
+                    ids = map (builtins.elemAt prior.classIds.${r.s2}) hits;
+                  in
+                  if ids == [ ] then null else builtins.head (builtins.sort builtins.lessThan ids);
+            }) cands
+          );
+          namedRecs = builtins.filter (r: r.named) recs;
+          # The sightings a key is read over. An applied candidate is keyed by its `name`'s POSITION
+          # first (`builtins.unsafeGetAttrPos`, which forces no value), and its `name` is read only
+          # inside the position group of the reader that needs it: a §2 key is the name AND its
+          # position, so a candidate at another position is never at the reader's key, whatever its
+          # `name` evaluates to.
+          cands = if prior == null then namedRecs else builtins.filter (r: r.pk != null) recs;
+          # The join is decided per §2 key, inside that key's group, so a reader forces the joins at
+          # its own keys only.
+          classesAt = builtins.mapAttrs (
+            _: rs: componentsOf (builtins.filter (r: joinOf.${r.addr} == null) rs)
+          ) (builtins.groupBy (r: r.s2) namedRecs);
+          # Per §2 key, so a reader decides only the keys its own sightings sit at.
+          classIx = builtins.mapAttrs (
+            _: cs:
+            builtins.listToAttrs (
+              builtins.concatLists (
+                prelude.imap0 (
+                  k: c:
+                  map (m: {
+                    name = m.addr;
+                    value = k;
+                  }) c
+                ) cs
+              )
+            )
+          ) classesAt;
+          # A sighting's inclusion site: the declaration address the type wrote, an applied body's
+          # instance-relative address, or, inside a class, the class and the index path below it (C3:
+          # well-founded, since `encl` strictly encloses).
+          siteOfRec =
+            r:
+            if prior != null && r.encl != null then
+              "${r.host}/${relPath (r // { rel = r.pos; })}"
+            else if r.encl != null then
+              "${classIdOf r.encl}/${relPath r}"
+            else if r.elem ? meta.sighting then
+              qualify r.elem.meta.sighting.site
+            else
+              "${parentIdOf r}/includes/${toString (prelude.last r.pos)}";
+          leastOf =
+            c: builtins.head (builtins.sort (a: b: siteOfRec a < siteOfRec b) (builtins.filter (m: !m.back) c));
+          # One id per class, computed once and shared by every sighting's lookup. The bare §2 key is
+          # the class's exactly when it is the only class at that key across the strata.
+          classIds = builtins.mapAttrs (
+            s2: cs:
+            let
+              base = qualify "@/includes/${s2}";
+            in
+            if
+              builtins.length cs + builtins.length (if prior == null then [ ] else prior.classesAt.${s2} or [ ])
+              == 1
+            then
+              [ base ]
+            else
+              map (c: "${base}/${escape (siteOfRec (leastOf c))}") cs
+          ) classesAt;
+          classIdOf =
+            r:
+            let
+              j = joinOf.${r.addr};
+            in
+            if j != null then
+              j
+            else if prior == null then
+              builtins.elemAt classIds.${r.s2} classIx.${r.s2}.${r.addr}
+            else
+              idByRep.${(repOf r).addr};
+          # AN APPLIED SIGHTING'S CLASS IS DECIDED FROM THE SIGHTING (identity design §2's connected
+          # component, C2), never from a partition of its whole key: a reader forces only comparisons
+          # between members of its own component and the sightings at its key, so a §4 row 4 pair it
+          # is not compared with never reaches it. The component is computed once per REPRESENTATIVE:
+          # following each sighting to the first unjoined sighting at its key the rung identifies it
+          # with, until one is its own, so the readers of one class share it.
+          recsAt = builtins.mapAttrs (_: cs: builtins.groupBy (c: c.s2) (builtins.filter (c: c.named) cs)) (
+            builtins.groupBy (r: r.pk) cands
+          );
+          posAt = builtins.mapAttrs (
+            _:
+            builtins.mapAttrs (
+              _: rs:
+              builtins.listToAttrs (
+                prelude.imap0 (i: c: {
+                  name = c.addr;
+                  value = i;
+                }) rs
+              )
+            )
+          ) recsAt;
+          groupOf = r: recsAt.${r.pk}.${r.s2};
+          posOf = r: posAt.${r.pk}.${r.s2}.${r.addr};
+          unjoined = c: joinOf.${c.addr} == null;
+          # Each pair at a key is decided once, by the earlier sighting (`ahead.<addr>`, a lazy row over
+          # the later ones), and read by both: the later one's step and the earlier one's closure.
+          ahead = builtins.listToAttrs (
+            map (r: {
+              name = r.addr;
+              value =
+                let
+                  rs = groupOf r;
+                  i = posOf r;
+                in
+                builtins.genList (k: same r (builtins.elemAt rs (i + 1 + k))) (builtins.length rs - i - 1);
+            }) cands
+          );
+          # A sighting's step: the first earlier unjoined sighting at its key the rung identifies it with,
+          # or itself. The first sighting is tried first, so the readers of one class step once.
+          stepOf = builtins.listToAttrs (
+            map (r: {
+              name = r.addr;
+              value =
+                let
+                  rs = groupOf r;
+                  k = posOf r;
+                  hit =
+                    i:
+                    builtins.elemAt ahead.${(builtins.elemAt rs i).addr} (k - i - 1) && unjoined (builtins.elemAt rs i);
+                  j = builtins.foldl' (
+                    acc: i:
+                    if acc != k then
+                      acc
+                    else if hit i then
+                      i
+                    else
+                      k
+                  ) k (builtins.genList (i: i + 1) (k - 1));
+                in
+                if k == 0 then
+                  r
+                else if hit 0 then
+                  builtins.head rs
+                else
+                  builtins.elemAt rs j;
+            }) cands
+          );
+          repOf =
+            r:
+            let
+              c = stepOf.${r.addr};
+            in
+            if c.addr == r.addr then r else repOf c;
+          # A representative's component, by breadth-first closure. No earlier sighting is an unjoined
+          # neighbour of a representative (its own step found none), so the first round reads its own
+          # row; every further round reads all that remain.
+          componentOf =
+            rep:
+            let
+              rs = groupOf rep;
+              i = posOf rep;
+              n = builtins.length rs;
+              flags = ahead.${rep.addr};
+              firstIx = builtins.filter (
+                k: builtins.elemAt flags k && unjoined (builtins.elemAt rs (i + 1 + k))
+              ) (builtins.genList (k: k) (n - i - 1));
+              grow =
+                members: frontier: rest:
+                let
+                  split = builtins.partition (c: builtins.any (m: same m c) frontier && unjoined c) rest;
+                in
+                if split.right == [ ] then members else grow (members ++ split.right) split.right split.wrong;
+              first = map (k: builtins.elemAt rs (i + 1 + k)) firstIx;
+            in
+            if firstIx == [ ] then
+              [ rep ]
+            else
+              grow ([ rep ] ++ first) first (
+                let
+                  taken = builtins.listToAttrs (
+                    map (c: {
+                      name = c.addr;
+                      value = null;
+                    }) ([ rep ] ++ first)
+                  );
+                in
+                builtins.filter (c: !(taken ? ${c.addr})) rs
+              );
+          # The bare §2 key is the class's exactly when it is the only class at that key across the strata.
+          idByRep = builtins.listToAttrs (
+            map (r: {
+              name = r.addr;
+              value =
+                let
+                  c = componentOf r;
+                  base = qualify "@/includes/${r.s2}";
+                in
+                if prior.classesAt.${r.s2} or [ ] == [ ] && builtins.length c == builtins.length (groupOf r) then
+                  base
+                else
+                  "${base}/${escape (siteOfRec (leastOf c))}";
+            }) cands
+          );
+          parentIdOf = r: if r.parent == null then r.host else idOfRec r.parent;
+          idOfRec =
+            r:
+            if r.named then
+              classIdOf r
+            else if r.encl == null then
+              contentId (parentIdOf r) r.pos r.elem
+            else
+              "${classIdOf r.encl}/${relPath r}";
+          recIndex =
+            rs:
+            builtins.listToAttrs (
+              map (r: {
+                name = builtins.toJSON [
+                  (parentIdOf r)
+                  (prelude.last r.pos)
+                ];
+                value.id = idOfRec r;
+              }) rs
+            );
+          recAt = recIndex recs;
+          # Per host, so a reader forces only its own sightings' ids and the classes at their keys.
+          recAtOf = builtins.mapAttrs (_: recIndex) (builtins.groupBy (r: r.host) recs);
         in
-        if builtins.length cs == 1 then
-          [ base ]
+        {
+          inherit
+            classesAt
+            classIds
+            classIdOf
+            parentIdOf
+            idOfRec
+            leastOf
+            recAt
+            recAtOf
+            ;
+        };
+      static = classing null allRecs;
+      inherit (static)
+        classesAt
+        classIdOf
+        parentIdOf
+        idOfRec
+        leastOf
+        recAt
+        ;
+
+      # ── NAMED CONTENT IN AN APPLIED BODY (den-hoag-named-include-instance-bodies-sfkyy) ──────────
+      #
+      # An instance's fired body is data the aspect type never merged, so a named value in it carries
+      # no stamp: its §2 key is read off the value (`namedSegment`, the type's own writer) and its
+      # operand is the value itself. Its sightings are enumerated over EVERY vertex of the relation,
+      # never over the instances one receiver reaches, so a class id is a function of the declarations
+      # and the relation, not of the reader. The relation is minted from this tree's static facts, so
+      # the static classes are the frozen prior (`classing`): one class spans static and applied
+      # sightings, and no static id depends on an instance. A vertex whose `includes` refuses is
+      # skipped here and refuses where it is read.
+      # A candidate is keyed by its `name`'s position (`pk`) before its `name` is read (`named`, `s2`):
+      # see `classing`'s `cands`. A `name` whose read refuses names nothing, as a position-less one
+      # (F14), so its sighting is keyed under the instance.
+      posKeyOf =
+        v:
+        let
+          pos = if builtins.isAttrs v then builtins.unsafeGetAttrPos "name" v else null;
+        in
+        if pos == null then null else "${toString pos.line}:${toString pos.column}:${pos.file}";
+      appliedNamed =
+        elem:
+        if isNamedContent elem then
+          let
+            pk = posKeyOf elem.meta.sighting.value;
+          in
+          if pk == null then null else staticNamed elem // { inherit pk; }
+        else if builtins.isAttrs elem && !(elem ? key) then
+          let
+            pk = posKeyOf elem;
+            seg = builtins.tryEval (namedSegment elem);
+          in
+          if pk == null then
+            null
+          else
+            {
+              inherit pk;
+              named = seg.success && seg.value != null;
+              s2 = escape seg.value;
+              val = elem;
+            }
         else
-          map (c: "${base}/${(import ./path.nix).escape (siteOfRec (leastOf c))}") cs
-      ) classesAt;
-      classIdOf = r: builtins.elemAt classIds.${r.s2} classIx.${r.addr};
-      parentIdOf = r: if r.parent == null then r.host else idOfRec r.parent;
-      idOfRec =
-        r:
-        if r.named then
-          classIdOf r
-        else if r.encl == null then
-          contentId (parentIdOf r) r.pos r.elem
+          null;
+      appliedClassing =
+        vertices:
+        classing static (
+          builtins.concatMap (
+            iid:
+            let
+              e = vertices.${iid}.entry or null;
+              recs = recsFromWith appliedNamed true iid null null [ ] [ ] [ ] (
+                listOr (e.includes or includesDefault)
+              );
+              # What `classing` forces of every vertex, at any depth: its record spine, addresses and
+              # `name` positions; a `name` itself is read only by the readers of its position.
+              ok = builtins.tryEval (
+                builtins.deepSeq (map (r: [
+                  r.addr
+                  r.pk
+                ]) recs) true
+              );
+            in
+            if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs
+          ) (builtins.attrNames vertices)
+        );
+      sitesOfInstances =
+        vertices:
+        let
+          ixOf = (appliedClassing vertices).recAtOf;
+        in
+        iid: entry:
+        if isGuardLeaf entry then
+          (declInfo iid entry).sites
         else
-          "${classIdOf r.encl}/${relPath r}";
-      recAt = builtins.listToAttrs (
-        map (r: {
-          name = builtins.toJSON [
-            (parentIdOf r)
-            (prelude.last r.pos)
-          ];
-          value.id = idOfRec r;
-        }) allRecs
-      );
+          sitesOfWith (ixOf.${iid} or { }) (entry.key or "<entry>") iid [ ] (
+            includesOfValue (entry.key or "<entry>") entry
+          );
       unnamedEntries = map (r: {
         name = idOfRec r;
         value = {
@@ -942,7 +1268,12 @@ rec {
           deadNested
           ;
       };
-      inherit sitesOfEntry sitesOfEntryAt instanceSites;
+      inherit
+        sitesOfEntry
+        sitesOfEntryAt
+        instanceSites
+        sitesOfInstances
+        ;
     };
 
   # THE DEAD NESTED ASPECTS THE WARNING SAYS: the view less the nodes the caller DECLARED intended
@@ -983,17 +1314,26 @@ rec {
     cnf: aspects: sayDeadNested warn cnf (graphCore cnf aspects).facts
   );
 
-  # `includeSitesOfInstance cnf aspects iid entry` → an applied instance body's include sites, by the
-  # classification `graphFacts` publishes as `includeSitesOf` (one function, two callers: a node's
-  # value under its own id gives its `includeSitesOf` entry). Its anonymous content is keyed under the
-  # instance: each content site's `target` is `<iid>/includes/<i>`, recursively, an identifier and no
-  # mint (identity design §3; 7gp66 OQ4 (b′)). Partially applied to `cnf` and `aspects`, the registry
-  # it resolves against is built once.
+  # `includeSitesOfInstance cnf aspects instances iid` → the include sites of the vertex `iid` of the
+  # instance relation `instances` (`instancesFor`'s), by the classification `graphFacts` publishes as
+  # `includeSitesOf`; the vertex's entry is read here, and a vertex with none has no sites. Its
+  # anonymous content is keyed under the instance: each content site's `target` is
+  # `<iid>/includes/<i>`, recursively, an identifier and no mint (identity design §3; 7gp66 OQ4 (b′)).
+  # A named value's sightings are classed across the static tree and every vertex of the relation
+  # (`classing`). Partially applied to `cnf`, `aspects` and `instances`, the registry and the applied
+  # classes are built once.
   includeSitesOfInstance = cnfDoor prelude "gen-aspects.includeSitesOfInstance" (
-    cnf: aspects:
+    cnf: aspects: instances:
     let
-      inherit (graphCore cnf aspects) sitesOfEntryAt;
+      at = (graphCore cnf aspects).sitesOfInstances (instances.vertices or { });
     in
-    iid: entry: sitesOfEntryAt (entry.key or "<entry>") iid entry
+    if !(builtins.isAttrs instances) then
+      throw "gen-aspects.includeSitesOfInstance: takes the instance relation (`instancesFor`'s) before the instance id, `includeSitesOfInstance cnf aspects instances iid`, not a ${builtins.typeOf instances}; a named value's sightings are classed across every vertex of the relation."
+    else
+      iid:
+      let
+        e = instances.vertices.${iid}.entry or { };
+      in
+      if builtins.isAttrs e then at iid e else [ ]
   );
 }

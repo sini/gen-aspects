@@ -595,7 +595,7 @@ in
         let
           d = builtins.head r.instantiates.${i};
         in
-        facts.includeSitesOf.${d} == aspects.includeSitesOfInstance { } tree i r.vertices.${i}.entry
+        facts.includeSitesOf.${d} == aspects.includeSitesOfInstance { } tree r i
       ) (builtins.attrNames r.vertices);
       expected = true;
     };

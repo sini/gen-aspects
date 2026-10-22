@@ -502,9 +502,13 @@ in
     test-include-sites-of-entry = {
       expr = {
         same = builtins.all (
-          id: aspects.includeSitesOfInstance { } rel id facts.nodeData.${id} == facts.includeSitesOf.${id}
+          id:
+          aspects.includeSitesOfInstance { } rel { vertices.${id}.entry = facts.nodeData.${id}; } id
+          == facts.includeSitesOf.${id}
         ) facts.nodes;
-        wc = map (x: x.kind) (aspects.includeSitesOfInstance { } rel "wc" facts.nodeData.wc);
+        wc = map (x: x.kind) (
+          aspects.includeSitesOfInstance { } rel { vertices.wc.entry = facts.nodeData.wc; } "wc"
+        );
       };
       expected = {
         same = true;
@@ -628,7 +632,9 @@ in
                 }
               ];
             }).config.aspects.fired;
-        kinds = map (x: x.kind) (aspects.includeSitesOfInstance { } rel "fired" body);
+        kinds = map (x: x.kind) (
+          aspects.includeSitesOfInstance { } rel { vertices.fired.entry = body; } "fired"
+        );
       in
       {
         expr = {
@@ -660,7 +666,9 @@ in
                 { config.aspects.fired = aspects.guard aspects.pred.always { includes = [ elem ]; }; }
               ];
             }).config.aspects.fired;
-        kinds = body: map (x: x.kind) (aspects.includeSitesOfInstance { } rel "fired" body);
+        kinds =
+          body:
+          map (x: x.kind) (aspects.includeSitesOfInstance { } rel { vertices.fired.entry = body; } "fired");
       in
       {
         expr = {

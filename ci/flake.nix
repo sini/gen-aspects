@@ -136,9 +136,10 @@
           # Unread here too: only `graphFacts`' `deliversOf` reads them.
           keyCategory = _: _: null;
           hasClassContent = _: false;
-          # Unread too: only `graphFacts`' named-content rung reads them.
+          # Unread too: only `graphFacts`' named-content rung and its applied sightings read them.
           algebra = null;
           hashIdentity = null;
+          namedSegment = null;
         };
         # The identity module, for the guarded function-scan behind `guardKey`. That scan is reachable
         # from the public surface only through a key, and a key is a string: out there, a body whose
@@ -206,7 +207,7 @@
         # root seam, so a resurrected or reworded tombstone reds.
         {
           gen.ci.rootSurface.retired.includeSitesOfEntry =
-            "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance id before the value: `includeSitesOfInstance cnf aspects iid entry`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`); for a node's value, pass the node's own id and the result is its `graphFacts` `includeSitesOf`.";
+            "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance relation and then the instance id, reading the vertex's entry itself: `includeSitesOfInstance cnf aspects instances iid`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`), and a named value's sightings are classed across the static tree and every vertex of the relation; a node's own sites are its `graphFacts` `includeSitesOf`.";
         }
       ];
     };
