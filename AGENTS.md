@@ -142,10 +142,13 @@ excludes (every node id is minted under `aspect`), so a source of another kind r
 source of kind `aspect` forces every node's `aspectId` (a digest is one-way), and there a node with no
 identity (an unchecked first-order guard) refuses the relation even unreached (den-hoag-biefe, stated
 bound). Tests: `ci/tests/source-door.nix`; `instance-relation-doors.test-source-own-*`.
-`includeSitesOfInstance cnf aspects iid entry` is `graphFacts`' `includeSitesOf` classification over
-any aspect value (a node's value under its own id, or an applied instance body under its instance id),
-one rule for both: a key-less attrset that is not a guard leaf is content (den-hoag-lwbb1 OQ-U2.9 arm
-(B)), and each content site's `target` is `<iid>/includes/<i>`, recursively (den-hoag-8hlo3).
+`includeSitesOfInstance cnf aspects instances iid` is `graphFacts`' `includeSitesOf` classification
+over the vertex `iid` of the instance relation `instances`, whose entry it reads itself (none: no
+sites): a key-less attrset that is not a guard leaf is content (den-hoag-lwbb1 OQ-U2.9 arm (B)), each
+content site's `target` is `<iid>/includes/<i>`, recursively (den-hoag-8hlo3), and a named value's
+`target` is its class across the static tree and every vertex of the relation, the static classes a
+frozen prior (den-hoag-named-include-instance-bodies-sfkyy; tests:
+`ci/tests/named-content-applied-bodies.nix`).
 Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doors.*` in `ci/tests-error.nix`.
 
 **Identity** — `lib/identity.nix`, `lib/types.nix`
