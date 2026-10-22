@@ -55,6 +55,7 @@ let
     inherit (identity) hashIdentity;
     inherit (types)
       includesDefault
+      namedSegment
       keyCategory
       hasClassContent
       GT
@@ -159,15 +160,15 @@ in
   # are BOTH the node's walk position, so a disagreement between them is inexpressible — see
   # lib/facts.nix for the measurement that makes one source a correctness requirement.
   inherit (factsModule) graphFacts;
-  # `includeSitesOfInstance cnf aspects iid entry` — `graphFacts`' include-site classification over
-  # any aspect value, its anonymous content keyed under `iid`: an applied instance body gives the
-  # sites its consumer descends, and a node's value under its own id its `includeSitesOf`. One
-  # function for both, so the relation and its reader cannot disagree.
+  # `includeSitesOfInstance cnf aspects instances iid` — an applied instance body's include sites,
+  # by `graphFacts`' classification, over the instance relation `instances` (`instancesFor`'s): its
+  # anonymous content keyed under `iid`, and a named value's sightings grouped into classes across
+  # the static tree and every vertex of the relation. See lib/facts.nix.
   inherit (factsModule) includeSitesOfInstance;
   # ── THE RETIRED NAME ── `includeSitesOfEntry` is a tombstone rather than a silent alias, as
   # gen-product's `cell`: refused by name, naming its replacement. A published value, not a lambda, so
   # reaching the name refuses as well as applying it; the message interpolates nothing.
-  includeSitesOfEntry = throw "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance id before the value: `includeSitesOfInstance cnf aspects iid entry`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`); for a node's value, pass the node's own id and the result is its `graphFacts` `includeSitesOf`.";
+  includeSitesOfEntry = throw "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance relation and then the instance id, reading the vertex's entry itself: `includeSitesOfInstance cnf aspects instances iid`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`), and a named value's sightings are classed across the static tree and every vertex of the relation; a node's own sites are its `graphFacts` `includeSitesOf`.";
   inherit (guardModule)
     mkGuardVocab
     pred

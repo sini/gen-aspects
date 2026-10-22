@@ -74,21 +74,26 @@ let
       ]
     else
       prefix;
-  includeSite =
-    d: prefix:
+  # A named value's §2 segment, `<name>@<line>:<column>:<file>` (identity design §2: the position of
+  # its `name` and the name), or null where the name has no position (F14). The one writer: the type's
+  # stamp and `facts.nix`' applied-body sightings both read it.
+  namedSegment =
+    v:
     let
-      v = d.value;
       pos = if v ? name && builtins.isString v.name then builtins.unsafeGetAttrPos "name" v else null;
     in
     if pos == null then
-      unnamedSite d prefix
+      null
     else
-      prelude.init prefix
-      ++ [
-        "${
-          builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] v.name
-        }@${toString pos.line}:${toString pos.column}:${pos.file}"
-      ];
+      "${
+        builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] v.name
+      }@${toString pos.line}:${toString pos.column}:${pos.file}";
+  includeSite =
+    d: prefix:
+    let
+      seg = namedSegment d.value;
+    in
+    if seg == null then unnamedSite d prefix else prelude.init prefix ++ [ seg ];
   # The element, read as a module that also DEFINES its declared path, from the module argument
   # `prefix` (its merge position) and its own authored value. An authored `key`, `id_hash` or
   # `meta.loc` refuses by name BEFORE the wrap: inside `imports` the attrset is a module, and its
@@ -1716,6 +1721,7 @@ in
     aspectId
     hasClassContent
     includesDefault
+    namedSegment
     GT
     ;
   structuralKeys = nativeStructuralKeys;
