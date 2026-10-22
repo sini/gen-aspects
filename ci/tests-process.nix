@@ -91,12 +91,14 @@
           # `evals - doors` is the ruled bridge price (U2-h: one bridge at `schema`); `plain` (a
           # declaration-only evaluation, no `definitions`/`positions`) is 0 exactly when the
           # construction threads as a proper nta child rather than firing a standalone evaluation.
+          # gen-schema's kind introspection reads gen-merge's declaration stratum (`declaredOptions`), which
+          # fires no evaluation, so the count is 4 evaluations over 3 doors: the price, `evals - doors`, is 1.
           evalArm nta-extra-modules
           [ "$rc" -eq 0 ] || die nta-extra-modules "expected exit 0, got $rc"
           [ "$val" = '[ "on" "off" ]' ] || die nta-extra-modules "expected [ \"on\" \"off\" ], got '$val'"
           n=$(traced); nd=$(tracedSuffix door); np=$(tracedSuffix plain)
-          [ "$n" = "5" ] || die nta-extra-modules "expected 5 evaluations (the ruled bridge price), counted $n"
-          [ "$nd" = "4" ] || die nta-extra-modules "expected 4 doors, counted $nd"
+          [ "$n" = "4" ] || die nta-extra-modules "expected 4 evaluations (3 doors + the ruled bridge price, 1), counted $n"
+          [ "$nd" = "3" ] || die nta-extra-modules "expected 3 doors, counted $nd"
           [ "$np" = "0" ] || die nta-extra-modules "expected 0 declaration-only evaluations (an nta child, not a standalone evaluation), counted $np"
 
           evalArm nta-aspect-module
