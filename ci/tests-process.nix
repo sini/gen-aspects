@@ -59,7 +59,8 @@
             exit 1
           }
           # evalArm <arm> [n]: runs one cell in its own process; leaves rc/val set. The value variable
-          # is `val`, never `out` — `out` is the derivation's own output path.
+          # is `val`, never `out` — `out` is the derivation's own output path. `cellsFile` overrides the
+          # file evaluated (a wrapper that pins the interning order).
           evalArm() {
             rc=0
             val=$(nix-instantiate --eval --strict --readonly-mode \
@@ -77,7 +78,7 @@
               --argstr genAspectsAlgebraSrc "$genAspectsAlgebraSrc" \
               --argstr label "$label" \
               --argstr n "''${2:-0}" \
-              "$cells" 2> "$TMPDIR/err") || rc=$?
+              "''${cellsFile:-$cells}" 2> "$TMPDIR/err") || rc=$?
             ran=$((ran + 1))
           }
           # tracedSuffix <suffix>: the number of lines on stderr carrying "$label-<suffix>".
@@ -183,9 +184,13 @@
           # den-hoag-qxip5: the declared abort (identity design §4 row 4). Each cell dies on the
           # evaluator's stack-overflow channel, which Nix, Determinate ("stack overflow; max-call-depth
           # exceeded") and Lix ("stack overflow (possible infinite recursion)") all print; a value, an
-          # exit 0 or a death on another channel (a throw, the memory cap) fails the cell.
+          # exit 0 or a death on another channel (a throw, the memory cap) fails the cell. Rung 2's `==`
+          # walks attributes in symbol-interning order (R7), so each cell runs under a wrapper parsed
+          # before the cells file that interns `includes` first: the unfolding reads 256 nodes with `T`
+          # first, and the abort it asserts no longer rests on which name the cells file mentions first.
+          echo "let pin = { includes = null; }; in builtins.seq pin (import $cells)" > "$TMPDIR/includes-first.nix"
           for arm in named-cycle named-unfolding; do
-            evalArm "$arm"
+            cellsFile=$TMPDIR/includes-first.nix evalArm "$arm"
             [ "$rc" -ne 0 ] || die "$arm" "expected the declared abort, got exit 0 and '$val'"
             grep -q 'stack overflow' "$TMPDIR/err" \
               || die "$arm" "expected a stack overflow (exit $rc), got: $(grep error "$TMPDIR/err" | head -2)"

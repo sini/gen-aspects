@@ -370,21 +370,22 @@ in
         name = "s";
         includes = [ s ];
       };
+      # The pair differs in attribute count, so `==` decides before its interning-ordered walk (R7).
       mkS =
-        m:
+        content:
         let
           r = {
             name = "r";
-            T.marks = [ m ];
             includes = [ r ];
-          };
+          }
+          // content;
         in
         r;
       f = facts [ { config.aspects.a.includes = [ s ]; } ];
       g = facts [
         {
-          config.aspects.a.includes = [ (mkS "1") ];
-          config.aspects.b.includes = [ (mkS "2") ];
+          config.aspects.a.includes = [ (mkS { T.marks = [ "1" ]; }) ];
+          config.aspects.b.includes = [ (mkS { }) ];
         }
       ];
       c = first f.includesOf.a;
