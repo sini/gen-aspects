@@ -582,4 +582,95 @@ in
         };
       };
     };
+
+  # ★ THE STATED BOUNDARY (ADR-0034 quotient clause; den-hoag-r089k, a third declared exception
+  # pending owner ratification, den-hoag-0n4mg; README "Named content and string context"). Rung 2 is
+  # `==`, blind to string context, and the class keeps its least sighting's value WITHOUT walking the
+  # others, so a twin's dependency edges are dropped silently:
+  #   boundary   the kept (least-site) sighting lacks the context `b`'s copy carries: `[ false ]`.
+  #   single     one taker, no collapse (the control): its context is kept, `[ true ]`.
+  #   reverse    the kept sighting carries it: `[ true ]`.
+  # Flips when den-hoag-gkrtw carries every datum's edges (if gkrtw lands by walking values, it stays).
+  # RED (a collapse that carried or refused the union): `boundary` reads `[ true ]` or "REFUSED".
+  flake.tests.named-content-nodes.test-a-static-collapse-drops-the-twins-context-the-stated-boundary =
+    let
+      drv = derivation {
+        name = "r089k";
+        builder = "/bin/sh";
+        system = "x86_64-linux";
+      };
+      withCtx = "${drv}";
+      noCtx = builtins.unsafeDiscardStringContext withCtx;
+      ctxOf =
+        a: b:
+        let
+          f = facts [
+            {
+              config.aspects = {
+                a.includes = if a == null then [ ] else [ (mk a) ];
+                b.includes = [ (mk b) ];
+              };
+            }
+          ];
+        in
+        tryValue (map builtins.hasContext (marksOf f (first f.includesOf.b)));
+    in
+    {
+      expr = {
+        control = [
+          (mk noCtx == mk withCtx)
+          (builtins.hasContext withCtx)
+          (builtins.hasContext noCtx)
+        ];
+        boundary = ctxOf noCtx withCtx;
+        single = ctxOf null withCtx;
+        reverse = ctxOf withCtx noCtx;
+      };
+      expected = {
+        control = [
+          true
+          true
+          false
+        ];
+        boundary = [ false ];
+        single = [ true ];
+        reverse = [ true ];
+      };
+    };
+
+  # Why the boundary is not closed by a walk here: the class walks no member's content, so one
+  # self-referential value shared by two takers is a class (`==` shortcuts on the pointer) and its
+  # node's value reads. An edge walk overflows on it uncatchably (ADR-0025 item 1); a bounded one
+  # refuses deep valid input (ADR-0032). RED (an unbounded edge walk at the class): stack overflow,
+  # which takes the batch down; (a bounded one): `"REFUSED"`.
+  flake.tests.named-content-nodes.test-a-shared-self-referential-class-is-a-value =
+    let
+      cyc = {
+        me = cyc;
+        tag = "c";
+      };
+      v = {
+        name = "t";
+        T.marks = [ "m" ];
+        T.extra = cyc;
+      };
+      f = facts [
+        {
+          config.aspects = {
+            a.includes = [ v ];
+            b.includes = [ v ];
+          };
+        }
+      ];
+    in
+    {
+      expr = {
+        same = f.includesOf.a == f.includesOf.b;
+        marks = tryValue (marksOf f (first f.includesOf.b));
+      };
+      expected = {
+        same = true;
+        marks = [ "m" ];
+      };
+    };
 }
