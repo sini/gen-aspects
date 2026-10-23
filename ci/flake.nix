@@ -124,6 +124,8 @@
             identityOf = null;
             isExact = null;
             keyCategory = null;
+            keyVocab = null;
+            undeclaredRefusal = null;
             mkIsModuleFn = null;
             refusalShapeOf = null;
             refusalReachedText = null;
@@ -159,6 +161,8 @@
               inherit (genIdentity) hashIdentity;
               inherit (genAlgebra) identityOf isExact;
               inherit (aspects) keyCategory mkIsModuleFn;
+              keyVocab = null;
+              undeclaredRefusal = null;
               refusalShapeOf = null;
               refusalReachedText = null;
             };

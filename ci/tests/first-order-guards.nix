@@ -20,13 +20,18 @@ let
   ok = v: (builtins.tryEval (builtins.deepSeq v true)).success;
   src = n: "entity:" + builtins.hashString "sha256" n;
 
-  # A guard placed at an aspect position of a schema evaluation under `cnf`, with `nixos` a class key.
+  # A guard placed at an aspect position of a schema evaluation under `cnf`, with `nixos` a class key
+  # and `data` a channel: the declared home of first-order data, whose value rides verbatim (a body's
+  # undeclared nested key is refused as a static body's is).
   place =
     cnf: defs:
     (mkSchemaEval (
       cnf
       // {
-        keySemantics.nixos.category = "class";
+        keySemantics = {
+          nixos.category = "class";
+          data.category = "channel";
+        };
         modules = [ { config.aspects = defs; } ];
       }
     )).config.aspects;
@@ -346,8 +351,8 @@ let
           b:
           (builtins.tryEval (builtins.deepSeq (place { } { d = a.guard a.pred.always b; }).d.__mint true))
           .success;
-        leftData.l.left = 1;
-        leftIntCode.l.left.code = 105;
+        leftData.data.l.left = 1;
+        leftIntCode.data.l.left.code = 105;
         hand = {
           __bodyTerm = "Lit";
           value = 1;
@@ -366,23 +371,23 @@ let
           leftDataId = idOk leftData;
           refusalShape =
             (r {
-              l.left = {
+              data.l.left = {
                 code = "bogus";
                 witness = { };
               };
             }).success;
-          refusalNoWitness = (r { l.left.code = "x"; }).success;
-          failureList = (r { l.left = [ { message = "m"; } ]; }).success;
+          refusalNoWitness = (r { data.l.left.code = "x"; }).success;
+          failureList = (r { data.l.left = [ { message = "m"; } ]; }).success;
           realRefusal = (r { description = t.lit (x: x); }).success;
-          termKey = neverTheTerm { x = hand; };
+          termKey = neverTheTerm { data.x = hand; };
           termRoot = neverTheTerm hand;
           forgedMintEmpty = neverTheTerm {
-            x = hand // {
+            data.x = hand // {
               __mint = { };
             };
           };
           forgedMintInt = neverTheTerm {
-            x = hand // {
+            data.x = hand // {
               __mint = 1;
             };
           };
@@ -696,12 +701,12 @@ let
       };
     };
     # den-hoag-egkyp: the lift takes a scalar child without a call, and still spends the depth budget on
-    # it: a scalar at depth 256 checks and keys, one at 257 is refused catchably.
+    # it: a scalar at depth 256 (below the `data` channel) checks and keys, one at 257 is refused catchably.
     test-scalar-leaf-depth-budget = {
       expr =
         let
           deep = n: if n == 0 then "leaf" else { d = deep (n - 1); };
-          k = n: ok (a.key (place { } { s = a.guard a.pred.always (deep n); }).s);
+          k = n: ok (a.key (place { } { s = a.guard a.pred.always { data = deep (n - 1); }; }).s);
         in
         {
           at256 = k 256;
@@ -756,7 +761,7 @@ let
             "x"
             { y = 2; }
           ];
-          nested = {
+          nested.data = {
             a.b.c = 1;
             l = [
               1
@@ -766,7 +771,7 @@ let
               ]
             ];
           };
-          deepAttrs = deep 256;
+          deepAttrs.data = deep 255;
           deepList = {
             l = deepList 200;
           };

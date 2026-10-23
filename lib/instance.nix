@@ -118,7 +118,9 @@ let
       readsOf =
         g:
         builtins.filter (k: context ? ${k}) (
-          GT.derivedReads cnf context (GT.checkGuard cnf at (g // { __guard = true; }))
+          GT.derivedReads cnf context (
+            GT.checkGuardIn null (value.meta.loc or [ "<guard-carrier>" ]) cnf at (g // { __guard = true; })
+          )
         );
       received =
         if !carrier then

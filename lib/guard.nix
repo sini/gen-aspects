@@ -59,7 +59,7 @@ let
     cnf:
     let
       at = loc: "aspect `${prelude.concatStringsSep "." loc}`";
-      checked = loc: GT.checkGuard cnf (at loc);
+      checked = loc: GT.checkGuardIn null loc cnf (at loc);
       fireAt =
         args: loc: g:
         GT.fireScoped cnf (at loc) args (checked loc g);

@@ -544,6 +544,7 @@ in
         carrier =
           guardInc: plainInc:
           (mkSchemaEval {
+            keySemantics.nixos.category = "class";
             modules = [
               { config.aspects.s2.name = "s2"; }
               {

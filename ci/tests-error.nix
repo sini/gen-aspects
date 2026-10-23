@@ -2065,4 +2065,102 @@ in
         };
       };
     };
+
+  # A guard body's undeclared key is refused with the static body's own text: one judgement, so each
+  # guard row and its static twin are pinned to ONE composed message (ci/tests `guard-undeclared-key`
+  # pins that each is catchable, and its door row).
+  flake.testsError.guard-undeclared-key =
+    let
+      T = genAlgebra.term genIdentity.hashIdentity;
+      t = T.term;
+      src = n: "entity:" + builtins.hashString "sha256" n;
+      cnfOf = extra: { keySemantics.nixos.category = "class"; } // extra;
+      placed =
+        extra: value:
+        (mkSchemaEval (
+          cnfOf extra
+          // {
+            fixtureKeySemantics = { };
+            modules = [
+              {
+                config.schema.aspect.options.ext = genMerge.mkOption {
+                  type = genMerge.types.str;
+                  default = "";
+                };
+              }
+              { config.aspects.x = value; }
+            ];
+          }
+        )).config.aspects;
+      facts =
+        extra: value:
+        let
+          f = aspects.graphFacts (cnfOf extra) (placed extra value);
+        in
+        {
+          inherit (f) nodes deadNested deliversOf;
+        };
+      entry =
+        extra: value:
+        (aspects.instanceOf (cnfOf extra) { } {
+          aspect = "x";
+          context = {
+            host = "h1";
+            payload.hm = "u";
+          };
+          sources = {
+            host = src "h1";
+            payload = src "p1";
+          };
+        } (placed extra value).x).entry;
+      g = aspects.guard (aspects.pred.has "host");
+      closed.closedKeys = true;
+      orphan = exactly (
+        "gen-aspects: aspect `x`: orphan leaf at `x.hm.home.username` (a value of type string below "
+        + "the undeclared key path `hm.home` is neither class content nor an aspect). Declare the key — "
+        + "a keySemantics class/channel/facet, or a schema extension `schema.aspect.options.<key>` — or "
+        + "correct its spelling. Declared class keys: nixos."
+      );
+      gate =
+        k:
+        exactly "gen-aspects: aspect `x`: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+      rid =
+        (T.refId {
+          declared = {
+            site = "out";
+            reads = [ "host" ];
+          };
+        }).right;
+    in
+    {
+      test-orphan-leaf-static = thrown (facts { } { hm.home.username = "u"; }) orphan;
+      test-orphan-leaf-guard = thrown (facts { } (g {
+        hm.home.username = "u";
+      })) orphan;
+      test-closed-gate-static = thrown (facts closed { hm = "u"; }) (gate "hm");
+      test-closed-gate-guard = thrown (entry closed (g {
+        hm = "u";
+      })) (gate "hm");
+      test-closed-gate-above-an-extension-static = thrown (facts closed { sub.inner.ext = "deep"; }) (
+        gate "sub"
+      );
+      test-closed-gate-above-an-extension-guard = thrown (facts closed (g {
+        sub.inner.ext = "deep";
+      })) (gate "sub");
+      test-fired-context-read = thrown (entry closed (
+        aspects.guard (aspects.pred.all [
+          (aspects.pred.has "host")
+          (aspects.pred.has "payload")
+        ]) (t.readCtx "payload" [ ])
+      )) (gate "hm");
+      test-fired-door-output = thrown (entry {
+        closedKeys = true;
+        ref = _: {
+          right = {
+            output.hm = "u";
+            scope = { };
+          };
+        };
+      } (g (t.ref rid))) (gate "hm");
+    };
 }

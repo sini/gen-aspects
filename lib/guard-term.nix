@@ -12,6 +12,8 @@
   identityOf,
   isExact,
   keyCategory,
+  keyVocab,
+  undeclaredRefusal,
   mkIsModuleFn,
   refusalShapeOf,
   refusalReachedText,
@@ -129,7 +131,7 @@ let
     "gen-aspects.guard: ${at}: guard-depth: the guard body nests deeper than ${toString maxLiftDepth} levels at `${showPos pos}`; a body that deep is almost always CYCLIC (a guard whose body holds itself, or an attrset containing itself). Pass a finite, acyclic body.";
   none = { };
   liftAt =
-    cnf: at: depth: pos: v:
+    cnf: vocab: anchor: at: depth: pos: v:
     if depth > maxLiftDepth then
       throw (depthRefusal at pos)
     else if builtins.isFunction v && mkIsModuleFn cnf v then
@@ -162,10 +164,10 @@ let
       throw "gen-aspects.guard: ${at}: ${refusalReachedText (refusalShapeOf v)}"
     else if builtins.isAttrs v && (v.__guard or false) then
       let
-        inner =
-          checkGuardAt cnf "${rootAt at}, the guard nested ${toString (depth + 1)} deep at `${showPos pos}`"
-            (depth + 1)
-            v;
+        # A nested guard's body sits at its position in the outer aspect, under the outer's vocabulary.
+        inner = checkGuardAt cnf vocab (
+          anchor ++ map toString pos
+        ) "${rootAt at}, the guard nested ${toString (depth + 1)} deep at `${showPos pos}`" (depth + 1) v;
         id = builtins.toJSON {
           guard = {
             at = pos;
@@ -217,7 +219,7 @@ let
             }
           else
             let
-              x = liftAt cnf at d (pos ++ [ k ]) c;
+              x = liftAt cnf vocab anchor at d (pos ++ [ k ]) c;
             in
             if (x.bare or false) && builtins.isFunction x.term then
               x // { checked = [ (tm.attrs { ${k} = x.term; }) ]; }
@@ -233,9 +235,9 @@ let
       }
     else if builtins.isList v then
       let
-        kids = builtins.genList (i: liftAt cnf at (depth + 1) (pos ++ [ i ]) (builtins.elemAt v i)) (
-          builtins.length v
-        );
+        kids = builtins.genList (
+          i: liftAt cnf vocab anchor at (depth + 1) (pos ++ [ i ]) (builtins.elemAt v i)
+        ) (builtins.length v);
       in
       {
         term = tm.list (map (x: x.term) kids);
@@ -250,7 +252,7 @@ let
         authored = [ ];
         checked = [ ];
       };
-  lift = cnf: v: (liftAt cnf "guard" 0 [ ] v).term;
+  lift = cnf: v: (liftAt cnf (keyVocab cnf null) [ "<guard>" ] "guard" 0 [ ] v).term;
   # The datum the lift takes to a `lit` at its first test: no function, attrset or list.
   isScalar =
     c:
@@ -286,13 +288,13 @@ let
   # the door reference's position and its identifier's domain. Returns the checked record; identity is
   # defined for it only.
   checkGuardAt =
-    cnf: at: depth: g:
+    cnf: vocab: anchor: at: depth: g:
     if g.__checked or false then
       g
     else
       builtins.seq (prelude.checkRequired "gen-aspects.guard: ${at}" [ "condition" "body" ] g) (
         let
-          lifted = liftAt cnf at depth [ ] g.body;
+          lifted = liftAt cnf vocab anchor at depth [ ] g.body;
           body = lifted.term;
           r = T.checkClause (instanceFor cnf) {
             inherit (g) condition;
@@ -316,6 +318,9 @@ let
           innerUnmintable = builtins.filter (i: builtins.isAttrs i && !(isExact (identityOf i))) (
             builtins.attrValues lifted.nested
           );
+          # The plain-data body's undeclared keys, judged as the aspect type's freeform slot judges a
+          # static aspect's (den-hoag-ucgg7); a term body is judged where it fires.
+          undeclared = if lifted.bare or false then null else undeclaredRefusal true vocab anchor g.body;
         in
         if isRefusal r then
           throw (render at r.left)
@@ -323,12 +328,16 @@ let
           throw "gen-aspects.guard: ${at}: ref-id-domain: a door registration reference's identifier is outside refId's grammar (or longer than ${toString maxIdLength} characters), so it cannot be read back: ${shortId (builtins.head malformed).id}; build it with gen-algebra's `refId`."
         else if bad != [ ] then
           throw "gen-aspects.guard: ${at}: ref-position: a door registration reference is admitted only as the whole body of a door node; found below the root: ${shortId (builtins.head bad).id}"
+        else if undeclared != null then
+          throw undeclared
         else
           g
           // {
             __checked = true;
             # The D this guard was checked under; the resolver must read the same one (P3).
             __declared = declaredFor cnf;
+            # The key vocabulary it was checked under, which its firing judges a fired body by.
+            __keys = { inherit vocab anchor; };
             __nested = lifted.nested;
             # A body that is THE LIFT'S IMAGE OF PLAIN DATA (no term its author wrote, nothing nested but
             # module slots) resolves to the data it was lifted from at every context: `resolveFields` takes
@@ -363,7 +372,11 @@ let
           }
       );
 
-  checkGuard = cnf: at: checkGuardAt cnf at 0;
+  # `vocab` null: the cnf's own (`keyVocab cnf null`), for a guard checked outside an aspect type.
+  checkGuardIn =
+    vocab: anchor: cnf: at:
+    checkGuardAt cnf (if vocab == null then keyVocab cnf null else vocab) anchor at 0;
+  checkGuard = cnf: at: checkGuardAt cnf (keyVocab cnf null) [ "<guard>" ] at 0;
 
   # The coordinates a checked guard reads (ADR-0008 :150): its terms' heads, and a door reference's
   # declared reads, decoded from its identifier (unifying spec §2.7), `null` meaning D.
@@ -496,6 +509,19 @@ let
       throw "gen-aspects.guard: ${at}: one-declared-set: this guard was checked under the declared set ${builtins.toJSON g.__declared} and is fired under ${builtins.toJSON (declaredFor cnf)}; a guard is checked and resolved under ONE set, the framework's (fire it through the vocabulary of the cnf that placed it)."
     else
       let
+        judged =
+          v:
+          let
+            k =
+              g.__keys or {
+                vocab = keyVocab cnf null;
+                anchor = [ "<guard>" ];
+              };
+            # A fired body's fields resolve where each is read (ADR-0010 §4(a)): only the key names are
+            # judged here, so no field is forced.
+            r = undeclaredRefusal false k.vocab k.anchor v;
+          in
+          if r == null then v else throw r;
         env = envOf cnf (args // { nested = g.__nested or { }; });
         c = T.resolveTerm env g.condition;
         b = T.resolveTerm env g.body;
@@ -577,7 +603,7 @@ let
             patched = patchAt fireAt (map (d: d.r.nested.position) decoded) res.output;
           in
           {
-            inherit (patched) value;
+            value = judged patched.value;
             scope = scope // patched.scope;
           }
       else
@@ -585,9 +611,11 @@ let
           # Each field resolved where it is READ (ADR-0010 §4(a) clause 3; gen-algebra `resolveFields`):
           # a member that refuses refuses at its own read, by name and field, and its siblings resolve.
           # The door body above stays whole: its output is a sealed product the scope is defined over.
-          value = T.resolveFields env (
-            p: l: throw (render "${at}, field `${builtins.concatStringsSep "." (map toString p)}`" l)
-          ) g.body;
+          value = judged (
+            T.resolveFields env (
+              p: l: throw (render "${at}, field `${builtins.concatStringsSep "." (map toString p)}`" l)
+            ) g.body
+          );
           inherit (args) scope;
         };
   fire =
@@ -621,6 +649,7 @@ in
     declaredFor
     lift
     checkGuard
+    checkGuardIn
     derivedReads
     fire
     fireScoped

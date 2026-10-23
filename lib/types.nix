@@ -354,6 +354,8 @@ let
       identityOf
       isExact
       keyCategory
+      keyVocab
+      undeclaredRefusal
       mkIsModuleFn
       refusalShapeOf
       refusalReachedText
@@ -647,11 +649,11 @@ let
       # the unresolved gen-merge marker witness 1 produces, so `walk.nix`'s `isGuardLeaf` already
       # admits this carrier as a leaf with no edit of its own.
       toFragment =
-        d:
+        loc: d:
         if isGuardRecordDef d then
           (
             let
-              g = GT.checkGuard cnf "aspect `${
+              g = GT.checkGuardIn (keyVocab cnf (builtins.attrNames declaredKeys)) loc cnf "aspect `${
                 prelude.concatStringsSep "." (d.loc or [ "<guard-carrier>" ])
               }`" d.value;
             in
@@ -846,7 +848,7 @@ let
               if isGuardRecordDef d then
                 acc
                 // {
-                  fs = acc.fs ++ (if isCarrierValue d.value then d.value.fragments else [ (toFragment d) ]);
+                  fs = acc.fs ++ (if isCarrierValue d.value then d.value.fragments else [ (toFragment loc d) ]);
                 }
               else
                 {
@@ -866,7 +868,7 @@ let
                           }
                         ]
                       else
-                        [ (toFragment d) ]
+                        [ (toFragment loc d) ]
                     );
                 }
             )
@@ -958,13 +960,17 @@ let
             # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
             # not hashed by guardKey).
             {
-              value = GT.checkGuard cnf "aspect `${prelude.concatStringsSep "." loc}`" v // {
-                name = prelude.last loc;
-                meta = (v.meta or { }) // {
-                  inherit loc;
-                  file = (builtins.head defs).file or "<unknown>";
+              value =
+                GT.checkGuardIn (keyVocab cnf (
+                  builtins.attrNames declaredKeys
+                )) loc cnf "aspect `${prelude.concatStringsSep "." loc}`" v
+                // {
+                  name = prelude.last loc;
+                  meta = (v.meta or { }) // {
+                    inherit loc;
+                    file = (builtins.head defs).file or "<unknown>";
+                  };
                 };
-              };
             }
           else if isTypedAspect v then
             { value = v; }
@@ -980,35 +986,7 @@ let
       orphanLeaf =
         loc: v:
         if nesting == null || !nesting.deep || v == null then v else throw (orphanLeafRefusal loc v);
-      orphanLeafRefusal =
-        loc: v:
-        let
-          inherit (nesting) anchor;
-          # The undeclared keys between the declared aspect and the leaf: each one nested an aspect.
-          run = builtins.genList (i: builtins.elemAt loc (builtins.length anchor + i)) (
-            builtins.length loc - builtins.length anchor - 1
-          );
-          # The declared class keys in full, rendered from `keySemantics` and never restated: no
-          # edit-distance "did you mean": the recognised set in full answers the same question exactly.
-          classKeys = builtins.attrNames (
-            prelude.filterAttrs (_: e: builtins.isAttrs e && (e.category or null) == "class") cnf.keySemantics
-          );
-          # The extension route is named only where this type reads extensions (`cnf.schemaDefs`).
-          remedy =
-            if cnf.schemaDefs != null then
-              "Declare the key — a keySemantics class/channel/facet, or a schema extension "
-              + "`schema.aspect.options.<key>` — or correct its spelling."
-            else
-              "Declare the key as a keySemantics class/channel/facet (this aspect type reads no schema "
-              + "extension; `mkAspectModule` threads them), or correct its spelling.";
-        in
-        "gen-aspects: aspect `${merge.showOption anchor}`: orphan leaf at `${merge.showOption loc}` "
-        + "(a value of type ${builtins.typeOf v} below the undeclared key path `${merge.showOption run}` "
-        + "is neither class content nor an aspect). "
-        + remedy
-        + " Declared class keys: ${
-           if classKeys == [ ] then "none" else builtins.concatStringsSep ", " classKeys
-         }.";
+      orphanLeafRefusal = loc: v: orphanLeafText (keyVocab cnf null) nesting.anchor loc v;
     in
     mkUnion "aspect" cnf {
       inherit alternatives dispatch;
@@ -1124,18 +1102,13 @@ let
             { member = builtins.elemAt alternatives 0; }
           else
             {
-              value = throw (
-                "gen-aspects: ${at}: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
-                + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
-                + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
-                + "content). Declare it in keySemantics, or nest it under a declared key."
-              );
+              value = throw (recursiveGateRefusal at k);
             }
         else if builtins.elem k cnf.freeformKeys then
           { member = builtins.elemAt alternatives 1; }
         else
           {
-            value = throw "gen-aspects: ${at}: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+            value = throw (closedGateRefusal at k);
           };
     };
 
@@ -1251,6 +1224,113 @@ let
       checkCategory key cnf.keySemantics.${key}
     else
       null;
+
+  # THE UNDECLARED-KEY JUDGEMENT over raw data (den-hoag-ucgg7): what the aspect type's freeform slot
+  # makes of an undeclared key (`gatedFreeformElem`, `orphanLeaf`), stated over a guard body, which the
+  # type never merges. The vocabulary is plain data, so a checked guard carries the one it was checked
+  # under to its firing (as `__declared`, P3). `declared` is the position's option names where an aspect
+  # type checked the guard (extension options included), else null and `keyCategory` decides.
+  keyVocab = cnf: declared: {
+    inherit declared;
+    inherit (cnf) closedKeys recursiveClosed freeformKeys;
+    semanticKeys = builtins.attrNames cnf.keySemantics;
+    classKeys = builtins.attrNames (
+      prelude.filterAttrs (_: e: builtins.isAttrs e && (e.category or null) == "class") cnf.keySemantics
+    );
+    extensible = cnf.schemaDefs != null;
+  };
+  closedGateRefusal =
+    at: k:
+    "gen-aspects: ${at}: undeclared aspect key '${k}' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)";
+  recursiveGateRefusal =
+    at: k:
+    "gen-aspects: ${at}: undeclared aspect key '${k}' (value is not a nested aspect — a closed "
+    + "aspect vocabulary admits an undeclared key only as a namespace attrset that recurses to a "
+    + "declared class/channel/facet; a primitive/function/list value here is a typo or misplaced "
+    + "content). Declare it in keySemantics, or nest it under a declared key.";
+  orphanLeafText =
+    vocab: anchor: loc: v:
+    let
+      run = builtins.genList (i: builtins.elemAt loc (builtins.length anchor + i)) (
+        builtins.length loc - builtins.length anchor - 1
+      );
+      remedy =
+        if vocab.extensible then
+          "Declare the key — a keySemantics class/channel/facet, or a schema extension "
+          + "`schema.aspect.options.<key>` — or correct its spelling."
+        else
+          "Declare the key as a keySemantics class/channel/facet (this aspect type reads no schema "
+          + "extension; `mkAspectModule` threads them), or correct its spelling.";
+    in
+    "gen-aspects: aspect `${merge.showOption anchor}`: orphan leaf at `${merge.showOption loc}` "
+    + "(a value of type ${builtins.typeOf v} below the undeclared key path `${merge.showOption run}` "
+    + "is neither class content nor an aspect). "
+    + remedy
+    + " Declared class keys: ${
+       if vocab.classKeys == [ ] then "none" else builtins.concatStringsSep ", " vocab.classKeys
+     }.";
+  # The first refusal the freeform slot would throw for `v` placed at `anchor`, or null. `deep` judges
+  # values (the orphan leaf, a recursive or listed descent); without it only the key NAMES are judged
+  # (the closed-key gate), and no field value is forced. A guard record, a term, a refusal value, a
+  # property marker or a functor below is not entered (the carrier route's `isPlainNode`). The walk
+  # spends the lift's depth budget, so a cyclic body ends where `liftAt` refuses it. Per field it
+  # allocates no thunk: the undeclared part is `removeAttrs`, and a value is typed by a primop.
+  undeclaredRefusal =
+    deep: vocab: anchor: v:
+    let
+      declared =
+        if vocab.declared != null then vocab.declared else nativeStructuralKeys ++ vocab.semanticKeys;
+      opaque =
+        c:
+        c.__guard or false || c ? _type || c ? __functor || T.isTerm c || T.isRefusal c || isTypedAspect c;
+      first = builtins.foldl' (acc: r: if acc == null then r else acc) null;
+      go =
+        gated: depth: run: w:
+        let
+          u = removeAttrs w declared;
+          here = "aspect `${prelude.concatStringsSep "." (anchor ++ run)}`";
+          # a slow path, entered only where some undeclared value is an attrset or the position is deep
+          each =
+            f:
+            first (
+              map (k: if builtins.isAttrs u.${k} && opaque u.${k} then null else f k u.${k}) (
+                builtins.attrNames u
+              )
+            );
+          nest =
+            g: k: c:
+            if builtins.isAttrs c then go g (depth + 1) (run ++ [ k ]) c else null;
+        in
+        if depth > GT.maxLiftDepth || u == { } then
+          null
+        else if gated && !vocab.recursiveClosed then
+          let
+            bad = builtins.attrNames (removeAttrs u vocab.freeformKeys);
+          in
+          if bad != [ ] then
+            closedGateRefusal here (builtins.head bad)
+          else if deep then
+            each (nest false)
+          else
+            null
+        else if !deep then
+          null
+        else if gated then
+          each (k: c: if builtins.isAttrs c then nest true k c else recursiveGateRefusal here k)
+        else if run == [ ] && !(builtins.any builtins.isAttrs (builtins.attrValues u)) then
+          null
+        else
+          each (
+            k: c:
+            if builtins.isAttrs c then
+              nest false k c
+            else if c == null || builtins.isFunction c || run == [ ] then
+              null
+            else
+              orphanLeafText vocab anchor (anchor ++ run ++ [ k ]) c
+          );
+    in
+    if builtins.isAttrs v && !(opaque v) then go vocab.closedKeys 0 [ ] v else null;
 
   # hasClassContent v : does this class VALUE carry a definition. The has-content fact `classOptions`
   # below makes representable, NAMED here so a consumer composes with it instead of re-deriving it

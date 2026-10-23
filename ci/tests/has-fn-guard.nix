@@ -39,7 +39,13 @@ let
     ;
   inherit (guardTermInternals) maxLiftDepth;
   # A guard placed at an aspect position, where it meets its cnf and is checked.
-  placed = g: (mkSchemaEval { modules = [ { config.aspects.g = g; } ]; }).config.aspects.g;
+  # `data` is a channel, the declared home of the first-order payloads below.
+  placed =
+    g:
+    (mkSchemaEval {
+      keySemantics.data.category = "channel";
+      modules = [ { config.aspects.g = g; } ];
+    }).config.aspects.g;
 
   # REFUSED = forcing it fails CATCHABLY. The distinction this whole file exists for is invisible to a
   # cell that only reads a value: an abort takes the runner with it, a refusal returns `false` here.
@@ -219,7 +225,7 @@ in
     expr = {
       cyclicRefused = refuses (aspects.guardKey (placed (aspects.guard aspects.pred.always cyclic)));
       inertIsStillContentAddressed = lib.hasPrefix "guard:" (
-        aspects.guardKey (placed (aspects.guard aspects.pred.always inertPayload))
+        aspects.guardKey (placed (aspects.guard aspects.pred.always { data = inertPayload; }))
       );
       # A function outside a module slot is refused by name (`term-function`), never keyed by site.
       lambdaBodyRefused = refuses (
@@ -244,7 +250,7 @@ in
     expr = {
       selfLoopRefused = refuses (aspects.guardKey (placed selfLoopGuard));
       finiteChainKeys = lib.hasPrefix "guard:" (
-        aspects.guardKey (placed (chainOfGuards inertPayload 10))
+        aspects.guardKey (placed (chainOfGuards { data = inertPayload; } 10))
       );
     };
     expected = {
