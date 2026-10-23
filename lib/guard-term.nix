@@ -130,34 +130,52 @@ let
     at: pos:
     "gen-aspects.guard: ${at}: guard-depth: the guard body nests deeper than ${toString maxLiftDepth} levels at `${showPos pos}`; a body that deep is almost always CYCLIC (a guard whose body holds itself, or an attrset containing itself). Pass a finite, acyclic body.";
   none = { };
-  # The vocabulary and anchor of a guard nested at `pos` in a body judged under `vocab` at `anchor`,
-  # as the aspect type gives that position. Below an undeclared key it is a freeform element: its body's
-  # keys sit below the declared aspect, and a listed key opens an ungated subtree (`gatedFreeformElem`).
-  # Below a declared key, an `includes` element or a list it is a declared position.
+  # The vocabulary and anchor of a guard nested at `pos` in a body judged under `vocab` at `anchor`, as
+  # the aspect type gives that position, read segment by segment (`aspectSubmoduleAt`'s freeform slot,
+  # `gatedFreeformElem`). An undeclared key is a freeform element: its body sits below the declared
+  # aspect, and a listed key opens an ungated subtree. `includes` and an index is a declared aspect
+  # position under the gate carried so far. Any other declared key, or a list elsewhere, is no aspect
+  # position, so the guard there gets no undeclared-key judgement (`vocab = null`), as a plain body's
+  # value at that position gets none.
   nestedKeys =
     vocab: anchor: pos:
     let
-      below =
-        pos != [ ]
-        && builtins.all builtins.isString pos
-        && !(builtins.elem (builtins.head pos) vocab.declared);
+      step =
+        s: seg:
+        if s.vocab == null then
+          s
+        else if s.inIncludes then
+          s
+          // {
+            inIncludes = false;
+            vocab = if builtins.isInt seg then s.vocab // { nesting = null; } else null;
+          }
+        else if seg == "includes" then
+          s // { inIncludes = true; }
+        else if builtins.isString seg && !(builtins.elem seg s.vocab.declared) then
+          {
+            inIncludes = false;
+            at = s.at ++ [ seg ];
+            vocab = s.vocab // {
+              closedKeys = s.vocab.closedKeys && s.vocab.recursiveClosed;
+              nesting = {
+                anchor = if s.vocab.nesting == null then s.at else s.vocab.nesting.anchor;
+                deep = s.vocab.nesting != null;
+              };
+            };
+          }
+        else
+          s // { vocab = null; };
+      # `at` tracks the position only while it is an aspect's, which is all `nesting.anchor` reads.
+      walked = builtins.foldl' (s: seg: (step s seg) // { at = (s.at ++ [ (toString seg) ]); }) {
+        inherit vocab;
+        at = anchor;
+        inIncludes = false;
+      } pos;
     in
     {
       anchor = anchor ++ map toString pos;
-      vocab =
-        vocab
-        // (
-          if below then
-            {
-              closedKeys = vocab.closedKeys && vocab.recursiveClosed;
-              nesting = {
-                anchor = if vocab.nesting == null then anchor else vocab.nesting.anchor;
-                deep = true;
-              };
-            }
-          else
-            { nesting = null; }
-        );
+      vocab = if walked.inIncludes then null else walked.vocab;
     };
   liftAt =
     cnf: vocab: anchor: at: depth: pos: v:
@@ -351,7 +369,8 @@ let
           );
           # The plain-data body's undeclared keys, judged as the aspect type's freeform slot judges a
           # static aspect's (den-hoag-ucgg7); a term body is judged where it fires.
-          undeclared = if lifted.bare or false then null else undeclaredRefusal true vocab anchor g.body;
+          undeclared =
+            if vocab == null || lifted.bare or false then null else undeclaredRefusal true vocab anchor g.body;
         in
         if isRefusal r then
           throw (render at r.left)
@@ -552,7 +571,7 @@ let
             k = keys;
             # A fired body's fields resolve where each is read (ADR-0010 §4(a)): only the key names are
             # judged here, so no field is forced.
-            r = undeclaredRefusal false k.vocab k.anchor v;
+            r = if k.vocab == null then null else undeclaredRefusal false k.vocab k.anchor v;
           in
           if r == null then v else throw r;
         env = envOf cnf (args // { nested = g.__nested or { }; });

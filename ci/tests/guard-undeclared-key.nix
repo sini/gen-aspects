@@ -77,14 +77,17 @@ let
         reads = [ "host" ];
       };
     }).right;
-  doorWith = scope: output: {
-    closedKeys = true;
-    ref = _: {
-      right = {
-        inherit output scope;
+  doorIn =
+    cnf: scope: output:
+    cnf
+    // {
+      ref = _: {
+        right = {
+          inherit output scope;
+        };
       };
     };
-  };
+  doorWith = doorIn closed;
   door = doorWith { };
   doorGuard = g (t.ref rid);
   # A door output holding a guard of its own at `includes.0`, which the scope names.
@@ -96,6 +99,34 @@ let
         position = [
           "includes"
           0
+        ];
+        reads = [ "host" ];
+      };
+    }).right;
+  # A guard nested at a position of a body, judged as the aspect type judges that position: `chan` is a
+  # declared channel, whose value is raw, so a guard there gets no aspect-body judgement. The verdict is
+  # the evaluated aspect forced whole (`graphFacts` does not force an `includes` element's gated key).
+  chanKs.keySemantics = {
+    nixos.category = "class";
+    chan.category = "channel";
+  };
+  forced = extra: value: ok (placed (chanKs // extra) value).x;
+  twins = extra: mk: inner: {
+    nested = forced extra (g (mk (g inner)));
+    static = forced extra (mk inner);
+  };
+  served = {
+    nested = true;
+    static = true;
+  };
+  nestedNsId =
+    (T.refId {
+      nested = {
+        outer = rid;
+        sources.host = src "h1";
+        position = [
+          "ns"
+          "chan"
         ];
         reads = [ "host" ];
       };
@@ -222,6 +253,47 @@ in
           .includes
         ).ext;
       expected = "v";
+    };
+    # Below an undeclared key, then a declared channel: the channel's value is raw.
+    test-nested-guard-in-a-channel-below-an-undeclared-key = {
+      expr = twins open (i: { ns.chan = i; }) { foo = 1; };
+      expected = served;
+    };
+    test-nested-guard-in-a-channel = {
+      expr = twins listed (i: { chan = i; }) { foo = 1; };
+      expected = served;
+    };
+    # A list that is not `includes` is no aspect position, under a channel or an undeclared key.
+    test-nested-guard-in-a-channel-list = {
+      expr = twins open (i: { chan = [ i ]; }) { foo.bar = 1; };
+      expected = served;
+    };
+    test-nested-guard-in-an-undeclared-list = {
+      expr = twins open (i: { ns = [ i ]; }) { foo.bar = 1; };
+      expected = served;
+    };
+    # An `includes` element is a declared aspect position under the gate in force there: ungated below a
+    # listed key, gated at a declared aspect, open in the open mode.
+    test-nested-guard-in-includes-below-a-listed-key = {
+      expr = twins listed (i: { sub.includes = [ i ]; }) { bar = 1; };
+      expected = served;
+    };
+    test-nested-guard-in-includes-gated = {
+      expr = twins listed (i: { includes = [ i ]; }) { foo = 1; };
+      expected = {
+        nested = false;
+        static = false;
+      };
+    };
+    test-nested-guard-in-includes-open = {
+      expr = twins open (i: { includes = [ i ]; }) { foo = 1; };
+      expected = served;
+    };
+    # The same position in a door's output.
+    test-door-output-nested-guard-in-a-channel-below-an-undeclared-key = {
+      expr =
+        (entryOf (doorIn chanKs { ${nestedNsId} = null; } { ns.chan = g { foo = 1; }; }) doorGuard).ns.chan;
+      expected.foo = 1;
     };
     # Controls: a class key, an extension key and an open first-level datum are served as written, and
     # so is a door output holding a class key.
