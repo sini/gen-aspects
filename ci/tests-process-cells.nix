@@ -66,9 +66,11 @@ let
   };
   st = spied.types;
   # U2-h: the same evaluator wrapped a second time so an explicit ROOT call also traces
-  # `<label>-door` — the bridge price is `evals - doors`.
+  # `<label>-door` — the bridge price is `evals - doors`. Both published root entries are doors:
+  # `declaredOptions` (gen-schema's kind introspection) fires its own evaluation, as `evalModuleTree` does.
   spiedDoored = spied // {
     evalModuleTree = a: builtins.trace "${label}-door" (spied.evalModuleTree a);
+    declaredOptions = a: builtins.trace "${label}-door" (spied.declaredOptions a);
   };
   gs = import "${genSchemaSrc}/lib" {
     inherit
