@@ -2131,8 +2131,26 @@ in
             reads = [ "host" ];
           };
         }).right;
+      # Below the listed key `sub` a guard body's first-level scalar is an orphan leaf named from `x`.
+      listed = {
+        closedKeys = true;
+        freeformKeys = [ "sub" ];
+      };
+      listedOrphan = exactly (
+        "gen-aspects: aspect `x`: orphan leaf at `x.sub.foo` (a value of type int below "
+        + "the undeclared key path `sub` is neither class content nor an aspect). Declare the key — "
+        + "a keySemantics class/channel/facet, or a schema extension `schema.aspect.options.<key>` — or "
+        + "correct its spelling. Declared class keys: nixos."
+      );
     in
     {
+      test-listed-orphan-leaf-static = thrown (facts listed { sub.foo = 1; }) listedOrphan;
+      test-listed-orphan-leaf-guard-at-the-key = thrown (facts listed {
+        sub = g { foo = 1; };
+      }) listedOrphan;
+      test-listed-orphan-leaf-nested-guard = thrown (facts listed (g {
+        sub = g { foo = 1; };
+      })) listedOrphan;
       test-orphan-leaf-static = thrown (facts { } { hm.home.username = "u"; }) orphan;
       test-orphan-leaf-guard = thrown (facts { } (g {
         hm.home.username = "u";

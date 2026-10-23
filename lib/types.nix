@@ -653,7 +653,7 @@ let
         if isGuardRecordDef d then
           (
             let
-              g = GT.checkGuardIn (keyVocab cnf (builtins.attrNames declaredKeys)) loc cnf "aspect `${
+              g = GT.checkGuardIn guardVocab loc cnf "aspect `${
                 prelude.concatStringsSep "." (d.loc or [ "<guard-carrier>" ])
               }`" d.value;
             in
@@ -701,6 +701,10 @@ let
       # definition did not write, apart from an empty `includes` at a nested position, and no typed
       # default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
       declaredKeys = sub.getSubOptions [ ];
+      # the vocabulary a guard placed at this position is judged under
+      guardVocab = keyVocab cnf (builtins.attrNames declaredKeys) // {
+        inherit nesting;
+      };
       # an undeclared key of an aspect: a nested aspect position (the freeform slot)
       isNestedKey = k: k != "includes" && !(declaredKeys ? ${k});
       # a value the projection enters: a plain attrset, not a property, a guard record or a functor
@@ -960,17 +964,13 @@ let
             # name/meta attached (meta.loc gives an opaque-body guard a site-distinguished key;
             # not hashed by guardKey).
             {
-              value =
-                GT.checkGuardIn (keyVocab cnf (
-                  builtins.attrNames declaredKeys
-                )) loc cnf "aspect `${prelude.concatStringsSep "." loc}`" v
-                // {
-                  name = prelude.last loc;
-                  meta = (v.meta or { }) // {
-                    inherit loc;
-                    file = (builtins.head defs).file or "<unknown>";
-                  };
+              value = GT.checkGuardIn guardVocab loc cnf "aspect `${prelude.concatStringsSep "." loc}`" v // {
+                name = prelude.last loc;
+                meta = (v.meta or { }) // {
+                  inherit loc;
+                  file = (builtins.head defs).file or "<unknown>";
                 };
+              };
             }
           else if isTypedAspect v then
             { value = v; }
@@ -1229,11 +1229,13 @@ let
   # makes of an undeclared key (`gatedFreeformElem`, `orphanLeaf`), stated over a guard body, which the
   # type never merges. The vocabulary is plain data, so a checked guard carries the one it was checked
   # under to its firing (as `__declared`, P3). `declared` is the position's option names where an aspect
-  # type checked the guard (extension options included), else null and `keyCategory` decides.
+  # type checked the guard (extension options included), else null and `keyCategory` decides. `nesting`
+  # is the position's (`aspectType`): non-null, the body's own keys already sit below an undeclared one.
   keyVocab = cnf: declared: {
-    inherit declared;
+    declared =
+      if declared != null then declared else nativeStructuralKeys ++ builtins.attrNames cnf.keySemantics;
+    nesting = null;
     inherit (cnf) closedKeys recursiveClosed freeformKeys;
-    semanticKeys = builtins.attrNames cnf.keySemantics;
     classKeys = builtins.attrNames (
       prelude.filterAttrs (_: e: builtins.isAttrs e && (e.category or null) == "class") cnf.keySemantics
     );
@@ -1278,8 +1280,11 @@ let
   undeclaredRefusal =
     deep: vocab: anchor: v:
     let
-      declared =
-        if vocab.declared != null then vocab.declared else nativeStructuralKeys ++ vocab.semanticKeys;
+      inherit (vocab) declared;
+      # Below an undeclared key (a non-null `nesting`), a first-level scalar is already an orphan leaf,
+      # named from the declared aspect above it, as `orphanLeaf` names it.
+      shallow = vocab.nesting == null;
+      orphanAnchor = if shallow then anchor else vocab.nesting.anchor;
       opaque =
         c:
         c.__guard or false || c ? _type || c ? __functor || T.isTerm c || T.isRefusal c || isTypedAspect c;
@@ -1317,17 +1322,17 @@ let
           null
         else if gated then
           each (k: c: if builtins.isAttrs c then nest true k c else recursiveGateRefusal here k)
-        else if run == [ ] && !(builtins.any builtins.isAttrs (builtins.attrValues u)) then
+        else if run == [ ] && shallow && !(builtins.any builtins.isAttrs (builtins.attrValues u)) then
           null
         else
           each (
             k: c:
             if builtins.isAttrs c then
               nest false k c
-            else if c == null || builtins.isFunction c || run == [ ] then
+            else if c == null || builtins.isFunction c || (run == [ ] && shallow) then
               null
             else
-              orphanLeafText vocab anchor (anchor ++ run ++ [ k ]) c
+              orphanLeafText vocab orphanAnchor (anchor ++ run ++ [ k ]) c
           );
     in
     if builtins.isAttrs v && !(opaque v) then go vocab.closedKeys 0 [ ] v else null;

@@ -130,6 +130,35 @@ let
     at: pos:
     "gen-aspects.guard: ${at}: guard-depth: the guard body nests deeper than ${toString maxLiftDepth} levels at `${showPos pos}`; a body that deep is almost always CYCLIC (a guard whose body holds itself, or an attrset containing itself). Pass a finite, acyclic body.";
   none = { };
+  # The vocabulary and anchor of a guard nested at `pos` in a body judged under `vocab` at `anchor`,
+  # as the aspect type gives that position. Below an undeclared key it is a freeform element: its body's
+  # keys sit below the declared aspect, and a listed key opens an ungated subtree (`gatedFreeformElem`).
+  # Below a declared key, an `includes` element or a list it is a declared position.
+  nestedKeys =
+    vocab: anchor: pos:
+    let
+      below =
+        pos != [ ]
+        && builtins.all builtins.isString pos
+        && !(builtins.elem (builtins.head pos) vocab.declared);
+    in
+    {
+      anchor = anchor ++ map toString pos;
+      vocab =
+        vocab
+        // (
+          if below then
+            {
+              closedKeys = vocab.closedKeys && vocab.recursiveClosed;
+              nesting = {
+                anchor = if vocab.nesting == null then anchor else vocab.nesting.anchor;
+                deep = true;
+              };
+            }
+          else
+            { nesting = null; }
+        );
+    };
   liftAt =
     cnf: vocab: anchor: at: depth: pos: v:
     if depth > maxLiftDepth then
@@ -164,10 +193,12 @@ let
       throw "gen-aspects.guard: ${at}: ${refusalReachedText (refusalShapeOf v)}"
     else if builtins.isAttrs v && (v.__guard or false) then
       let
-        # A nested guard's body sits at its position in the outer aspect, under the outer's vocabulary.
-        inner = checkGuardAt cnf vocab (
-          anchor ++ map toString pos
-        ) "${rootAt at}, the guard nested ${toString (depth + 1)} deep at `${showPos pos}`" (depth + 1) v;
+        k = nestedKeys vocab anchor pos;
+        inner =
+          checkGuardAt cnf k.vocab k.anchor
+            "${rootAt at}, the guard nested ${toString (depth + 1)} deep at `${showPos pos}`"
+            (depth + 1)
+            v;
         id = builtins.toJSON {
           guard = {
             at = pos;
@@ -405,18 +436,19 @@ let
   # Each position of `ps` in `v` replaced by what `fireAt` makes of it, in ONE pass: the positions are
   # grouped by their first segment, so a list is rebuilt once however many of its elements are patched
   # (one write per position rebuilds it once per position, quadratic in the fan-out). A position below
-  # another is patched first, and the guard above it fires over the patched value. `fireAt` answers
+  # another is patched first, and the guard above it fires over the patched value. `fireAt` is handed
+  # the position (`at`, walked from the output's root) and answers
   # `{ value; scope; }`, and so does `patchAt`: its scope is the union of every firing's, each taken
   # from the one firing whose value it patched in (never fired a second time to read it).
   patchAt =
-    fireAt: ps: v:
+    fireAt: at: ps: v:
     let
       deeper = builtins.filter (p: p != [ ]) ps;
       groups = builtins.groupBy (p: builtins.toJSON (builtins.head p)) deeper;
       seg = g: builtins.head (builtins.head g);
       subs = builtins.mapAttrs (
         _: g:
-        patchAt fireAt (map builtins.tail g) (
+        patchAt fireAt (at ++ [ (seg g) ]) (map builtins.tail g) (
           if builtins.isList v then builtins.elemAt v (seg g) else v.${seg g}
         )
       ) groups;
@@ -438,7 +470,7 @@ let
       below = builtins.foldl' (acc: s: acc // s.scope) { } (builtins.attrValues subs);
       top =
         if builtins.elem [ ] ps then
-          fireAt patched
+          fireAt at patched
         else
           {
             value = patched;
@@ -509,14 +541,15 @@ let
       throw "gen-aspects.guard: ${at}: one-declared-set: this guard was checked under the declared set ${builtins.toJSON g.__declared} and is fired under ${builtins.toJSON (declaredFor cnf)}; a guard is checked and resolved under ONE set, the framework's (fire it through the vocabulary of the cnf that placed it)."
     else
       let
+        keys =
+          g.__keys or {
+            vocab = keyVocab cnf null;
+            anchor = [ "<guard>" ];
+          };
         judged =
           v:
           let
-            k =
-              g.__keys or {
-                vocab = keyVocab cnf null;
-                anchor = [ "<guard>" ];
-              };
+            k = keys;
             # A fired body's fields resolve where each is read (ADR-0010 §4(a)): only the key names are
             # judged here, so no field is forced.
             r = undeclaredRefusal false k.vocab k.anchor v;
@@ -579,10 +612,12 @@ let
               null;
           problems = builtins.filter (x: x != null) (map located decoded);
           scope = args.scope // res.scope;
+          # A nested guard in the output is checked at its position, as one in an authored body is.
           fireAt =
-            x:
+            pos: x:
             let
-              r = fireScoped cnf at (args // { inherit scope; }) (checkGuard cnf at x);
+              k = nestedKeys keys.vocab keys.anchor pos;
+              r = fireScoped cnf at (args // { inherit scope; }) (checkGuardAt cnf k.vocab k.anchor at 0 x);
             in
             if r.value == null then
               {
@@ -600,7 +635,7 @@ let
           shape (builtins.head problems)
         else
           let
-            patched = patchAt fireAt (map (d: d.r.nested.position) decoded) res.output;
+            patched = patchAt fireAt [ ] (map (d: d.r.nested.position) decoded) res.output;
           in
           {
             value = judged patched.value;

@@ -46,20 +46,20 @@ let
     {
       inherit (f) nodes deadNested deliversOf;
     };
-  entry =
+  entry = extra: value: builtins.attrNames (entryOf extra value);
+  entryOf =
     extra: value:
-    builtins.attrNames
-      (a.instanceOf (cnfOf extra) { } {
-        aspect = "x";
-        context = {
-          host = "h1";
-          payload.hm.home.username = "u";
-        };
-        sources = {
-          host = src "h1";
-          payload = src "p1";
-        };
-      } (placed extra value).x).entry;
+    (a.instanceOf (cnfOf extra) { } {
+      aspect = "x";
+      context = {
+        host = "h1";
+        payload.hm.home.username = "u";
+      };
+      sources = {
+        host = src "h1";
+        payload = src "p1";
+      };
+    } (placed extra value).x).entry;
 
   open = { };
   closed.closedKeys = true;
@@ -77,16 +77,34 @@ let
         reads = [ "host" ];
       };
     }).right;
-  door = output: {
+  doorWith = scope: output: {
     closedKeys = true;
     ref = _: {
       right = {
-        inherit output;
-        scope = { };
+        inherit output scope;
       };
     };
   };
+  door = doorWith { };
   doorGuard = g (t.ref rid);
+  # A door output holding a guard of its own at `includes.0`, which the scope names.
+  nestedId =
+    (T.refId {
+      nested = {
+        outer = rid;
+        sources.host = src "h1";
+        position = [
+          "includes"
+          0
+        ];
+        reads = [ "host" ];
+      };
+    }).right;
+  # `sub` is a listed undeclared key: the aspect type opens an ungated subtree below it.
+  listed = {
+    closedKeys = true;
+    freeformKeys = [ "sub" ];
+  };
 in
 {
   flake.tests.guard-undeclared-key = {
@@ -143,6 +161,67 @@ in
     test-fired-door-output = {
       expr = ok (entry (door { hm = "u"; }) doorGuard);
       expected = false;
+    };
+    # A guard nested below a listed key is judged as the aspect type judges that position: ungated, so
+    # an undeclared namespace reaching a class key is served, as its static twin, the same guard placed
+    # at the key, and the same namespace in a plain body are.
+    test-nested-guard-below-a-listed-key-is-ungated = {
+      expr = {
+        nestedGuard = ok (
+          facts listed (g {
+            sub = g { foo.nixos.x = 1; };
+          })
+        );
+        staticTwin = ok (facts listed { sub.foo.nixos.x = 1; });
+        guardAtKey = ok (facts listed { sub = g { foo.nixos.x = 1; }; });
+        plainBody = ok (
+          facts listed (g {
+            sub.foo.nixos.x = 1;
+          })
+        );
+      };
+      expected = {
+        nestedGuard = true;
+        staticTwin = true;
+        guardAtKey = true;
+        plainBody = true;
+      };
+    };
+    # Below an undeclared key a guard body's first-level scalar is already an orphan leaf, as its static
+    # twin's is: placed at the listed key, and nested below it.
+    test-guard-below-a-listed-key-orphan-leaf = {
+      expr = {
+        guardAtKey = ok (facts listed { sub = g { foo = 1; }; });
+        nestedGuard = ok (
+          facts listed (g {
+            sub = g { foo = 1; };
+          })
+        );
+        staticTwin = ok (facts listed { sub.foo = 1; });
+      };
+      expected = {
+        guardAtKey = false;
+        nestedGuard = false;
+        staticTwin = false;
+      };
+    };
+    # A nested guard is judged under the vocabulary of the aspect it sits in, so a schema extension the
+    # type declares is declared there too: in an authored body, and in a door's output.
+    test-nested-guard-holds-an-extension-key = {
+      expr = ok (
+        entry listed (g {
+          sub = g { ext = "v"; };
+        })
+      );
+      expected = true;
+    };
+    test-door-output-nested-guard-holds-an-extension-key = {
+      expr =
+        (builtins.head
+          (entryOf (doorWith { ${nestedId} = null; } { includes = [ (g { ext = "v"; }) ]; }) doorGuard)
+          .includes
+        ).ext;
+      expected = "v";
     };
     # Controls: a class key, an extension key and an open first-level datum are served as written, and
     # so is a door output holding a class key.
