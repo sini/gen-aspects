@@ -147,6 +147,18 @@
           prelude = gen-prelude.lib;
           inherit (genAlgebra) identityOf isExact;
         };
+        # The type module, for the one refusal no published route reaches: `unnamedSite` over a seed
+        # handed no declaration address (`siteRefusal`). Every include member states `nests.declAt`,
+        # so the cell calls the binding directly and asserts its text on the renderer.
+        typesInternals = import ../lib/types.nix {
+          prelude = gen-prelude.lib;
+          merge = genMerge;
+          schema = genSchema;
+          cnfDoor = null;
+          T = null;
+          inherit (genIdentity) hashIdentity;
+          inherit (genAlgebra) identityOf isExact;
+        };
         # The guard-term instance's depth budget, so the cells straddling it read the bound rather than
         # restate it, and the instance a guard is checked under, for the cell that checks a checked
         # record's whole body against gen-algebra as published (den-hoag-egkyp). `instanceFor` takes a
