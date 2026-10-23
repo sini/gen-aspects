@@ -129,12 +129,14 @@ in
       anon = aspects.isMeaningfulName "<anon>";
       fn = aspects.isMeaningfulName "<function body>";
       def = aspects.isMeaningfulName "[definition 1-entry 1]";
+      decl = aspects.isMeaningfulName ''["km-U","aspects","owner","includes",0]'';
       real = aspects.isMeaningfulName "networking";
     };
     expected = {
       anon = false;
       fn = false;
       def = false;
+      decl = false;
       real = true;
     };
   };

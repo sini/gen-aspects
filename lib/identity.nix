@@ -80,8 +80,16 @@ let
       }
     );
 
+  # A name the author wrote, not one the type defaulted: an unnamed include element's default `name`
+  # (and its `description`, `Aspect <name>`) renders its declaration address, one JSON segment that
+  # starts `["` (`types.nix` `declSegment`); nixpkgs' list position `[definition N-entry M]` is the
+  # default anywhere else a list element is not handed one.
   isMeaningfulName =
-    name: name != "<anon>" && name != "<function body>" && !(prelude.hasPrefix "[definition " name);
+    name:
+    name != "<anon>"
+    && name != "<function body>"
+    && !(prelude.hasPrefix "[definition " name)
+    && !(prelude.hasPrefix "[\"" name);
 
   # hasFn: does the value (recursively) contain a function anywhere? Forces structure.
   # REQUIRED because builtins.toJSON on a function is an UNCATCHABLE error (verified:

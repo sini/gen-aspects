@@ -43,16 +43,19 @@ let
   # An inline element's declaring SITE (identity design §2, a raw named value: the position of its
   # `name` attribute and the name). A named attrset element is declared at
   # `<owner> includes <name>@<line>:<column>:<file>`, so two elements sharing a name at two positions
-  # are two declarations, and module order moves neither (ADR-0034's rider: the declaring position,
-  # never the merged one). `@` is escaped in the name, so the segment is injective, and `path.nix`
-  # escapes the file's `/` where the path is rendered.
+  # are two declarations (ADR-0034's rider: the declaring position, never the merged one). A nested
+  # element's `<owner>` is its enclosing element's DECLARED loc, since every element's tree is
+  # evaluated at its declared site (`includeEntryCoercedAt`): module order moves no key whose
+  # ancestors are declared by a path or a keyed module. `@` is escaped in the name, so the segment is
+  # injective, and `path.nix` escapes the file's `/` where the path is rendered.
   #
   # An element with no positioned string `name` is declared at its DECLARATION ADDRESS (gen-merge's
   # `declAt` on the seed definition: the declaring module's anchor and the structural path to the
   # element, identity design §1), rendered injectively as one segment: its JSON with `%` and `@`
   # escaped, so it never holds the raw `@` a named site's segment holds, and never starts `[d` as the
-  # merge position does. Never minted (7gp66 OQ4 (b′)). Outside an evaluation, where no tree hands an
-  # address, it keeps its merge position (`[definition N-entry M]`).
+  # merge position does. Never minted (7gp66 OQ4 (b′)). An element handed no address has no declaring
+  # position, so it refuses by name (`siteRefusal`); no published route reaches that branch, since
+  # every include member states `nests.declAt`.
   declSegment = declAt: builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] (builtins.toJSON declAt);
   # The segment is the whole declaration address, so it names the element alone: the loc is the
   # OWNER (the walk node whose `includes` the outermost element sits in) and `includes` and that
@@ -73,7 +76,11 @@ let
         (declSegment d.declAt)
       ]
     else
-      prefix;
+      throw (siteRefusal prefix);
+  # The refusal `unnamedSite` throws, a renderer so a ci-side import of this file asserts its text.
+  siteRefusal =
+    prefix:
+    "gen-aspects: the include element at `${merge.showOption prefix}' was handed no declaration address (gen-merge's `nests.declAt`), so it has no declaring position to be keyed by; evaluate it through an include position of an aspect type.";
   includeSite =
     d: prefix:
     let
@@ -90,7 +97,7 @@ let
         }@${toString pos.line}:${toString pos.column}:${pos.file}"
       ];
   # The element, read as a module that also DEFINES its declared path, from the module argument
-  # `prefix` (its merge position) and its own authored value. An authored `key`, `id_hash` or
+  # `prefix` (its declared position, `includeEntryCoercedAt`) and its own authored value. An authored `key`, `id_hash` or
   # `meta.loc` refuses by name BEFORE the wrap: inside `imports` the attrset is a module, and its
   # top-level `key` would be the module key, dropped silently or deduplicating the element away.
   stampIncludeSite =
@@ -525,8 +532,17 @@ let
   # coerced definitions, as the union's fold made it before the port.
   entryCoerced = entryCoercedWith { };
   # The same member at an include position: its tree is handed each seed's declaration address
-  # (gen-merge `nests.declAt`), which the site stamps below read.
-  includeEntryCoerced = entryCoercedWith { declAt = true; };
+  # (gen-merge `nests.declAt`), which the site stamps below read, and is evaluated at the element's
+  # DECLARED site (gen-merge `nests.locOf`): `site` maps the seed and its merge position to the
+  # position the element was declared at, so its stamps, its `name`, its children's `prefix` and the
+  # paths its messages show read the declaration, never the list index the merge gave it.
+  includeEntryCoerced = includeEntryCoercedAt unnamedSite;
+  includeEntryCoercedAt =
+    site:
+    entryCoercedWith {
+      declAt = true;
+      locOf = loc: d: site d loc;
+    };
   entryCoercedWith =
     flags: sub: coerce:
     let
@@ -1144,7 +1160,8 @@ let
   # A union (above) over its nesting members: the element reading a bare module AS a module; the
   # aspect member, which stamps an unnamed element's declared site (`stampUnnamed`); a named element,
   # stamped at its `name` (`stampIncludeSite`); and a typed content COPY, re-declared at this site
-  # (`restampCopy`). Every member reads the seed's declaration address (`includeEntryCoerced`), the
+  # (`restampCopy`). Every member reads the seed's declaration address and is evaluated at its
+  # declared site (`includeEntryCoerced`; the named member at its `name`, `includeSite`), the
   # bare module stamped as a module (`stampUnnamed`). A
   # node's value is a reference and passes through as itself.
   includesElemType =
@@ -1157,7 +1174,7 @@ let
       # any other, so it is stamped at its declared site (`stampUnnamed`'s module arm).
       (includeEntryCoerced (aspectSubmodule cnf) (d: stampUnnamed (d // { value = _: d.value; })))
       (includeAspectOrFn cnf)
-      (includeEntryCoerced (aspectSubmodule cnf) stampIncludeSite)
+      (includeEntryCoercedAt includeSite (aspectSubmodule cnf) stampIncludeSite)
       (includeEntryCoerced (aspectSubmodule cnf) restampCopy)
     ];
   includesElemTypeOver =
@@ -1520,12 +1537,13 @@ let
         # `isTypedAspect`): a typed value carried by value (an include, an alias at a tree position)
         # is passed through as a reference and never re-merged against these definitions.
         #
-        # No `meta.loc` at the container root (`prefix == [ ]`), which declares nothing, nor on an
-        # element written in an `includes` list: its prefix is its MERGE position
-        # (`[definition N-entry M]`), which moves with module order, while identity is the DECLARING
-        # position and reordering includes changes nothing (ADR-0034's den-module rider). Such an
-        # element keeps its field-keyed identity, the same `includes`-past-the-first test
-        # `facts.nix`' `isIncludeContent` reads.
+        # No `meta.loc` here at the container root (`prefix == [ ]`), which declares nothing, nor on
+        # an element written in an `includes` list, whose `meta.loc` its include member's stamp writes
+        # (`stampIncludeSite`, `stampUnnamed`, `restampCopy`); the same `includes`-past-the-first test
+        # `facts.nix`' `isIncludeContent` reads. Such an element's tree is evaluated at its DECLARED
+        # position (`includeEntryCoercedAt`), so its `prefix`, and the `name` and `aspect-chain`
+        # rendered from it, name the declaration and never move with module order (ADR-0034's
+        # den-module rider); an unnamed element's default `name` is its declaration-address segment.
         config.meta = {
           aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
         }
@@ -1804,4 +1822,7 @@ in
     GT
     ;
   structuralKeys = nativeStructuralKeys;
+  # For the ci-side cell on the refusal (`ci/tests/nested-include-identity.nix`), NOT re-exported from
+  # `lib/default.nix`: no published route reaches `unnamedSite` without an address.
+  inherit unnamedSite siteRefusal;
 }

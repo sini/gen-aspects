@@ -209,7 +209,7 @@ in
       # A literal's `key` is a caller write of an identity input, refused by the type that writes it
       # (den-hoag-gywcg) before any registry lookup.
       test-key-naming-no-node = thrown (read (_: [ { key = "no/such"; } ])) (
-        exactly "gen-aspects: the option `app.includes.\"[definition 1-entry 1]\".key' is written by the aspect type; remove the definition."
+        exactly "gen-aspects: the option `app.includes.\"[\\\"a:2\\\",\\\"aspects\\\",\\\"app\\\",\\\"includes\\\",0]\".key' is written by the aspect type; remove the definition."
       );
       test-bare-string-naming-nothing = thrown (read (_: [ "lib/bsae" ])) (
         exactly (refusals.unknownReference door "lib/bsae")
@@ -270,12 +270,14 @@ in
       test-open-gate = thrown (gated { } { nixso.boot = { }; }).nixso (
         exactly "gen-aspects: aspect `hem`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
       );
-      # An inline `includes` element is gated by the same submodule, and is named by its position:
-      # nixpkgs `listOf`'s segment, `[definition n-entry m]`, which gen-merge's `listOf` folds it at.
+      # An inline `includes` element is gated by the same submodule, and is named by its declaration:
+      # its tree is evaluated at its declared position, so the segment is its declaration address
+      # (the declaring module's anchor and the path to the element), never nixpkgs' `listOf` segment
+      # `[definition n-entry m]`, which moves with module order.
       test-open-gate-include =
         thrown (builtins.head (gated { } { includes = [ { nixso.x = 1; } ]; }).includes).nixso
           (
-            exactly "gen-aspects: aspect `hem.includes.[definition 1-entry 1]`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
+            exactly "gen-aspects: aspect `hem.includes.[\"a:2\",\"aspects\",\"hem\",\"includes\",0]`: undeclared aspect key 'nixso' (closed-key gate on; declare it in keySemantics or list it in freeformKeys)"
           );
       test-recursive-gate = thrown (gated { recursiveClosed = true; } { ns.nixso = "x"; }).ns.nixso (
         exactly (
