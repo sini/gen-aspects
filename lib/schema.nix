@@ -16,6 +16,7 @@
   canTake,
   keyCategory,
   keyedConstruction,
+  constructionKey,
   constructionPayload,
 }:
 let
@@ -213,6 +214,7 @@ in
           (constructionPayload "gen-aspects.mkAspectModule" (extendCnf cnf { inherit providerPrefix; }))
         ({ config, ... }:
         {
+          key = constructionKey "gen-aspects-aspect-module" (constructionPayload "gen-aspects.mkAspectModule" (extendCnf cnf { inherit providerPrefix; }));
           options.aspects = merge.mkOption {
             description = "Aspects";
             default = { };
