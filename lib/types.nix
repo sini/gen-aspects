@@ -25,6 +25,7 @@
   hashIdentity,
   identityOf,
   isExact,
+  sealedCollisionEq,
   T,
 }:
 let
@@ -266,6 +267,27 @@ let
     in
     schema.constructionRelation (c // { minted = c.minted // minted; }) name self;
   t = merge.types;
+
+  # THE CONSTRUCTION KEY (den-hoag-xh14j arm (ii)), gen-schema's kind key form: a module that is a
+  # construction's own declaration is keyed `<meeting>#<mark>`, the mark its construction's mint
+  # (`cnfFunctor`'s payload), and decided at a meeting by `sealedCollisionEq` over its sealed
+  # components, so one construction reached twice is one module and two sharing the mark are refused
+  # by name. The key rides the result, the comparison the record (a foreign evaluator applies the
+  # functor and reads the result only). Merged payload (the cnf's module lists) is never in it.
+  keyedConstruction =
+    meeting: payload: fn:
+    {
+      __functor = _: args: fn args // { key = "${meeting}#${payload.mark}"; };
+      __functionArgs = builtins.functionArgs fn;
+      __keyEq = {
+        subject = {
+          name = meeting;
+          inherit (payload) mark sealed;
+        };
+        decide = sealedCollisionEq "gen-aspects: ${meeting} is imported twice under one key";
+        inherit meeting;
+      };
+    };
 
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
   mkIsModuleFn = cnf: canTake.upTo cnf.moduleArgs;
@@ -1465,8 +1487,32 @@ let
       facetModules = prelude.mapAttrsToList (_: e: e.module) (
         prelude.filterAttrs (_: e: categoryOf e == "facet" && e ? module) ks
       );
+      # the keyed core's cnf: its identity content, the merged lists empty (lib/cnf.nix regimes)
+      coreCnf = cnf // {
+        aspectModules = [ ];
+        metaModules = [ ];
+      };
+      freeformOf =
+        c: prefix:
+        let
+          below =
+            if nesting == null then
+              {
+                anchor = prefix;
+                deep = false;
+              }
+            else
+              {
+                inherit (nesting) anchor;
+                deep = true;
+              };
+        in
+        t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem c below else aspectTypeAt c below);
     in
-    merge.submodule (
+    merge.submodule [
+      (keyedConstruction "gen-aspects-aspect"
+        (cnfFunctor "gen-aspects.aspectSubmodule" cnf (if nesting == null then { } else { inherit nesting; }) null).payload
+      (
       {
         name,
         config,
@@ -1495,29 +1541,12 @@ let
         stampedId = builtins.seq locChecked (mintAspectId cnf.providerPrefix config);
       in
       {
-        freeformType =
-          let
-            below =
-              if nesting == null then
-                {
-                  anchor = prefix;
-                  deep = false;
-                }
-              else
-                {
-                  inherit (nesting) anchor;
-                  deep = true;
-                };
-          in
-          t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem cnf below else aspectTypeAt cnf below);
+        freeformType = freeformOf coreCnf prefix;
         config._module.args.aspect = config;
         # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
         # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
         # schema-declared instance-option propagation.
-        imports =
-          facetModules
-          ++ cnf.aspectModules
-          ++ prelude.optional (cnf.schemaDefs != null) cnf.schemaDefs.module;
+        imports = facetModules ++ prelude.optional (cnf.schemaDefs != null) cnf.schemaDefs.module;
 
         # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
         # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
@@ -1601,13 +1630,12 @@ let
             default = { };
             type = merge.submodule {
               freeformType = t.lazyAttrsOf t.raw;
-              imports = cnf.metaModules;
             };
           };
 
           includes = merge.mkOption {
             description = "Aspects to include";
-            type = t.listOf (includesElemType cnf);
+            type = t.listOf (includesElemType coreCnf);
             default = includesDefault;
           };
         }
@@ -1616,7 +1644,24 @@ let
         // facetOptions
         // refusedOptions;
       }
-    );
+      ))
+      # the cnf's MERGED payload, unkeyed: two declarations' module lists concatenate (lib/cnf.nix),
+      # here and, through the per-cnf relation, at the positions whose types carry the cnf
+      (
+        {
+          prefix ? [ ],
+          ...
+        }:
+        {
+          imports = cnf.aspectModules;
+          freeformType = freeformOf cnf prefix;
+          options.includes = merge.mkOption { type = t.listOf (includesElemType cnf); };
+          options.meta = merge.mkOption {
+            type = merge.submodule { imports = cnf.metaModules; };
+          };
+        }
+      )
+    ];
 
   # aspectsRoot — the top aspect-container element type. A `lazyAttrsOf aspectType` that
   # RE-ROOTS: each first-level aspect is merged at `prefix = [ key ]` (NOT `containerLoc ++
@@ -1825,4 +1870,7 @@ in
   # For the ci-side cell on the refusal (`ci/tests/nested-include-identity.nix`), NOT re-exported from
   # `lib/default.nix`: no published route reaches `unnamedSite` without an address.
   inherit unnamedSite siteRefusal;
+  # the construction key, for `mkAspectModule` (lib/schema.nix)
+  inherit keyedConstruction;
+  constructionPayload = name: cnf: (cnfFunctor name cnf { } null).payload;
 }

@@ -30,7 +30,7 @@ let
       T
       ;
     inherit (identity) hashIdentity;
-    inherit (algebra) identityOf isExact;
+    inherit (algebra) identityOf isExact sealedCollisionEq;
   };
   # ★ RENAMED FROM `identity` TO AVOID SHADOWING THE INJECTED MINT. gen-identity arrives as
   # `identity` on the ecosystem's convention — the library name minus `gen-`, as prelude, merge
@@ -85,6 +85,8 @@ let
       aspectsRoot
       mkIsModuleFn
       keyCategory
+      keyedConstruction
+      constructionPayload
       ;
     inherit (aspectIdentity)
       aspectPath
