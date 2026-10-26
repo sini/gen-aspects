@@ -86,6 +86,7 @@ let
       mkIsModuleFn
       keyCategory
       keyedConstruction
+      constructionKey
       constructionPayload
       ;
     inherit (aspectIdentity)
