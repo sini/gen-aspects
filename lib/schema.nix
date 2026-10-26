@@ -15,6 +15,8 @@
   isMeaningfulName,
   canTake,
   keyCategory,
+  keyedConstruction,
+  constructionPayload,
 }:
 let
   t = merge.types;
@@ -205,7 +207,11 @@ in
         let
           providerPrefix = opts.providerPrefix or [ ];
         in
-        { config, ... }:
+        # keyed by its construction (the cnf and `providerPrefix`; `schemaDefs` is the one term
+        # `schemaDefsOf` states), so one construction imported twice is one module
+        keyedConstruction "gen-aspects-aspect-module"
+          (constructionPayload "gen-aspects.mkAspectModule" (extendCnf cnf { inherit providerPrefix; }))
+        ({ config, ... }:
         {
           options.aspects = merge.mkOption {
             description = "Aspects";
@@ -223,7 +229,7 @@ in
               }
             );
           };
-        }
+        })
       );
 
       # `config` is the enclosing evaluation's config: a namespace's aspects are of the one `aspect`
