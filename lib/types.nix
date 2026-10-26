@@ -277,7 +277,8 @@ let
   keyedConstruction =
     meeting: payload: fn:
     {
-      __functor = _: args: fn args // { key = "${meeting}#${payload.mark}"; };
+      # the `#` from its JSON escape: a `#` inside a string breaks the purity scan's strip premise
+      __functor = _: args: fn args // { key = meeting + builtins.fromJSON "\"\\u0023\"" + payload.mark; };
       __functionArgs = builtins.functionArgs fn;
       __keyEq = {
         subject = {

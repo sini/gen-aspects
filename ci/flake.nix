@@ -159,7 +159,7 @@
           cnfDoor = null;
           T = null;
           inherit (genIdentity) hashIdentity;
-          inherit (genAlgebra) identityOf isExact;
+          inherit (genAlgebra) identityOf isExact sealedCollisionEq;
         };
         # The guard-term instance's depth budget, so the cells straddling it read the bound rather than
         # restate it, and the instance a guard is checked under, for the cell that checks a checked
