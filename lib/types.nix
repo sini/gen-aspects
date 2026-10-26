@@ -272,14 +272,19 @@ let
   # construction's own declaration is keyed `<meeting>#<mark>`, the mark its construction's mint
   # (`cnfFunctor`'s payload), and decided at a meeting by `sealedCollisionEq` over its sealed
   # components, so one construction reached twice is one module and two sharing the mark are refused
-  # by name. The key rides the result, the comparison the record (a foreign evaluator applies the
-  # functor and reads the result only). Merged payload (the cnf's module lists) is never in it.
+  # by name. The key rides the result, the node key (the meeting, so a lone module never forces its
+  # mark) and the comparison the record (a foreign evaluator applies the functor and reads the result
+  # only). Merged payload (the cnf's module lists) is never in it.
+  # `fn`'s result states the key, `constructionKey meeting payload`: written in the module, never
+  # added by a `//` per instance
+  # the `#` from its JSON escape: a `#` inside a string breaks the purity scan's strip premise
+  constructionKey = meeting: payload: meeting + builtins.fromJSON "\"\\u0023\"" + payload.mark;
   keyedConstruction =
     meeting: payload: fn:
     {
-      # the `#` from its JSON escape: a `#` inside a string breaks the purity scan's strip premise
-      __functor = _: args: fn args // { key = meeting + builtins.fromJSON "\"\\u0023\"" + payload.mark; };
+      __functor = _: fn;
       __functionArgs = builtins.functionArgs fn;
+      __moduleKey = meeting;
       __keyEq = {
         subject = {
           name = meeting;
@@ -1489,10 +1494,18 @@ let
         prelude.filterAttrs (_: e: categoryOf e == "facet" && e ? module) ks
       );
       # the keyed core's cnf: its identity content, the merged lists empty (lib/cnf.nix regimes)
-      coreCnf = cnf // {
-        aspectModules = [ ];
-        metaModules = [ ];
-      };
+      corePayload =
+        (cnfFunctor "gen-aspects.aspectSubmodule" cnf (if nesting == null then { } else { inherit nesting; }) null).payload;
+      listsEmpty = cnf.aspectModules == [ ] && cnf.metaModules == [ ];
+      coreCnf =
+        if listsEmpty then
+          cnf
+        else
+          cnf
+          // {
+            aspectModules = [ ];
+            metaModules = [ ];
+          };
       freeformOf =
         c: prefix:
         let
@@ -1510,9 +1523,9 @@ let
         in
         t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem c below else aspectTypeAt c below);
     in
-    merge.submodule [
-      (keyedConstruction "gen-aspects-aspect"
-        (cnfFunctor "gen-aspects.aspectSubmodule" cnf (if nesting == null then { } else { inherit nesting; }) null).payload
+    merge.submodule (
+    [
+      (keyedConstruction "gen-aspects-aspect" corePayload
       (
       {
         name,
@@ -1542,6 +1555,7 @@ let
         stampedId = builtins.seq locChecked (mintAspectId cnf.providerPrefix config);
       in
       {
+        key = constructionKey "gen-aspects-aspect" corePayload;
         freeformType = freeformOf coreCnf prefix;
         config._module.args.aspect = config;
         # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
@@ -1646,6 +1660,8 @@ let
         // refusedOptions;
       }
       ))
+    ]
+    ++ prelude.optional (!listsEmpty)
       # the cnf's MERGED payload, unkeyed: two declarations' module lists concatenate (lib/cnf.nix),
       # here and, through the per-cnf relation, at the positions whose types carry the cnf
       (
@@ -1662,7 +1678,7 @@ let
           };
         }
       )
-    ];
+    );
 
   # aspectsRoot — the top aspect-container element type. A `lazyAttrsOf aspectType` that
   # RE-ROOTS: each first-level aspect is merged at `prefix = [ key ]` (NOT `containerLoc ++
@@ -1872,6 +1888,6 @@ in
   # `lib/default.nix`: no published route reaches `unnamedSite` without an address.
   inherit unnamedSite siteRefusal;
   # the construction key, for `mkAspectModule` (lib/schema.nix)
-  inherit keyedConstruction;
+  inherit keyedConstruction constructionKey;
   constructionPayload = name: cnf: (cnfFunctor name cnf { } null).payload;
 }
