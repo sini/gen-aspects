@@ -218,6 +218,9 @@ in
         in
         f: let k = r f; in k // { __keyEq = k.__keyEq // { key = constructionKey "gen-aspects-aspect-module" payload; }; })
         ({ config, ... }:
+        # the declaration rides an imported module, as a kind's does (`merged`), so the record's dedup
+        # removes it with the occurrence
+        { imports = [
         {
           options.aspects = merge.mkOption {
             description = "Aspects";
@@ -235,7 +238,7 @@ in
               }
             );
           };
-        })
+        } ]; })
       );
 
       # `config` is the enclosing evaluation's config: a namespace's aspects are of the one `aspect`
