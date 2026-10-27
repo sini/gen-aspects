@@ -210,11 +210,15 @@ in
         in
         # keyed by its construction (the cnf and `providerPrefix`; `schemaDefs` is the one term
         # `schemaDefsOf` states), so one construction imported twice is one module
-        keyedConstruction "gen-aspects-aspect-module"
-          (constructionPayload "gen-aspects.mkAspectModule" (extendCnf cnf { inherit providerPrefix; }))
+        # v1.8 (d): the reference key rides the record only (K1 (c)'s form, as for kinds), so a module
+        # that applies this record to its own arguments (a federated redeclaration) states no key
+        (let
+          payload = constructionPayload "gen-aspects.mkAspectModule" (extendCnf cnf { inherit providerPrefix; });
+          r = keyedConstruction "gen-aspects-aspect-module" payload;
+        in
+        f: let k = r f; in k // { __keyEq = k.__keyEq // { key = constructionKey "gen-aspects-aspect-module" payload; }; })
         ({ config, ... }:
         {
-          key = constructionKey "gen-aspects-aspect-module" (constructionPayload "gen-aspects.mkAspectModule" (extendCnf cnf { inherit providerPrefix; }));
           options.aspects = merge.mkOption {
             description = "Aspects";
             default = { };
