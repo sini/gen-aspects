@@ -394,7 +394,8 @@ in
   # `mkAspectModule` threads schema-declared instance options out of `config`, stated as the
   # `schemaDefs` term; `mkAspectOption` does not. Declaring `aspects` through both refuses in either
   # order, and through two `mkAspectModule`s merges WITHOUT reading `config` while declarations fold
-  # (ADR-0033: a relation comparing the module itself is refused there).
+  # (ADR-0033: a relation comparing the module itself is refused there). Two `mkAspectOption`s both
+  # state the option's `default`, so the pair is refused as nixpkgs refuses it (`bothHave`).
   flake.tests.root-type-merge.test-declaration-constructions = {
     expr =
       let
@@ -428,7 +429,7 @@ in
       };
     expected = {
       moduleTwice = "MERGED";
-      optionTwice = "MERGED";
+      optionTwice = "REFUSED";
       moduleThenOption = "REFUSED";
       optionThenModule = "REFUSED";
     };
