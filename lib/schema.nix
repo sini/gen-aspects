@@ -233,29 +233,23 @@ in
         )
           (
             { config, ... }:
-            # the declaration rides an imported module, as a kind's does (`merged`), so the record's dedup
-            # removes it with the occurrence
             {
-              imports = [
-                {
-                  options.aspects = merge.mkOption {
-                    description = "Aspects";
-                    default = { };
-                    # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
-                    type = aspectsRoot (
-                      extendCnf cnf {
-                        inherit providerPrefix;
-                        # Lazily inject schema-declared option modules into every instance.
-                        # config.schema.aspect.__defsModule carries the merged module built
-                        # from caller defs on the schema kind entry (e.g. options.priority).
-                        # Stated as a term, not appended to `aspectModules`: the type relation must
-                        # not read `config` (lib/cnf.nix `schemaDefs`).
-                        schemaDefs = schemaDefsOf config;
-                      }
-                    );
-                  };
-                }
-              ];
+              options.aspects = merge.mkOption {
+                description = "Aspects";
+                default = { };
+                # aspectsRoot (re-rooting container) → nested aspect identity is container-relative (A-IDENT 2b).
+                type = aspectsRoot (
+                  extendCnf cnf {
+                    inherit providerPrefix;
+                    # Lazily inject schema-declared option modules into every instance.
+                    # config.schema.aspect.__defsModule carries the merged module built
+                    # from caller defs on the schema kind entry (e.g. options.priority).
+                    # Stated as a term, not appended to `aspectModules`: the type relation must
+                    # not read `config` (lib/cnf.nix `schemaDefs`).
+                    schemaDefs = schemaDefsOf config;
+                  }
+                );
+              };
             }
           )
       );
