@@ -279,21 +279,19 @@ let
   # added by a `//` per instance
   # the `#` from its JSON escape: a `#` inside a string breaks the purity scan's strip premise
   constructionKey = meeting: payload: meeting + builtins.fromJSON "\"\\u0023\"" + payload.mark;
-  keyedConstruction =
-    meeting: payload: fn:
-    {
-      __functor = _: fn;
-      __functionArgs = builtins.functionArgs fn;
-      __moduleKey = meeting;
-      __keyEq = {
-        subject = {
-          name = meeting;
-          inherit (payload) mark sealed;
-        };
-        decide = sealedCollisionEq "gen-aspects: ${meeting} is imported twice under one key";
-        inherit meeting;
+  keyedConstruction = meeting: payload: fn: {
+    __functor = _: fn;
+    __functionArgs = builtins.functionArgs fn;
+    __moduleKey = meeting;
+    __keyEq = {
+      subject = {
+        name = meeting;
+        inherit (payload) mark sealed;
       };
+      decide = sealedCollisionEq "gen-aspects: ${meeting} is imported twice under one key";
+      inherit meeting;
     };
+  };
 
   # The set of known module args is `cnf.moduleArgs`, declared with its default in lib/cnf.nix.
   mkIsModuleFn = cnf: canTake.upTo cnf.moduleArgs;
@@ -1430,7 +1428,8 @@ let
   # aspect (gets identity). No hardcoded class arm: a class is just a keySemantics category.
   # cnf.aspectModules still extends with pipeline-specific options AND carries gen-schema's
   # __defsModule seam (schema.nix injects config.schema.aspect.__defsModule into it), so it MUST
-  # stay live in `imports` even though per-key channels no longer ride it.
+  # stay live in `imports` even though per-key channels no longer ride it: it rides the unkeyed
+  # payload module beside the keyed core, so two declarations' lists concatenate.
   # `nesting` is the aspect's own position (`aspectType`, above): its freeform slot's elements are
   # anchored at this aspect's loc when it is declared, and inherit its anchor, `deep`, when it is not.
   aspectSubmodule = cnf: aspectSubmoduleAt cnf null;
@@ -1495,7 +1494,9 @@ let
       );
       # the keyed core's cnf: its identity content, the merged lists empty (lib/cnf.nix regimes)
       corePayload =
-        (cnfFunctor "gen-aspects.aspectSubmodule" cnf (if nesting == null then { } else { inherit nesting; }) null).payload;
+        (cnfFunctor "gen-aspects.aspectSubmodule" cnf (
+          if nesting == null then { } else { inherit nesting; }
+        ) null).payload;
       listsEmpty = cnf.aspectModules == [ ] && cnf.metaModules == [ ];
       coreCnf =
         if listsEmpty then
@@ -1524,160 +1525,160 @@ let
         t.lazyAttrsOf (if cnf.closedKeys then gatedFreeformElem c below else aspectTypeAt c below);
     in
     merge.submodule (
-    [
-      (keyedConstruction "gen-aspects-aspect" corePayload
-      (
-      {
-        name,
-        config,
-        prefix ? [ ],
-        ...
-      }:
-      let
-        # The type's identity values, computed once: the option's default and its write check share them.
-        # A tree position's declared path is `prefix`; a `meta.loc` that says otherwise (an mkForce'd
-        # write) is refused here, where key and id read it.
-        treeLoc =
-          if prefix != [ ] && !(builtins.elem "includes" (builtins.tail prefix)) then prefix else null;
-        locChecked =
-          treeLoc == null
-          || (config.meta.loc or null) == treeLoc
-          || throw "gen-aspects: the option `${
-            merge.showOption (
-              prefix
-              ++ [
-                "meta"
-                "loc"
-              ]
-            )
-          }' is written by the aspect type; remove the definition.";
-        stampedKey = builtins.seq locChecked (identity.rawKey config);
-        stampedId = builtins.seq locChecked (mintAspectId cnf.providerPrefix config);
-      in
-      {
-        key = constructionKey "gen-aspects-aspect" corePayload;
-        freeformType = freeformOf coreCnf prefix;
-        config._module.args.aspect = config;
-        # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
-        # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
-        # schema-declared instance-option propagation.
-        imports = facetModules ++ prelude.optional (cnf.schemaDefs != null) cnf.schemaDefs.module;
+      [
+        (keyedConstruction "gen-aspects-aspect" corePayload (
+          {
+            name,
+            config,
+            prefix ? [ ],
+            ...
+          }:
+          let
+            # The type's identity values, computed once: the option's default and its write check share them.
+            # A tree position's declared path is `prefix`; a `meta.loc` that says otherwise (an mkForce'd
+            # write) is refused here, where key and id read it.
+            treeLoc =
+              if prefix != [ ] && !(builtins.elem "includes" (builtins.tail prefix)) then prefix else null;
+            locChecked =
+              treeLoc == null
+              || (config.meta.loc or null) == treeLoc
+              || throw "gen-aspects: the option `${
+                merge.showOption (
+                  prefix
+                  ++ [
+                    "meta"
+                    "loc"
+                  ]
+                )
+              }' is written by the aspect type; remove the definition.";
+            stampedKey = builtins.seq locChecked (identity.rawKey config);
+            stampedId = builtins.seq locChecked (mintAspectId cnf.providerPrefix config);
+          in
+          {
+            key = constructionKey "gen-aspects-aspect" corePayload;
+            freeformType = freeformOf coreCnf prefix;
+            config._module.args.aspect = config;
+            # __defsModule seam: facet modules first, then aspectModules (which gen-schema's
+            # mkAspectModule appends config.schema.aspect.__defsModule into). Dropping the tail breaks
+            # schema-declared instance-option propagation.
+            imports = facetModules ++ prelude.optional (cnf.schemaDefs != null) cnf.schemaDefs.module;
 
-        # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
-        # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
-        # top container (`aspectsRoot`) re-roots the mount away, so `prefix` here is
-        # CONTAINER-RELATIVE (2b, owner ruling): `[ apps media spicetify ]`, no mount segment.
-        # Stamped here as `meta.loc`, the DECLARED PATH and the one identity input (identity
-        # design §1): `identity.key` reads `pathKey meta.loc`, never `name` or `meta.aspect-chain`,
-        # so the key is path-bearing AT MERGE, born in the type and never reconstructed downstream.
-        # Distinct paths ⇒ distinct keys (fixes the name-only collapse: hardware.cpu.intel ≠
-        # hardware.gpu.intel). The relative path UNIFIES with the guard branch (also loc-keyed and
-        # re-rooted, `aspectType`'s `__guard` branch), is origin-invariant (§3a: the container root
-        # is the proto-namespace root; an origin qualifier prepends additively), and byte-matches
-        # den-hoag's root-relative `__provider`. `name` (`last prefix` by default) and
-        # `meta.aspect-chain` (`init prefix`) are its RENDERINGS: a caller may set `name`, which moves
-        # no identity, and a chain that contradicts the declared path refuses by name at `key`
-        # (identity design Q4). The type is the one writer of `meta.loc`, `key` and `id_hash` (see
-        # `isTypedAspect`): a typed value carried by value (an include, an alias at a tree position)
-        # is passed through as a reference and never re-merged against these definitions.
-        #
-        # No `meta.loc` here at the container root (`prefix == [ ]`), which declares nothing, nor on
-        # an element written in an `includes` list, whose `meta.loc` its include member's stamp writes
-        # (`stampIncludeSite`, `stampUnnamed`, `restampCopy`); the same `includes`-past-the-first test
-        # `facts.nix`' `isIncludeContent` reads. Such an element's tree is evaluated at its DECLARED
-        # position (`includeEntryCoercedAt`), so its `prefix`, and the `name` and `aspect-chain`
-        # rendered from it, name the declaration and never move with module order (ADR-0034's
-        # den-module rider); an unnamed element's default `name` is its declaration-address segment.
-        config.meta = {
-          aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
-        }
-        // prelude.optionalAttrs (treeLoc != null) { loc = treeLoc; };
+            # A-IDENT (intrinsic path identity): the aspect's option path — the eval `prefix`
+            # gen-merge threads into every module body (= the merge `loc`) — IS the identity. The
+            # top container (`aspectsRoot`) re-roots the mount away, so `prefix` here is
+            # CONTAINER-RELATIVE (2b, owner ruling): `[ apps media spicetify ]`, no mount segment.
+            # Stamped here as `meta.loc`, the DECLARED PATH and the one identity input (identity
+            # design §1): `identity.key` reads `pathKey meta.loc`, never `name` or `meta.aspect-chain`,
+            # so the key is path-bearing AT MERGE, born in the type and never reconstructed downstream.
+            # Distinct paths ⇒ distinct keys (fixes the name-only collapse: hardware.cpu.intel ≠
+            # hardware.gpu.intel). The relative path UNIFIES with the guard branch (also loc-keyed and
+            # re-rooted, `aspectType`'s `__guard` branch), is origin-invariant (§3a: the container root
+            # is the proto-namespace root; an origin qualifier prepends additively), and byte-matches
+            # den-hoag's root-relative `__provider`. `name` (`last prefix` by default) and
+            # `meta.aspect-chain` (`init prefix`) are its RENDERINGS: a caller may set `name`, which moves
+            # no identity, and a chain that contradicts the declared path refuses by name at `key`
+            # (identity design Q4). The type is the one writer of `meta.loc`, `key` and `id_hash` (see
+            # `isTypedAspect`): a typed value carried by value (an include, an alias at a tree position)
+            # is passed through as a reference and never re-merged against these definitions.
+            #
+            # No `meta.loc` here at the container root (`prefix == [ ]`), which declares nothing, nor on
+            # an element written in an `includes` list, whose `meta.loc` its include member's stamp writes
+            # (`stampIncludeSite`, `stampUnnamed`, `restampCopy`); the same `includes`-past-the-first test
+            # `facts.nix`' `isIncludeContent` reads. Such an element's tree is evaluated at its DECLARED
+            # position (`includeEntryCoercedAt`), so its `prefix`, and the `name` and `aspect-chain`
+            # rendered from it, name the declaration and never move with module order (ADR-0034's
+            # den-module rider); an unnamed element's default `name` is its declaration-address segment.
+            config.meta = {
+              aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
+            }
+            // prelude.optionalAttrs (treeLoc != null) { loc = treeLoc; };
 
-        options = {
-          name = merge.mkOption {
-            description = "Aspect name";
-            default = name;
-            type = t.str;
-          };
+            options = {
+              name = merge.mkOption {
+                description = "Aspect name";
+                default = name;
+                type = t.str;
+              };
 
-          description = merge.mkOption {
-            description = "Aspect description";
-            default = "Aspect ${name}";
-            type = t.str;
-          };
+              description = merge.mkOption {
+                description = "Aspect description";
+                default = "Aspect ${name}";
+                type = t.str;
+              };
 
-          # Not `readOnly`: a readOnly option counts its default as a setting, as nixpkgs does, so a write
-          # equal to the stamped value would be refused by gen-merge's generic message. The `apply` is
-          # the enforcer, accepting the equal write and refusing any other by name (den-hoag-1gv6r).
-          key = merge.mkOption {
-            internal = true;
-            type = t.str;
-            default = stampedKey;
-            apply =
-              v:
-              if v == stampedKey then
-                v
-              else
-                throw "gen-aspects: the option `${
-                  merge.showOption (prefix ++ [ "key" ])
-                }' is written by the aspect type; remove the definition.";
-          };
+              # Not `readOnly`: a readOnly option counts its default as a setting, as nixpkgs does, so a write
+              # equal to the stamped value would be refused by gen-merge's generic message. The `apply` is
+              # the enforcer, accepting the equal write and refusing any other by name (den-hoag-1gv6r).
+              key = merge.mkOption {
+                internal = true;
+                type = t.str;
+                default = stampedKey;
+                apply =
+                  v:
+                  if v == stampedKey then
+                    v
+                  else
+                    throw "gen-aspects: the option `${
+                      merge.showOption (prefix ++ [ "key" ])
+                    }' is written by the aspect type; remove the definition.";
+              };
 
-          # Convenience content-address on plain submodules, mirroring gen-schema's `id_hash` — computed
-          # via the SAME exported `aspectId` (no second formula). Wrapped-fn / guard aspects are bare
-          # records (no submodule, no option); consumers id them uniformly via `aspects.aspectId`.
-          id_hash = merge.mkOption {
-            internal = true;
-            type = t.str;
-            default = stampedId;
-            apply =
-              v:
-              if v == stampedId then
-                v
-              else
-                throw "gen-aspects: the option `${
-                  merge.showOption (prefix ++ [ "id_hash" ])
-                }' is written by the aspect type; remove the definition.";
-          };
+              # Convenience content-address on plain submodules, mirroring gen-schema's `id_hash` — computed
+              # via the SAME exported `aspectId` (no second formula). Wrapped-fn / guard aspects are bare
+              # records (no submodule, no option); consumers id them uniformly via `aspects.aspectId`.
+              id_hash = merge.mkOption {
+                internal = true;
+                type = t.str;
+                default = stampedId;
+                apply =
+                  v:
+                  if v == stampedId then
+                    v
+                  else
+                    throw "gen-aspects: the option `${
+                      merge.showOption (prefix ++ [ "id_hash" ])
+                    }' is written by the aspect type; remove the definition.";
+              };
 
-          meta = merge.mkOption {
-            description = "Aspect metadata";
-            default = { };
-            type = merge.submodule {
-              freeformType = t.lazyAttrsOf t.raw;
-            };
-          };
+              meta = merge.mkOption {
+                description = "Aspect metadata";
+                default = { };
+                type = merge.submodule {
+                  freeformType = t.lazyAttrsOf t.raw;
+                };
+              };
 
-          includes = merge.mkOption {
-            description = "Aspects to include";
-            type = t.listOf (includesElemType coreCnf);
-            default = includesDefault;
-          };
-        }
-        // classOptions
-        // channelOptions
-        // facetOptions
-        // refusedOptions;
-      }
-      ))
-    ]
-    ++ prelude.optional (!listsEmpty)
-      # the cnf's MERGED payload, unkeyed: two declarations' module lists concatenate (lib/cnf.nix),
-      # here and, through the per-cnf relation, at the positions whose types carry the cnf
-      (
-        {
-          prefix ? [ ],
-          ...
-        }:
-        {
-          imports = cnf.aspectModules;
-          freeformType = freeformOf cnf prefix;
-          options.includes = merge.mkOption { type = t.listOf (includesElemType cnf); };
-          options.meta = merge.mkOption {
-            type = merge.submodule { imports = cnf.metaModules; };
-          };
-        }
-      )
+              includes = merge.mkOption {
+                description = "Aspects to include";
+                type = t.listOf (includesElemType coreCnf);
+                default = includesDefault;
+              };
+            }
+            // classOptions
+            // channelOptions
+            // facetOptions
+            // refusedOptions;
+          }
+        ))
+      ]
+      ++
+        prelude.optional (!listsEmpty)
+          # the cnf's MERGED payload, unkeyed: two declarations' module lists concatenate (lib/cnf.nix),
+          # here and, through the per-cnf relation, at the positions whose types carry the cnf
+          (
+            {
+              prefix ? [ ],
+              ...
+            }:
+            {
+              imports = cnf.aspectModules;
+              freeformType = freeformOf cnf prefix;
+              options.includes = merge.mkOption { type = t.listOf (includesElemType cnf); };
+              options.meta = merge.mkOption {
+                type = merge.submodule { imports = cnf.metaModules; };
+              };
+            }
+          )
     );
 
   # aspectsRoot — the top aspect-container element type. A `lazyAttrsOf aspectType` that
