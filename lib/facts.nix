@@ -407,11 +407,14 @@ rec {
       # them); nothing is minted, and a nested position renders only inside a refusal. A `content`
       # site's `sites` is a thunk: a dangling reference inside inline content refuses only for a
       # reader that descends into it, and the depth budget above bounds that descent.
-      # `hasParent` is passed beside `parent`, so a site's STRUCTURE (its kind, whether it names a
-      # node, its nested sites) never forces an identifier: only reading `target` does, and with it
-      # the classes at that one site's §2 key. A reader enumerating structure compares nothing.
+      # `hasParent` is passed beside `parent`, and `applied` (an applied vertex's walk, its sightings
+      # indexed by position in `ix`) beside `ix`, both literals at every caller, so a site's STRUCTURE (its
+      # kind, whether it names a node, its nested sites) never forces an identifier or the vertex's
+      # index: only reading `target` does, and with it the classes at that one site's §2 key. On the
+      # applied stratum every content site within the budget names its node (no back edge is cut there),
+      # so whether it does is decided without the index. A reader enumerating structure compares nothing.
       siteAt =
-        ix: id: hasParent: parent: p: elem:
+        ix: applied: id: hasParent: parent: p: elem:
         let
           at = prelude.concatStringsSep "." (map toString p);
           r = resolve id at elem;
@@ -419,13 +422,10 @@ rec {
           # within the depth budget. A static node's content is read off the enumerated sightings
           # (`recAt`), so named content names its CLASS and content inside a class is class-relative;
           # an applied body's (no sighting) is keyed by `contentId`.
-          # An applied vertex's index is ARMED at the first site with a `name` position (`__arm`): above
-          # it no sighting is named or inside a named value, so a site's id is its `contentId` and the
-          # vertex's index is never built for a body with no `name` position.
           found =
             if !hasParent then
               null
-            else if ix ? __atPos then
+            else if applied then
               # An applied vertex's sightings, looked up by position, so a nested site never forces the
               # id of the named value enclosing it.
               ix.__atPos.${builtins.toJSON p} or null
@@ -437,7 +437,9 @@ rec {
                 ]
               } or null;
           targeted =
-            hasParent && builtins.length p < includeSitesMaxDepth && (!(isNamedContent elem) || found != null);
+            hasParent
+            && builtins.length p < includeSitesMaxDepth
+            && (applied || !(isNamedContent elem) || found != null);
           target = if found != null then found.id else contentId parent p elem;
         in
         if r.kind == "content" then
@@ -446,7 +448,7 @@ rec {
           # one. Tested on the `name` position first, so an unnamed site never reads the vertex's index, and
           # a key-less one (a raw value in an applied body; the type stamps every static one) never does.
           prelude.optionalAttrs targeted (
-            if builtins.unsafeGetAttrPos "name" elem != null && (!(elem ? key) || ix ? __atPos) then
+            if builtins.unsafeGetAttrPos "name" elem != null && (!(elem ? key) || applied) then
               {
                 inherit target;
                 info = found;
@@ -460,7 +462,7 @@ rec {
               if builtins.length p >= includeSitesMaxDepth then
                 throw (includeSitesDepthRefusal id at)
               else
-                sitesOf ix id targeted target p (
+                sitesOf ix applied id targeted target p (
                   expectList (includesDoor id at) "includes" (elem.includes or includesDefault)
                 );
           }
@@ -477,8 +479,8 @@ rec {
         else
           "${parent}/includes/${toString (builtins.elemAt p (builtins.length p - 1))}";
       sitesOf =
-        ix: id: hasParent: parent: pos:
-        prelude.imap0 (i: siteAt ix id hasParent parent (pos ++ [ i ]));
+        ix: applied: id: hasParent: parent: pos:
+        prelude.imap0 (i: siteAt ix applied id hasParent parent (pos ++ [ i ]));
 
       # ── a PARAMETRIC DECLARATION'S MEMBERS, published without firing it (ADR-0010 §4(a) clause 2) ──
       #
@@ -537,7 +539,7 @@ rec {
             # here, and a term among them refuses at the declaration, never only when an instance fires.
             # A typed body's `includes` keeps its priority (gen-merge `partialSubmodule`, den-hoag-5ov3p),
             # so it is read through an override definition; a priority is resolved at fire time, never here.
-            unconditional = sitesOf recAt id false null [ ] (
+            unconditional = sitesOf recAt false id false null [ ] (
               builtins.concatMap (
                 f:
                 let
@@ -568,14 +570,14 @@ rec {
               if dependent x then
                 { kind = "deferred"; }
               else
-                siteAt recAt id false null [ i ] (declValue id v "include position ${toString i}" x)
+                siteAt recAt false id false null [ i ] (declValue id v "include position ${toString i}" x)
             ) inc.items
           )
         else if dependent inc then
           wholeDeferred
         else
           split (
-            sitesOf recAt id false null [ ] (
+            sitesOf recAt false id false null [ ] (
               expectList (memberDoor id) "includes" (declValue id v "`includes`" inc)
             )
           );
@@ -589,7 +591,7 @@ rec {
         if isGuardLeaf v then
           (declInfo id v).sites
         else
-          sitesOf recAt id true parent [ ] (includesOfValue id v);
+          sitesOf recAt false id true parent [ ] (includesOfValue id v);
 
       # AN INSTANCE'S SITES, read through its `instantiates` edge: the declaration's members, with each
       # `deferred` one classified at its own position of the instance's fired `includes` (only that
@@ -601,12 +603,12 @@ rec {
           key = entry.key or a;
         in
         if d.whole then
-          sitesOf recAt key true key [ ] (includesOfValue key entry)
+          sitesOf recAt false key true key [ ] (includesOfValue key entry)
         else
           prelude.imap0 (
             i: s:
             if s.kind == "deferred" then
-              siteAt recAt key true key [ i ] (builtins.elemAt (includesOfValue key entry) i)
+              siteAt recAt false key true key [ i ] (builtins.elemAt (includesOfValue key entry) i)
             else
               s
           ) d.sites;
@@ -1177,7 +1179,7 @@ rec {
           let
             id = entry.key or "<entry>";
           in
-          sitesOf (ixOf.${iid} or { }) id true iid [ ] (includesOfValue id entry);
+          sitesOf (ixOf.${iid} or { }) true id true iid [ ] (includesOfValue id entry);
       unnamedEntries = map (r: {
         name = idOfRec r;
         value = {
@@ -1228,7 +1230,7 @@ rec {
         walkSitesOf
         // builtins.mapAttrs (
           t: a:
-          sitesOf recAt a.host true t a.pos (
+          sitesOf recAt false a.host true t a.pos (
             expectList (includesDoor a.host (prelude.concatStringsSep "." (map toString a.pos))) "includes" (
               a.value.includes or includesDefault
             )

@@ -230,6 +230,18 @@
           [ "$wk" -gt 0 ] || die applied-onehost-lift "could not measure: the walk costs nothing ($l1 - $h1, $l2 - $h2)"
           [ "$wk" -le $((112 * 37)) ] \
             || die applied-onehost-lift "the structural walk costs more than 37 thunks per extra host: $wk over 112"
+          # The same over STAMPED typed content (its `meta.sighting` set by another evaluation): whether a site
+          # names its node is decided structurally on the applied stratum, so the walk builds no vertex's
+          # index. 49 thunks per extra host on all three evaluators; deciding it from the index reads 163.
+          appliedAt applied-onehost-stamped 16; s1=$thunks
+          appliedAt applied-onehost-stamped-lift 16; t1=$thunks
+          appliedAt applied-onehost-stamped 128; s2=$thunks
+          appliedAt applied-onehost-stamped-lift 128; t2=$thunks
+          ws=$(((t2 - s2) - (t1 - s1)))
+          echo "applied-onehost-stamped-lift: the structural walk over stamped content costs $ws thunks over 112 extra hosts"
+          [ "$ws" -gt 0 ] || die applied-onehost-stamped-lift "could not measure: the walk costs nothing ($t1 - $s1, $t2 - $s2)"
+          [ "$ws" -le $((112 * 49)) ] \
+            || die applied-onehost-stamped-lift "the structural walk over stamped content costs more than 49 thunks per extra host: $ws over 112"
           # What a value's width costs the classes, at 16 and 32 hosts: the named arms less the unnamed
           # control, between widths 16 and 64. A value shared by every host is read once, so the cost is
           # the same at both host counts; read per host, it doubles.
@@ -274,8 +286,8 @@
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "38" ] || die runner "expected 38 evaluations, ran $ran"
-          echo "tests-process: 14 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "42" ] || die runner "expected 42 evaluations, ran $ran"
+          echo "tests-process: 15 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
