@@ -207,7 +207,7 @@
         # root seam, so a resurrected or reworded tombstone reds.
         {
           gen.ci.rootSurface.retired.includeSitesOfEntry =
-            "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance relation and then the instance id, reading the vertex's entry itself: `includeSitesOfInstance cnf aspects instances iid`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`), and a named value's sightings are classed across the static tree and every vertex of the relation; a node's own sites are its `graphFacts` `includeSitesOf`.";
+            "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance relation and then the instance id, reading the vertex's entry itself: `includeSitesOfInstance cnf aspects instances iid`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`), and a named value's `target` is its class, keyed by its own sighting; a node's own sites are its `graphFacts` `includeSitesOf`.";
         }
       ];
     };

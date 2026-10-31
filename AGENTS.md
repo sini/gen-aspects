@@ -151,7 +151,9 @@ content site's `target` is `<iid>/includes/<i>`, recursively (den-hoag-8hlo3), a
 fourth arm), else `<key>/<aspect-content digest>` where the mint takes it, else (P2-b) the rung's
 component among its own instance's refused sightings, keyed by its least instance-relative site. The
 site carries a lazy `info` (`id`, `k2`, `joined`) so a reader with no second sighting at the key never
-forces the digest (P1-c). Tests: `ci/tests/named-content-applied-bodies.nix`.
+forces the digest (P1-c). Tests: `ci/tests/named-content-applied-bodies.nix`. The declared string-context
+residue at `classing` (a collapsed class keeps one sighting's context; den-hoag-gkrtw) is pinned by
+gen-delivery's `test-a-collapsed-class-keeps-one-sightings-context`.
 Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doors.*` in `ci/tests-error.nix`.
 
 **Identity** — `lib/identity.nix`, `lib/types.nix`

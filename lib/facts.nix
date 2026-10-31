@@ -811,8 +811,7 @@ rec {
       # A DECLARED RESIDUE (ADR-0025 item 1; ADR-0034's quotient paragraph), retiring when store
       # dependencies become graph edges (den-hoag-gkrtw): the rung is Nix `==`, which ignores string
       # context, so a class collapsing `==`-equal sightings that differ in context keeps ONE sighting's
-      # context, not their union. Pinned by gen-delivery's
-      # `test-a-collapsed-class-keeps-one-sightings-context`.
+      # context, not their union.
       # `applied`: null on the static stratum; on the applied one, a vertex's own records (`localOf`) and
       # the declaration node a sighting's value was declared at (`declNodeOf`).
       classing =

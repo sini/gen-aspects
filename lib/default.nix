@@ -172,7 +172,7 @@ in
   # ── THE RETIRED NAME ── `includeSitesOfEntry` is a tombstone rather than a silent alias, as
   # gen-product's `cell`: refused by name, naming its replacement. A published value, not a lambda, so
   # reaching the name refuses as well as applying it; the message interpolates nothing.
-  includeSitesOfEntry = throw "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance relation and then the instance id, reading the vertex's entry itself: `includeSitesOfInstance cnf aspects instances iid`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`), and a named value's sightings are classed across the static tree and every vertex of the relation; a node's own sites are its `graphFacts` `includeSitesOf`.";
+  includeSitesOfEntry = throw "gen-aspects: `includeSitesOfEntry` is renamed `includeSitesOfInstance`, which takes the instance relation and then the instance id, reading the vertex's entry itself: `includeSitesOfInstance cnf aspects instances iid`. Each anonymous content site's `target` is keyed under `iid` (`<iid>/includes/<i>`), and a named value's `target` is its class, keyed by its own sighting; a node's own sites are its `graphFacts` `includeSitesOf`.";
   inherit (guardModule)
     mkGuardVocab
     pred
