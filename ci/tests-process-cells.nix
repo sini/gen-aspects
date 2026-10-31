@@ -141,11 +141,13 @@ let
   # n hosts reaching ONE guard that includes its context's `host` value, so each host's instance fires
   # its own value (the factory's content i, named, or the same without a `name`) and the declarations do
   # not grow with the fleet; only the first host's sites are read.
+  # `stamped`: each host's value is typed content another evaluation of the aspect type stamped (its
+  # `meta.sighting`), as a framework handing typed values to a context does.
   # `lift`: also walk every vertex's site STRUCTURE (each site's kind, whether it names a node, its nested
   # sites), as a consumer projecting every instance does (gen-delivery's every-vertex lift), reading no
   # target but the first host's.
   appliedOneHost =
-    named: lift:
+    named: lift: stamped:
     let
       ix = builtins.genList (i: "h${toString (100000 + i)}") (builtins.fromJSON n);
       # The control renames `name` to `nm`: the same body shape, so every reader but the classes
@@ -168,6 +170,17 @@ let
             };
           }
         ]).config.aspects;
+      stampedOf = builtins.listToAttrs (
+        prelude.imap0 (i: h: {
+          name = h;
+          value = builtins.elemAt stampedAll i;
+        }) ix
+      );
+      stampedAll =
+        (spiedDoored.evalModuleTree { } [
+          { options.aspects = (ga.mkAspectSchema { keySemantics.T.category = "class"; }).mkAspectOption { }; }
+          { aspects.st.includes = map v ix; }
+        ]).config.aspects.st.includes;
       entity = h: identity.hashIdentity "entity" [ "name" ] (_: h);
       rel =
         ga.instancesFor { } as
@@ -175,7 +188,7 @@ let
             suppliers = builtins.listToAttrs (
               map (h: {
                 name = entity h;
-                value.host = v h;
+                value.host = if stamped then stampedOf.${h} else v h;
               }) ix
             );
             containment = { };
@@ -373,11 +386,14 @@ let
     applied-mixed-w64 = appliedMixed true 64;
     applied-unnamed-w16 = appliedMixed false 16;
     applied-unnamed-w64 = appliedMixed false 64;
-    applied-onehost = appliedOneHost true false;
-    applied-onehost-unnamed = appliedOneHost false false;
+    applied-onehost = appliedOneHost true false false;
+    applied-onehost-unnamed = appliedOneHost false false false;
     # The same, with every vertex's site structure walked: the runner reads, per extra host, what the
     # structural walk costs over the one host's read (`applied-onehost`), against main's figure.
-    applied-onehost-lift = appliedOneHost true true;
+    applied-onehost-lift = appliedOneHost true true false;
+    # The same two, each host's value stamped typed content.
+    applied-onehost-stamped = appliedOneHost true false true;
+    applied-onehost-stamped-lift = appliedOneHost true true true;
     # The same two values each holding a lambda: outside the mint, decided by the rung.
     applied-fnmixed = appliedMixed "fn" 0;
 
