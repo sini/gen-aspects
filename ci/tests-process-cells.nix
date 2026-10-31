@@ -138,6 +138,61 @@ let
       }) k
     );
   };
+  # n hosts reaching ONE guard that includes its context's `host` value, so each host's instance fires
+  # its own value (the factory's content i, named, or the same without a `name`) and the declarations do
+  # not grow with the fleet; only the first host's sites are read.
+  appliedOneHost =
+    named:
+    let
+      ix = builtins.genList (i: "h${toString (100000 + i)}") (builtins.fromJSON n);
+      # The control renames `name` to `nm`: the same body shape, so every reader but the classes
+      # does the same work.
+      v =
+        m:
+        if named then
+          wide m 0
+        else
+          builtins.removeAttrs (wide m 0) [ "name" ]
+          // {
+            nm = "t";
+          };
+      as =
+        (spiedDoored.evalModuleTree { } [
+          { options.aspects = (ga.mkAspectSchema { keySemantics.T.category = "class"; }).mkAspectOption { }; }
+          {
+            aspects.g = ga.guard (ga.pred.has "host") {
+              includes = [ ((algebra.term identity.hashIdentity).term.readCtx "host" [ ]) ];
+            };
+          }
+        ]).config.aspects;
+      entity = h: identity.hashIdentity "entity" [ "name" ] (_: h);
+      rel =
+        ga.instancesFor { } as
+          {
+            suppliers = builtins.listToAttrs (
+              map (h: {
+                name = entity h;
+                value.host = v h;
+              }) ix
+            );
+            containment = { };
+          }
+          (
+            builtins.listToAttrs (
+              map (h: {
+                name = h;
+                value = {
+                  members = [ "g" ];
+                  sources.host = entity h;
+                };
+              }) ix
+            )
+          );
+      targets = map (s: s.target) (
+        ga.includeSitesOfInstance { } as rel (builtins.head rel.reaches.${builtins.head ix}.g)
+      );
+    in
+    builtins.deepSeq targets (builtins.length targets);
   appliedMixed =
     named: k:
     let
@@ -288,9 +343,10 @@ let
     # sighting. `applied-factory`: n guards, each holding one factory's own content (n classes at one §2
     # key), reached by one host, every include site's target read; the runner reads the slope at
     # n = 100 / 200 / 400. `applied-mixed-w<k>`: two guards holding two values at one §2 key, each k
-    # attributes wide, reached by n hosts, and `applied-unnamed-w<k>` the same values without a `name`
-    # (no class work, the control); the runner reads what the width costs the classes at two host counts,
-    # and the slope in hosts of `applied-mixed-w16` and of `applied-fnmixed` (the same values holding a lambda).
+    # attributes wide, reached by n hosts; the runner reads the slope in hosts of `applied-mixed-w16` and
+    # of `applied-fnmixed` (the same values holding a lambda). `applied-onehost`: n hosts, each reaching
+    # its own guard's content, only the first host read, against `applied-onehost-unnamed` (the same
+    # without a `name`, the control); the runner reads what the classes cost one host at two fleet sizes.
     applied-factory = appliedSites (
       let
         ix = builtins.genList (i: "a${toString i}") (builtins.fromJSON n);
@@ -306,9 +362,8 @@ let
       }
     );
     applied-mixed-w16 = appliedMixed true 16;
-    applied-mixed-w64 = appliedMixed true 64;
-    applied-unnamed-w16 = appliedMixed false 16;
-    applied-unnamed-w64 = appliedMixed false 64;
+    applied-onehost = appliedOneHost true;
+    applied-onehost-unnamed = appliedOneHost false;
     # The same two values each holding a lambda: outside the mint, decided by the rung.
     applied-fnmixed = appliedMixed "fn" 0;
 
