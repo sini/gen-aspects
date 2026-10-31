@@ -258,6 +258,17 @@
           echo "applied-mixed: the width costs the classes $w1 / $w2 thunks at 16 / 32 hosts"
           [ $((100 * w2)) -le $((100 * w1 + 50)) ] \
             || die applied-mixed "a value's width costs the classes per host: $w1 / $w2 thunks at 16 / 32 hosts"
+          # n static classes at the applied key: the join's cost (the arm less its no-join control) is linear
+          # in n when a sighting reaches only the static classes that could match it.
+          for k in 100 200 400; do
+            appliedAt applied-sfactory "$k"; a=$thunks
+            appliedAt applied-sfactory-nojoin "$k"; b=$thunks
+            eval "j$k=$((a - b))"
+          done
+          echo "applied-sfactory: the join costs $j100 / $j200 / $j400 thunks at n = 100 / 200 / 400"
+          [ "$j100" -gt 0 ] || die applied-sfactory "could not measure: the join costs nothing ($j100)"
+          [ $((100 * (j400 - j200))) -le $((210 * (j200 - j100))) ] \
+            || die applied-sfactory "the static join grows faster than linear in n: $j100 / $j200 / $j400 at n = 100 / 200 / 400"
           # Two classes at one key, each shared by every host, cost a constant per host whether the mint
           # takes the values or not: a class is its representative's own row, never a closure over the rest.
           for arm in applied-mixed-w16 applied-fnmixed; do
@@ -286,8 +297,8 @@
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "42" ] || die runner "expected 42 evaluations, ran $ran"
-          echo "tests-process: 15 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "48" ] || die runner "expected 48 evaluations, ran $ran"
+          echo "tests-process: 16 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

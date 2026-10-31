@@ -214,6 +214,40 @@ let
       walked = if lift then map (iid: shape (at iid)) (builtins.attrNames rel.vertices) else [ ];
     in
     builtins.deepSeq walked (builtins.deepSeq targets (builtins.length targets));
+  # `join`: the static contents are the same factory's (one `name` position, so the applied key's), else
+  # another factory's, whose `name` sits at another position.
+  appliedStaticFactory =
+    join:
+    let
+      ix = builtins.genList (i: "a${toString i}") (builtins.fromJSON n);
+    in
+    appliedSites {
+      aspects =
+        builtins.listToAttrs (
+          map (i: {
+            name = i;
+            value = ga.guard (ga.pred.has "host") { includes = [ (wide i 0) ]; };
+          }) ix
+        )
+        // {
+          s.includes = map (
+            i:
+            if join then
+              wide i 0
+            else
+              {
+                name = "t";
+                T.marks = [ i ];
+              }
+          ) ix;
+        };
+      hosts = builtins.listToAttrs (
+        map (i: {
+          name = "h${i}";
+          value = [ i ];
+        }) ix
+      );
+    };
   appliedMixed =
     named: k:
     let
@@ -382,6 +416,11 @@ let
         hosts.x = ix;
       }
     );
+    # n guards, guard i firing factory content i to host i, and aspect `s` declaring all n contents
+    # statically, so n static classes sit at the one §2 key each applied sighting is joined against
+    # (`-nojoin`: the static contents from another factory, so no static class sits at the applied key).
+    applied-sfactory = appliedStaticFactory true;
+    applied-sfactory-nojoin = appliedStaticFactory false;
     applied-mixed-w16 = appliedMixed true 16;
     applied-mixed-w64 = appliedMixed true 64;
     applied-unnamed-w16 = appliedMixed false 16;
