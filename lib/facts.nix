@@ -693,10 +693,7 @@ rec {
           t = builtins.typeOf v;
           h =
             if t == "set" then
-              if v ? type && v.type == "derivation" then
-                "d"
-              else
-                "{${prelude.concatStringsSep "," (map builtins.toJSON (builtins.attrNames v))}"
+              if v ? type && v.type == "derivation" then "d" else "{${builtins.toJSON (builtins.attrNames v)}"
             else if t == "list" then
               "[${toString (builtins.length v)}"
             else if t == "string" then
@@ -962,17 +959,16 @@ rec {
               _: rs: if builtins.length rs < 2 then { "" = rs; } else builtins.groupBy bucketOf rs
             )
           ) keyAt;
-          # A sighting the rung identifies with its key's FIRST sighting shares the first's bucket and is
-          # never read further (that comparison is the first one its step makes anyway); the rest are
-          # partitioned by `refine`, so a key of n distinct values costs n partial reads and no pair.
-          # Per key group, so a reader decides only its own key's buckets.
+          # A key's sightings partitioned by `refine`, so a key of n distinct values costs n partial reads
+          # and no pair. No comparison decides a bucket: a bucket is read off the values alone, so a
+          # reader's bucket compares no two other sightings. Per key group, so a reader decides only its
+          # own key's buckets.
           bucketsAt = builtins.mapAttrs (
             _:
             builtins.mapAttrs (
               _: rs:
               let
-                first = builtins.head rs;
-                rest = builtins.filter (r: !r.exact && !(same first r)) rs;
+                rest = builtins.filter (r: !r.exact) rs;
                 parts = refine refineDepth (r: r.val) rest;
                 partOf = builtins.listToAttrs (
                   builtins.concatLists (
@@ -989,7 +985,7 @@ rec {
               builtins.listToAttrs (
                 map (r: {
                   name = r.addr;
-                  value = if r.exact then "x" else partOf.${r.addr} or "";
+                  value = if r.exact then "x" else partOf.${r.addr};
                 }) rs
               )
             )
