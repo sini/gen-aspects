@@ -426,6 +426,10 @@ rec {
           found =
             if !hasParent then
               null
+            else if ix ? __atPos then
+              # An applied vertex's sightings, looked up by position, so a nested site never forces the
+              # id of the named value enclosing it.
+              ix.__atPos p
             else
               ix.${
                 builtins.toJSON [
@@ -439,6 +443,12 @@ rec {
         in
         if r.kind == "content" then
           prelude.optionalAttrs targeted { inherit target; }
+          # On the applied stratum, a named sighting's §2 key and whether it joins a static class, without
+          # its id: a reader that needs no id (no second sighting at its key) never forces one.
+          // prelude.optionalAttrs (ix ? __atPos) {
+            k2 = if found != null then found.k2 or null else null;
+            joined = found != null && (found.joined or false);
+          }
           // {
             kind = "content";
             sites =
@@ -934,6 +944,13 @@ rec {
               contentId (parentIdOf r) r.pos r.elem
             else
               "${classIdOf r.encl}/${relPath r}";
+          recInfo = r: {
+            id = idOfRec r;
+            # The §2 key, read only by a reader asking whether two sightings could meet.
+            k2 = if r.named then r.s2 else null;
+            # Whether it joins a static class: the rung against that key's static classes, no digest.
+            joined = r.named && joinFor r != null;
+          };
           recIndex =
             rs:
             builtins.listToAttrs (
@@ -942,7 +959,7 @@ rec {
                   (parentIdOf r)
                   (prelude.last r.pos)
                 ];
-                value.id = idOfRec r;
+                value = recInfo r;
               }) rs
             );
           recAt = recIndex recs;
@@ -960,6 +977,7 @@ rec {
             recAt
             recAtOf
             recIndex
+            recInfo
             ;
         };
       static = classing null null allRecs;
@@ -1084,8 +1102,29 @@ rec {
         vertices: instantiates:
         let
           # Per vertex, from its own sightings, so one host's sites read no other vertex's.
-          inherit (appliedClassing vertices instantiates) recIndex;
-          ixOf = builtins.mapAttrs (iid: _: recIndex (appliedRecsOf vertices iid)) vertices;
+          inherit (appliedClassing vertices instantiates) recInfo;
+          ixOf = builtins.mapAttrs (
+            iid: _:
+            let
+              rs = appliedRecsOf vertices iid;
+              byAddr = builtins.listToAttrs (
+                map (r: {
+                  name = r.addr;
+                  value = recInfo r;
+                }) rs
+              );
+            in
+            {
+              __atPos =
+                p:
+                byAddr.${
+                  builtins.toJSON [
+                    iid
+                    p
+                  ]
+                } or null;
+            }
+          ) vertices;
         in
         iid: entry:
         if isGuardLeaf entry then
