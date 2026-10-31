@@ -499,17 +499,12 @@ in
     };
     # R-6. One classifier, two callers: `includeSitesOfInstance` over each node's value under its own
     # id is that node's `includeSitesOf`, inline content included (`wc`). RED (a top-level-only classifier): false.
-    # An applied content site also carries its §2 key and whether it joins a static class (`k2`, `joined`,
+    # An applied content site also carries its sighting's record (`info`: its §2 key and whether it joins a static class,
     # den-hoag-named-include-instance-bodies-sfkyy P1-c), which a static site does not: compared without them.
     test-include-sites-of-entry =
       let
         bare = map (
-          s:
-          builtins.removeAttrs s [
-            "k2"
-            "joined"
-          ]
-          // (if s ? sites then { sites = bare s.sites; } else { })
+          s: builtins.removeAttrs s [ "info" ] // (if s ? sites then { sites = bare s.sites; } else { })
         );
       in
       {
