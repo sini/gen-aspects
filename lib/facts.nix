@@ -429,7 +429,7 @@ rec {
             else if ix ? __atPos then
               # An applied vertex's sightings, looked up by position, so a nested site never forces the
               # id of the named value enclosing it.
-              ix.__atPos p
+              ix.__atPos.${builtins.toJSON p} or null
             else
               ix.${
                 builtins.toJSON [
@@ -442,10 +442,19 @@ rec {
           target = if found != null then found.id else contentId parent p elem;
         in
         if r.kind == "content" then
-          prelude.optionalAttrs targeted { inherit target; }
-          # On the applied stratum, the sighting's record (`info`: its id, its §2 key `k2`, whether it joins
-          # a static class), so a reader that needs no id (no second sighting at its key) never forces one.
-          // (if ix ? __atPos then { info = found; } else { })
+          # On the applied stratum, a named sighting's record (`info`: its id, its §2 key `k2`, whether it
+          # joins a static class), so a reader that needs no id (no second sighting at its key) never forces
+          # one. Tested on the `name` position first, so an unnamed site never reads the vertex's index, and
+          # a key-less one (a raw value in an applied body; the type stamps every static one) never does.
+          prelude.optionalAttrs targeted (
+            if builtins.unsafeGetAttrPos "name" elem != null && (!(elem ? key) || ix ? __atPos) then
+              {
+                inherit target;
+                info = found;
+              }
+            else
+              { inherit target; }
+          )
           // {
             kind = "content";
             sites =
@@ -1100,28 +1109,15 @@ rec {
         let
           # Per vertex, from its own sightings, so one host's sites read no other vertex's.
           inherit (appliedClassing vertices instantiates) recInfo;
-          ixOf = builtins.mapAttrs (
-            iid: _:
-            let
-              rs = appliedRecsOf vertices iid;
-              byAddr = builtins.listToAttrs (
-                map (r: {
-                  name = r.addr;
-                  value = recInfo r;
-                }) rs
-              );
-            in
-            {
-              __atPos =
-                p:
-                byAddr.${
-                  builtins.toJSON [
-                    iid
-                    p
-                  ]
-                } or null;
-            }
-          ) vertices;
+          # Per vertex, its sightings by position (unique within a vertex), built only when looked up.
+          ixOf = builtins.mapAttrs (iid: _: {
+            __atPos = builtins.listToAttrs (
+              map (r: {
+                name = builtins.toJSON r.pos;
+                value = recInfo r;
+              }) (appliedRecsOf vertices iid)
+            );
+          }) vertices;
         in
         iid: entry:
         if isGuardLeaf entry then
