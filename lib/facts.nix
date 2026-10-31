@@ -927,7 +927,8 @@ rec {
           # no pair. A sighting the rung identifies with a static class joins it (that key's static
           # classes only). What the mint cannot take (a lambda, a path, a derivation, past its bounds;
           # ADR-0034's sealed limb, which decides by comparison) is decided by the rung against the
-          # sightings at its key across the relation, its id its star's least site.
+          # sightings at its key across the relation: it joins the class of a minted sighting it is `==`
+          # to (ADR-0016 r4's excluded float domain), and otherwise its id is its star's least site.
           # TWO DECLARED PRICES (ADR-0025 item 1). A digest reads the reader's own value up to the mint's
           # first refusal, so an `abort` there that no comparison would reach aborts that value's own
           # readers. On ADR-0016 r4's excluded float domain the rung is not transitive and a minted
@@ -944,7 +945,17 @@ rec {
             let
               d = digestOf r;
             in
-            if d != null then "${qualify "@/includes/${r.s2}"}/${escape d}" else idByRep.${(repOf r).addr};
+            if d != null then
+              "${qualify "@/includes/${r.s2}"}/${escape d}"
+            else
+              let
+                # A refused sighting the rung identifies with a minted one joins that one's class, in either
+                # order; only a refused reader looks, so a minted reader never reads a refused sighting.
+                m = builtins.filter (c: c.addr != r.addr && unjoined c && same c r && digestOf c != null) (
+                  groupOf r
+                );
+              in
+              if m != [ ] then appliedIdOf (builtins.head m) else idByRep.${(repOf r).addr};
           # The mint's remainder: the first earlier unjoined sighting the rung identifies a sighting with,
           # or itself, followed to its own.
           repOf =

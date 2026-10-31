@@ -630,4 +630,57 @@ in
         };
       };
     };
+
+  # S13. On ADR-0016 r4's excluded float domain a minted value and a refused one can be `==`: one factory
+  # makes `{ v = 2^53 + 1; }`, which the mint takes, and `{ v = 2^53 as a float; }`, which it refuses. The
+  # rung identifies them (R7), so they are one class in either order, keyed by the minted one's content
+  # (identity design, the C2 amendment of 2026-10-31). RED a refused sighting keyed by its star alone
+  # (minted and refused sightings never share a class): two ids, both orders.
+  flake.tests.named-content-applied-bodies.test-a-refused-sighting-equal-to-a-minted-one-shares-its-class =
+    let
+      as =
+        (mkSchemaEval {
+          fixtureKeySemantics.T.category = "class";
+          modules = [ { config.aspects.s = { }; } ];
+        }).config.aspects;
+      f = v: {
+        name = "t";
+        T.marks = [ "t" ];
+        inherit v;
+      };
+      pair =
+        va: vb:
+        let
+          at = aspects.includeSitesOfInstance { } as {
+            vertices = {
+              a.entry.includes = [ (f va) ];
+              b.entry.includes = [ (f vb) ];
+            };
+          };
+          one = v: first (map (s: s.target) (at v));
+        in
+        {
+          eq = f va == f vb;
+          same = one "a" == one "b";
+          minted = minted "t" (one "a") && minted "t" (one "b");
+        };
+    in
+    {
+      expr = builtins.mapAttrs (_: tryValue) {
+        intFirst = pair 9007199254740993 9007199254740992.0;
+        floatFirst = pair 9007199254740992.0 9007199254740993;
+      };
+      expected = {
+        intFirst = {
+          eq = true;
+          same = true;
+          minted = true;
+        };
+        floatFirst = {
+          eq = true;
+          same = true;
+          minted = true;
+        };
+      };
+    };
 }
