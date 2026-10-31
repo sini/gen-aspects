@@ -635,9 +635,10 @@ in
   # S13. On ADR-0016 r4's excluded float domain a minted value and a refused one can be `==`: one factory
   # makes `{ v = 2^53 + 1; }`, which the mint takes, and `{ v = 2^53 as a float; }`, which it refuses.
   # Minted and refused sightings never share a class, in either order (owner 2026-10-31, OQ7's fourth
-  # arm, "accept"): the minted one is keyed by its content, the refused one per instance. RED a refused
-  # sighting joined to a minted one it is `==` to (sfkyy-a4 `cfc6d21`): one id, both orders.
-  flake.tests.named-content-applied-bodies.test-minted-and-refused-sightings-never-share-a-class =
+  # arm, "accept"; den-hoag-c4ucc carries the owner's deeper review): the minted one is keyed by its
+  # content, the refused one per instance. RED a refused sighting joined to a minted one it is `==` to
+  # (`sfkyy-a4-join`, `cfc6d21`): one id, both orders.
+  flake.tests.named-content-applied-bodies.test-a-refused-sighting-never-shares-a-minted-class =
     let
       as =
         (mkSchemaEval {
