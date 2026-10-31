@@ -797,8 +797,10 @@ rec {
       # context, so a class collapsing `==`-equal sightings that differ in context keeps ONE sighting's
       # context, not their union. Pinned by gen-delivery's
       # `test-a-collapsed-class-keeps-one-sightings-context`.
+      # `applied`: null on the static stratum; on the applied one, a vertex's own records (`localOf`) and
+      # the declaration node a sighting's value was declared at (`declNodeOf`).
       classing =
-        prior: recs:
+        applied: prior: recs:
         let
           joinFor =
             r:
@@ -882,115 +884,47 @@ rec {
               builtins.elemAt classIds.${r.s2} classIx.${r.s2}.${r.addr}
             else
               appliedIdOf r;
-          # AN APPLIED SIGHTING'S CLASS IS DECIDED FROM THE SIGHTING (identity design §2's connected
-          # component, C2), never from a partition of its whole key: a reader forces only comparisons
-          # between members of its own component and the sightings at its key, so a §4 row 4 pair it
-          # is not compared with never reaches it. The component is computed once per REPRESENTATIVE:
-          # following each sighting to the first unjoined sighting at its key the rung identifies it
-          # with, until one is its own, so the readers of one class share it.
-          recsAt = builtins.mapAttrs (_: cs: builtins.groupBy (c: c.s2) (builtins.filter (c: c.named) cs)) (
-            builtins.groupBy (r: r.pk) cands
-          );
-          posAt = builtins.mapAttrs (
-            _:
-            builtins.mapAttrs (
-              _: rs:
-              builtins.listToAttrs (
-                prelude.imap0 (i: c: {
-                  name = c.addr;
-                  value = i;
-                }) rs
-              )
-            )
-          ) recsAt;
-          groupOf = r: recsAt.${r.pk}.${r.s2};
-          posOf = r: posAt.${r.pk}.${r.s2}.${r.addr};
-          unjoined = c: joinFor c == null;
-          # Each pair at a key is decided once, by the earlier sighting (`ahead.<addr>`, a lazy row over
-          # the later ones), and read by both: the later one's step and the earlier one's closure.
-          ahead = builtins.listToAttrs (
-            map (r: {
-              name = r.addr;
-              value =
-                let
-                  rs = groupOf r;
-                  i = posOf r;
-                in
-                builtins.genList (k: same r (builtins.elemAt rs (i + 1 + k))) (builtins.length rs - i - 1);
-            }) cands
-          );
           # AN APPLIED SIGHTING'S CLASS IS KEYED BY ITS CONTENT, through the one mint (ADR-0034), where
           # the mint takes it: `<key>/<aspect-content digest>`, which carries no `%2F` and so is never a
           # site's form. Two sightings mint one digest exactly when `==` identifies them, so the id is the
           # class's whichever host reads it, and it is a function of the reader's own sighting alone: one
           # host's ids read no other host's sightings, and a key of n distinct values costs n digests and
           # no pair. A sighting the rung identifies with a static class joins it (that key's static
-          # classes only). What the mint cannot take (a lambda, a path, a derivation, past its bounds;
-          # ADR-0034's sealed limb, which decides by comparison) is decided by the rung against the
-          # sightings at its key across the relation, its id its star's least site.
-          # TWO DECLARED PRICES (ADR-0025 item 1). A digest reads the reader's own value up to the mint's
+          # classes only). The digest is bound at the content's DECLARATION: a sighting that is its
+          # instance's declared value (`==` on one value is Nix's pointer shortcut) reads the digest built
+          # once on the declaration, so a value every host fires is digested once, not per host.
+          # WHAT THE MINT CANNOT TAKE (a lambda, a path, a derivation, past its bounds; ADR-0034's sealed
+          # limb, which decides by comparison) IS KEYED PER INSTANCE (owner 2026-10-31, den-hoag-sfkyy
+          # P2-b): its class is the rung's component among its own vertex's refused sightings at its key,
+          # its id that component's least site, which is instance-relative. Minted and refused sightings
+          # never share a class (owner 2026-10-31, OQ7's fourth arm).
+          # A DECLARED PRICE (ADR-0025 item 1): a digest reads the reader's own value up to the mint's
           # first refusal, so an `abort` there that no comparison would reach aborts that value's own
-          # readers. On ADR-0016 r4's excluded float domain the rung is not transitive and a minted
-          # integer can be `==` to a refused float, so a class there is not the connected component and
-          # can depend on which sighting is first (identity design §4).
+          # readers.
+          ownDigest = ownDigest';
           digestOf =
             r:
             let
-              d = builtins.tryEval (hashIdentity "aspect-content" [ "value" ] (_: r.val));
+              n = applied.declNodeOf r;
             in
-            if d.success then d.value else null;
+            if n != null && n.v == r.val then n.d else ownDigest r.val;
           appliedIdOf =
             r:
             let
               d = digestOf r;
             in
-            if d != null then "${qualify "@/includes/${r.s2}"}/${escape d}" else idByRep.${(repOf r).addr};
-          # The mint's remainder: the first earlier unjoined sighting the rung identifies a sighting with,
-          # or itself, followed to its own.
-          repOf =
+            if d != null then "${qualify "@/includes/${r.s2}"}/${escape d}" else localIdOf r;
+          localIdOf =
             r:
             let
-              rs = groupOf r;
-              k = posOf r;
-              go =
-                i:
-                if i == k then
-                  r
-                else
-                  let
-                    c = builtins.elemAt rs i;
-                  in
-                  if same c r && unjoined c then repOf c else go (i + 1);
+              rs = builtins.filter (
+                c: c.pk == r.pk && c.named && c.s2 == r.s2 && joinFor c == null && digestOf c == null
+              ) (applied.localOf r.host);
+              c = builtins.head (
+                builtins.filter (c: builtins.any (m: m.addr == r.addr) c) (componentsOf rs) ++ [ [ r ] ]
+              );
             in
-            go 0;
-          # A representative's class: the later sightings at its key the rung identifies with it, read off
-          # its own row (an earlier one would have been its step). Outside ADR-0016 r4's excluded float
-          # domain the rung is transitive there, so the star is the connected component.
-          componentOf =
-            rep:
-            let
-              rs = groupOf rep;
-              i = posOf rep;
-              flags = ahead.${rep.addr};
-            in
-            [ rep ]
-            ++ map (k: builtins.elemAt rs (i + 1 + k)) (
-              builtins.filter (k: builtins.elemAt flags k && unjoined (builtins.elemAt rs (i + 1 + k))) (
-                builtins.genList (k: k) (builtins.length rs - i - 1)
-              )
-            );
-          # The bare §2 key is the class's exactly when it is the only class at that key across the strata.
-          idByRep = builtins.listToAttrs (
-            map (r: {
-              name = r.addr;
-              value =
-                let
-                  c = componentOf r;
-                  base = qualify "@/includes/${r.s2}";
-                in
-                "${base}/${escape (siteOfRec (leastOf c))}";
-            }) cands
-          );
+            "${qualify "@/includes/${r.s2}"}/${escape (siteOfRec (leastOf c))}";
           parentIdOf = r: if r.parent == null then r.host else idOfRec r.parent;
           idOfRec =
             r:
@@ -1028,7 +962,7 @@ rec {
             recIndex
             ;
         };
-      static = classing null allRecs;
+      static = classing null null allRecs;
       inherit (static)
         classesAt
         classIdOf
@@ -1099,13 +1033,58 @@ rec {
         in
         if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs;
       appliedClassing =
-        vertices:
-        classing static (builtins.concatMap (appliedRecsOf vertices) (builtins.attrNames vertices));
+        vertices: instantiates:
+        classing {
+          localOf = appliedRecsOf vertices;
+          declNodeOf =
+            r:
+            let
+              t = declTreeOf.${builtins.head (instantiates.${r.host} or [ "" ])} or null;
+              step = ns: i: if ns == null || i >= builtins.length ns then null else builtins.elemAt ns i;
+              n0 = step t (builtins.head r.pos);
+            in
+            builtins.foldl' (n: i: if n == null then null else step n.kids i) n0 (builtins.tail r.pos);
+        } static (builtins.concatMap (appliedRecsOf vertices) (builtins.attrNames vertices));
+      # A guard declaration's include members as declared, each a lazy node carrying the value a
+      # sighting reads (`v`), its digest (`d`), built once, and its own members (`kids`); null where a
+      # member is context-dependent (its value exists per instance) or the declaration has no plain
+      # member list. Nothing is forced until an applied sighting at that position is classed.
+      declTreeOf = builtins.mapAttrs (
+        a: v:
+        let
+          b = v.body or null;
+          inc = b.attrs.includes or null;
+          node = e: {
+            v = if isNamedContent e then e.meta.sighting.value else e;
+            d = ownDigest' (if isNamedContent e then e.meta.sighting.value else e);
+            kids = map node (listOr (e.includes or includesDefault));
+          };
+          items =
+            if v ? fragments || !(T.isTerm b) || b.__bodyTerm != "Attrs" || inc == null then
+              null
+            else if T.isTerm inc && inc.__bodyTerm == "List" then
+              map (x: if dependent x then null else node (declValue a v "" x)) inc.items
+            else if dependent inc then
+              null
+            else
+              let
+                l = builtins.tryEval (declValue a v "" inc);
+              in
+              if l.success && builtins.isList l.value then map node l.value else null;
+        in
+        items
+      ) (prelude.filterAttrs (_: isGuardLeaf) walkNodeData);
+      ownDigest' =
+        v:
+        let
+          d = builtins.tryEval (hashIdentity "aspect-content" [ "value" ] (_: v));
+        in
+        if d.success then d.value else null;
       sitesOfInstances =
-        vertices:
+        vertices: instantiates:
         let
           # Per vertex, from its own sightings, so one host's sites read no other vertex's.
-          inherit (appliedClassing vertices) recIndex;
+          inherit (appliedClassing vertices instantiates) recIndex;
           ixOf = builtins.mapAttrs (iid: _: recIndex (appliedRecsOf vertices iid)) vertices;
         in
         iid: entry:
@@ -1311,7 +1290,9 @@ rec {
   includeSitesOfInstance = cnfDoor prelude "gen-aspects.includeSitesOfInstance" (
     cnf: aspects: instances:
     let
-      at = (graphCore cnf aspects).sitesOfInstances (instances.vertices or { });
+      at = (graphCore cnf aspects).sitesOfInstances (instances.vertices or { }) (
+        instances.instantiates or { }
+      );
     in
     if !(builtins.isAttrs instances) then
       throw "gen-aspects.includeSitesOfInstance: takes the instance relation (`instancesFor`'s) before the instance id, `includeSitesOfInstance cnf aspects instances iid`, not a ${builtins.typeOf instances}; a named value's sightings are classed across every vertex of the relation."
