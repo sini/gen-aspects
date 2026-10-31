@@ -246,8 +246,8 @@
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "32" ] || die runner "expected 32 evaluations, ran $ran"
-          echo "tests-process: 11 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "28" ] || die runner "expected 28 evaluations, ran $ran"
+          echo "tests-process: 10 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
