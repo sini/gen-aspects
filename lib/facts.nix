@@ -797,8 +797,9 @@ rec {
       # context, so a class collapsing `==`-equal sightings that differ in context keeps ONE sighting's
       # context, not their union. Pinned by gen-delivery's
       # `test-a-collapsed-class-keeps-one-sightings-context`.
-      classing =
-        prior: recs:
+      classing = classingWith (r: r.host);
+      classingWith =
+        srcOf: prior: recs:
         let
           joinOf = builtins.listToAttrs (
             map (r: {
@@ -885,7 +886,7 @@ rec {
             else if prior == null then
               builtins.elemAt classIds.${r.s2} classIx.${r.s2}.${r.addr}
             else
-              idByRep.${(repOf r).addr};
+              appliedIdOf.${r.addr};
           # AN APPLIED SIGHTING'S CLASS IS DECIDED FROM THE SIGHTING (identity design §2's connected
           # component, C2), never from a partition of its whole key: a reader forces only comparisons
           # between members of its own component and the sightings at its key, so a §4 row 4 pair it
@@ -923,42 +924,77 @@ rec {
                 builtins.genList (k: same r (builtins.elemAt rs (i + 1 + k))) (builtins.length rs - i - 1);
             }) cands
           );
-          # A sighting's step: the first earlier unjoined sighting at its key the rung identifies it with,
-          # or itself. The first sighting is tried first, so the readers of one class step once.
-          stepOf = builtins.listToAttrs (
+          # AN APPLIED SIGHTING'S CLASS IS KEYED BY ITS CONTENT, through the one mint (ADR-0034), where
+          # the mint takes it, so a key of n distinct values costs n digests and no pair. Pure Nix has no
+          # pointer equality but `==`'s shortcut on a shared value, so a sighting is first compared with
+          # the first sighting of its source (the aspect it was fired from, at its body position: the
+          # sightings most likely shared) and then with its key's first sighting; only a sighting equal
+          # to neither is digested, so a value shared by n hosts is read once, not per host. Every
+          # comparison here is between the reader's own sighting and one at its key, and a digest reads
+          # the reader's own value only, so a pair a reader is not compared with never reaches it.
+          #   * equal to its key's first sighting: that sighting's component, its id as before (bare
+          #     when it is the key's only class);
+          #   * else minted: `<key>/<aspect-content digest>`, which carries no `%2F` and so is never a
+          #     site's form; two sightings mint one digest exactly when `==` identifies them;
+          #   * else (a lambda, a path, a derivation, past the mint's bounds; ADR-0034's "what it cannot
+          #     take gets no identity at all"): its component by the rung, its least site's id.
+          # A DECLARED PRICE (ADR-0025 item 1): a digest reads the reader's whole value up to the mint's
+          # first refusal, so an `abort` there that no comparison would reach aborts that value's own
+          # readers.
+          digestOf = builtins.listToAttrs (
             map (r: {
               name = r.addr;
               value =
                 let
-                  rs = groupOf r;
-                  k = posOf r;
-                  hit =
-                    i:
-                    builtins.elemAt ahead.${(builtins.elemAt rs i).addr} (k - i - 1) && unjoined (builtins.elemAt rs i);
-                  j = builtins.foldl' (
-                    acc: i:
-                    if acc != k then
-                      acc
-                    else if hit i then
-                      i
-                    else
-                      k
-                  ) k (builtins.genList (i: i + 1) (k - 1));
+                  d = builtins.tryEval (hashIdentity "aspect-content" [ "value" ] (_: r.val));
                 in
-                if k == 0 then
-                  r
-                else if hit 0 then
-                  builtins.head rs
-                else
-                  builtins.elemAt rs j;
+                if d.success then d.value else null;
             }) cands
           );
+          srcFirst = builtins.mapAttrs (
+            _: builtins.mapAttrs (_: rs: builtins.mapAttrs (_: builtins.head) (builtins.groupBy srcOf rs))
+          ) recsAt;
+          appliedIdOf = builtins.listToAttrs (
+            map (r: {
+              name = r.addr;
+              value =
+                let
+                  g = srcFirst.${r.pk}.${r.s2}.${srcOf r};
+                in
+                if g.addr != r.addr && same g r && unjoined g then appliedIdOf.${g.addr} else ownIdOf r;
+            }) cands
+          );
+          ownIdOf =
+            r:
+            let
+              rs = groupOf r;
+              f = builtins.head rs;
+              d = digestOf.${r.addr};
+            in
+            if f.addr == r.addr || (builtins.elemAt ahead.${f.addr} (posOf r - 1) && unjoined f) then
+              idByRep.${f.addr}
+            else if d != null then
+              "${qualify "@/includes/${r.s2}"}/${escape d}"
+            else
+              idByRep.${(repOf r).addr};
+          # The mint's remainder: the first earlier unjoined sighting the rung identifies a sighting with,
+          # or itself, followed to its own.
           repOf =
             r:
             let
-              c = stepOf.${r.addr};
+              rs = groupOf r;
+              k = posOf r;
+              go =
+                i:
+                if i == k then
+                  r
+                else
+                  let
+                    c = builtins.elemAt rs i;
+                  in
+                  if same c r && unjoined c then repOf c else go (i + 1);
             in
-            if c.addr == r.addr then r else repOf c;
+            go 0;
           # A representative's component, by breadth-first closure. No earlier sighting is an unjoined
           # neighbour of a representative (its own step found none), so the first round reads its own
           # row; every further round reads all that remain.
@@ -1098,31 +1134,40 @@ rec {
         else
           null;
       appliedClassing =
-        vertices:
-        classing static (
-          builtins.concatMap (
-            iid:
-            let
-              e = vertices.${iid}.entry or null;
-              recs = recsFromWith appliedNamed true iid null null [ ] [ ] [ ] (
-                listOr (e.includes or includesDefault)
-              );
-              # What `classing` forces of every vertex, at any depth: its record spine, addresses and
-              # `name` positions; a `name` itself is read only by the readers of its position.
-              ok = builtins.tryEval (
-                builtins.deepSeq (map (r: [
-                  r.addr
-                  r.pk
-                ]) recs) true
-              );
-            in
-            if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs
-          ) (builtins.attrNames vertices)
-        );
+        vertices: instantiates:
+        classingWith
+          (
+            r:
+            builtins.toJSON [
+              (instantiates.${r.host} or [ r.host ])
+              r.pos
+            ]
+          )
+          static
+          (
+            builtins.concatMap (
+              iid:
+              let
+                e = vertices.${iid}.entry or null;
+                recs = recsFromWith appliedNamed true iid null null [ ] [ ] [ ] (
+                  listOr (e.includes or includesDefault)
+                );
+                # What `classing` forces of every vertex, at any depth: its record spine, addresses and
+                # `name` positions; a `name` itself is read only by the readers of its position.
+                ok = builtins.tryEval (
+                  builtins.deepSeq (map (r: [
+                    r.addr
+                    r.pk
+                  ]) recs) true
+                );
+              in
+              if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs
+            ) (builtins.attrNames vertices)
+          );
       sitesOfInstances =
-        vertices:
+        vertices: instantiates:
         let
-          ixOf = (appliedClassing vertices).recAtOf;
+          ixOf = (appliedClassing vertices instantiates).recAtOf;
         in
         iid: entry:
         if isGuardLeaf entry then
@@ -1327,7 +1372,9 @@ rec {
   includeSitesOfInstance = cnfDoor prelude "gen-aspects.includeSitesOfInstance" (
     cnf: aspects: instances:
     let
-      at = (graphCore cnf aspects).sitesOfInstances (instances.vertices or { });
+      at = (graphCore cnf aspects).sitesOfInstances (instances.vertices or { }) (
+        instances.instantiates or { }
+      );
     in
     if !(builtins.isAttrs instances) then
       throw "gen-aspects.includeSitesOfInstance: takes the instance relation (`instancesFor`'s) before the instance id, `includeSitesOfInstance cnf aspects instances iid`, not a ${builtins.typeOf instances}; a named value's sightings are classed across every vertex of the relation."
