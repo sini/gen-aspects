@@ -1,10 +1,11 @@
 # NAMED CONTENT IN AN APPLIED BODY IS ONE NODE PER CLASS (den-hoag-named-include-instance-bodies-sfkyy;
 # identity design 2026-09-30 §2, Q5 "yes").
 #
-# A named value in an instance's fired body is a sighting at its §2 key like a static one. The
-# sightings are classed across EVERY vertex of the relation, with the static classes as the frozen
-# prior: a sighting the rung identifies with a static class joins it, and only the rest form classes of
-# their own, so no static id depends on an instance (ADR-0016 r7; ADR-0033).
+# A named value in an instance's fired body is a sighting at its §2 key like a static one, keyed by its
+# own sighting (spec §5): the static classes are the frozen prior, and a sighting the rung identifies
+# with a static class of its own regime joins it, so no static id depends on an instance (ADR-0016 r7;
+# ADR-0033); else content the mint takes is keyed by its digest, and content it refuses within its own
+# instance (owner P2-b).
 #
 # Each cell carries the arm that discriminates it: the `RED` comment names the edit that turns it.
 {
@@ -323,8 +324,8 @@ in
     };
 
   # S5. A vertex whose `includes` refuses, at any depth, refuses where it is read, never for another
-  # vertex: the classes are computed over every vertex, so a refusal there would otherwise reach every
-  # reader. RED mutant unguarded-vertex (the vertex's `includes` read without `tryEval`): `good`
+  # vertex: a vertex's records are walked wherever its sightings are classed, so a refusal there would
+  # otherwise reach every reader. RED mutant unguarded-vertex (the vertex's `includes` read without `tryEval`): `good`
   # REFUSED; RED a guard on the top-level `includes` only: `good` REFUSED by the nested throw.
   flake.tests.named-content-applied-bodies.test-a-refusing-vertex-stays-local =
     let

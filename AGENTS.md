@@ -146,9 +146,12 @@ bound). Tests: `ci/tests/source-door.nix`; `instance-relation-doors.test-source-
 over the vertex `iid` of the instance relation `instances`, whose entry it reads itself (none: no
 sites): a key-less attrset that is not a guard leaf is content (den-hoag-lwbb1 OQ-U2.9 arm (B)), each
 content site's `target` is `<iid>/includes/<i>`, recursively (den-hoag-8hlo3), and a named value's
-`target` is its class across the static tree and every vertex of the relation, the static classes a
-frozen prior (den-hoag-named-include-instance-bodies-sfkyy; tests:
-`ci/tests/named-content-applied-bodies.nix`).
+`target` is its class (den-hoag-named-include-instance-bodies-sfkyy spec §5): the static class it joins
+(the static classes a frozen prior, joined only where every member is of the sighting's regime, OQ7's
+fourth arm), else `<key>/<aspect-content digest>` where the mint takes it, else (P2-b) the rung's
+component among its own instance's refused sightings, keyed by its least instance-relative site. The
+site carries a lazy `info` (`id`, `k2`, `joined`) so a reader with no second sighting at the key never
+forces the digest (P1-c). Tests: `ci/tests/named-content-applied-bodies.nix`.
 Tests: `instance-relation.*` in `ci/tests/instances.nix`; `instance-relation-doors.*` in `ci/tests-error.nix`.
 
 **Identity** — `lib/identity.nix`, `lib/types.nix`

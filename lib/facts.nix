@@ -927,18 +927,22 @@ rec {
           # site's form. Two sightings mint one digest exactly when `==` identifies them, so the id is the
           # class's whichever host reads it, and it is a function of the reader's own sighting alone: one
           # host's ids read no other host's sightings, and a key of n distinct values costs n digests and
-          # no pair. A sighting the rung identifies with a static class joins it (that key's static
-          # classes only). The digest is bound at the content's DECLARATION: a sighting that is its
-          # instance's declared value (`==` on one value is Nix's pointer shortcut) reads the digest built
-          # once on the declaration, so a value every host fires is digested once, not per host.
+          # no pair. A sighting the rung identifies with a static class joins it where every member of
+          # that class is of the sighting's regime (`regimesAt`; that key's static classes only). The
+          # digest is bound at the content's DECLARATION: a sighting `==` to its instance's declared value
+          # (Nix's pointer shortcut where the fired value is the declared one, a structural comparison
+          # elsewhere) reads the digest built once on the declaration, so a value every host fires is
+          # digested once, not per host.
           # WHAT THE MINT CANNOT TAKE (a lambda, a path, a derivation, past its bounds; ADR-0034's sealed
           # limb, which decides by comparison) IS KEYED PER INSTANCE (owner 2026-10-31, den-hoag-sfkyy
           # P2-b): its class is the rung's component among its own vertex's refused sightings at its key,
           # its id that component's least site, which is instance-relative. Minted and refused sightings
           # never share a class (owner 2026-10-31, OQ7's fourth arm).
-          # A DECLARED PRICE (ADR-0025 item 1): a digest reads the reader's own value up to the mint's
-          # first refusal, so an `abort` there that no comparison would reach aborts that value's own
-          # readers.
+          # A DECLARED PRICE (ADR-0025 item 1, P1's residue): a digest reads the value up to the mint's
+          # first refusal, so an `abort` there that no comparison would reach aborts exactly the readers
+          # that force the digest: a reader of the value's id, and a receiver deduplicating it beside a
+          # second sighting at its key (applied, or a static named class). A receiver holding it alone at
+          # its key reads its `info` and is served without it.
           ownDigest = ownDigest';
           digestOf =
             r:
@@ -1023,11 +1027,11 @@ rec {
       #
       # An instance's fired body is data the aspect type never merged, so a named value in it carries
       # no stamp: its §2 key is read off the value (`namedSegment`, the type's own writer) and its
-      # operand is the value itself. Its sightings are enumerated over EVERY vertex of the relation,
-      # never over the instances one receiver reaches, so a class id is a function of the declarations
-      # and the relation, not of the reader. The relation is minted from this tree's static facts, so
-      # the static classes are the frozen prior (`classing`): one class spans static and applied
-      # sightings, and no static id depends on an instance. A vertex whose `includes` refuses is
+      # operand is the value itself. Its class id is a function of its own sighting (`appliedIdOf`): a
+      # static class it joins, its content digest, or a class within its own vertex, so one host's ids
+      # read no other vertex's sightings. The relation is minted from this tree's static facts, so the
+      # static classes are the frozen prior (`classing`): one class spans static and applied sightings,
+      # and no static id depends on an instance. A vertex whose `includes` refuses is
       # skipped here and refuses where it is read.
       # A candidate is keyed by its `name`'s position (`pk`) before its `name` is read (`named`, `s2`):
       # see `classing`'s `cands`. A `name` whose read refuses names nothing, as a position-less one
@@ -1365,9 +1369,8 @@ rec {
   # `includeSitesOf`; the vertex's entry is read here, and a vertex with none has no sites. Its
   # anonymous content is keyed under the instance: each content site's `target` is
   # `<iid>/includes/<i>`, recursively, an identifier and no mint (identity design §3; 7gp66 OQ4 (b′)).
-  # A named value's sightings are classed across the static tree and every vertex of the relation
-  # (`classing`). Partially applied to `cnf`, `aspects` and `instances`, the registry and the applied
-  # classes are built once.
+  # A named value's `target` is its class, keyed by its own sighting (`classing`). Partially applied to
+  # `cnf`, `aspects` and `instances`, the registry and the per-vertex indexes are built once.
   includeSitesOfInstance = cnfDoor prelude "gen-aspects.includeSitesOfInstance" (
     cnf: aspects: instances:
     let
@@ -1376,7 +1379,7 @@ rec {
       );
     in
     if !(builtins.isAttrs instances) then
-      throw "gen-aspects.includeSitesOfInstance: takes the instance relation (`instancesFor`'s) before the instance id, `includeSitesOfInstance cnf aspects instances iid`, not a ${builtins.typeOf instances}; a named value's sightings are classed across every vertex of the relation."
+      throw "gen-aspects.includeSitesOfInstance: takes the instance relation (`instancesFor`'s) before the instance id, `includeSitesOfInstance cnf aspects instances iid`, not a ${builtins.typeOf instances}."
     else
       iid:
       let
