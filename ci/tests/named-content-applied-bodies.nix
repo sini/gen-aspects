@@ -531,4 +531,100 @@ in
         };
       };
     };
+
+  # S12. A key's several classes are keyed by content as `==` decides it: a value the mint takes keys its
+  # class by its digest, which follows `==` both ways, and one it cannot take (a lambda) is decided by
+  # the rung. `a`'s value is the key's first sighting and apart from the rest, so each other value keys
+  # its own class. `intFloat`: `{ v = 1; }` and `{ v = 1.0; }` are `==`, one class; `outPath`: two
+  # records sharing an `outPath` with siblings apart are two; `fnShared`: one value holding a lambda,
+  # reached twice, is one class; `fnApart`: two values holding their own lambdas are two. RED a digest
+  # by `toJSON` (which renders an `outPath` record as that string alone, and a float apart from its
+  # integer): `intFloat` and `outPath` false, and `fnShared` aborts uncatchably; RED the mint's
+  # remainder keyed as one class: `fnApart` false.
+  flake.tests.named-content-applied-bodies.test-several-classes-at-a-key-are-keyed-as-equality-decides =
+    let
+      as =
+        (mkSchemaEval {
+          fixtureKeySemantics.T.category = "class";
+          modules = [ { config.aspects.s = { }; } ];
+        }).config.aspects;
+      mkv =
+        extra:
+        {
+          name = "v";
+          T.marks = [ "v" ];
+        }
+        // extra;
+      ids =
+        b: c:
+        let
+          at = aspects.includeSitesOfInstance { } as {
+            vertices = {
+              a.entry.includes = [ (mkv { first = true; }) ];
+              b.entry.includes = [ (mkv b) ];
+              c.entry.includes = [ (mkv c) ];
+            };
+          };
+          one = v: first (map (s: s.target) (at v));
+        in
+        {
+          same = one "b" == one "c";
+          several = suffixed "v" (one "b") && suffixed "v" (one "c");
+        };
+      fv = mkv { fn = x: x; };
+      shared =
+        let
+          at = aspects.includeSitesOfInstance { } as {
+            vertices = {
+              a.entry.includes = [ (mkv { first = true; }) ];
+              b.entry.includes = [ fv ];
+              c.entry.includes = [ fv ];
+            };
+          };
+          one = v: first (map (s: s.target) (at v));
+        in
+        {
+          same = one "b" == one "c";
+          several = suffixed "v" (one "b");
+        };
+    in
+    {
+      expr = builtins.mapAttrs (_: tryValue) {
+        intFloat = ids { x = 1; } { x = 1.0; };
+        outPath =
+          ids
+            {
+              o = {
+                outPath = "p";
+                a = 1;
+              };
+            }
+            {
+              o = {
+                outPath = "p";
+                a = 2;
+              };
+            };
+        fnShared = shared;
+        fnApart = ids { fn = x: x; } { fn = y: y; };
+      };
+      expected = {
+        intFloat = {
+          same = true;
+          several = true;
+        };
+        outPath = {
+          same = false;
+          several = true;
+        };
+        fnShared = {
+          same = true;
+          several = true;
+        };
+        fnApart = {
+          same = false;
+          several = true;
+        };
+      };
+    };
 }

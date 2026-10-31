@@ -90,6 +90,76 @@ let
     schema = gs;
   };
 
+  # One host per `hosts` entry, each its own entity binding `host`; every reached instance's include
+  # site targets, forced. The value is the count of sites read.
+  appliedSites =
+    { aspects, hosts }:
+    let
+      as =
+        (spiedDoored.evalModuleTree { } [
+          { options.aspects = (ga.mkAspectSchema { keySemantics.T.category = "class"; }).mkAspectOption { }; }
+          { inherit aspects; }
+        ]).config.aspects;
+      entity = h: identity.hashIdentity "entity" [ "name" ] (_: h);
+      rel =
+        ga.instancesFor { } as
+          {
+            suppliers = builtins.listToAttrs (
+              map (h: {
+                name = entity h;
+                value.host = h;
+              }) (builtins.attrNames hosts)
+            );
+            containment = { };
+          }
+          (
+            builtins.mapAttrs (h: ms: {
+              members = ms;
+              sources.host = entity h;
+            }) hosts
+          );
+      at = ga.includeSitesOfInstance { } as rel;
+      targets = builtins.concatMap (
+        h:
+        builtins.concatMap (
+          m: builtins.concatMap (iid: map (s: s.target) (at iid)) rel.reaches.${h}.${m}
+        ) hosts.${h}
+      ) (builtins.attrNames hosts);
+    in
+    builtins.deepSeq targets (builtins.length targets);
+  # One factory: its `name` sits at one source position however often it is called.
+  wide = m: k: {
+    name = "t";
+    T.marks = [ m ];
+    extra = builtins.listToAttrs (
+      builtins.genList (i: {
+        name = "e${toString i}";
+        value.v = i;
+      }) k
+    );
+  };
+  appliedMixed =
+    named: k:
+    let
+      v = m: if named then wide m k else builtins.removeAttrs (wide m k) [ "name" ];
+      hs = builtins.genList (i: "h${toString i}") (builtins.fromJSON n);
+    in
+    appliedSites {
+      aspects = {
+        a = ga.guard (ga.pred.has "host") { includes = [ (v "a") ]; };
+        b = ga.guard (ga.pred.has "host") { includes = [ (v "b") ]; };
+      };
+      hosts = builtins.listToAttrs (
+        map (h: {
+          name = h;
+          value = [
+            "a"
+            "b"
+          ];
+        }) hs
+      );
+    };
+
   cells = {
     # den-hoag-3jyxf cell 1 (relocated verbatim, den-hoag-n6dh7 SCC build): a config-decided
     # extraModules list (gen-schema mkInstanceRegistry) — ADMITTED AS an nta CHILD. `evals - doors`
@@ -200,6 +270,31 @@ let
     # the two thunk counts, the check, at two widths, read by the runner.
     guard-check-check = checkWidth true;
     guard-check-data = checkWidth false;
+
+    # den-hoag-named-include-instance-bodies-sfkyy: an applied named value's class costs a constant per
+    # sighting. `applied-factory`: n guards, each holding one factory's own content (n classes at one §2
+    # key), reached by one host, every include site's target read; the runner reads the slope at
+    # n = 100 / 200 / 400. `applied-mixed-w<k>`: two guards holding two values at one §2 key, each k
+    # attributes wide, reached by n hosts, and `applied-unnamed-w<k>` the same values without a `name`
+    # (no class work, the control); the runner reads what the width costs the classes at two host counts.
+    applied-factory = appliedSites (
+      let
+        ix = builtins.genList (i: "a${toString i}") (builtins.fromJSON n);
+      in
+      {
+        aspects = builtins.listToAttrs (
+          map (i: {
+            name = i;
+            value = ga.guard (ga.pred.has "host") { includes = [ (wide i 0) ]; };
+          }) ix
+        );
+        hosts.x = ix;
+      }
+    );
+    applied-mixed-w16 = appliedMixed true 16;
+    applied-mixed-w64 = appliedMixed true 64;
+    applied-unnamed-w16 = appliedMixed false 16;
+    applied-unnamed-w64 = appliedMixed false 64;
 
     # den-hoag-qxip5 (identity design §4 row 4, R7's declared exception): named content whose
     # structural comparison does not terminate aborts the whole graph. The verdict is the exit and its

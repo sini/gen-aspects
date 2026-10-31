@@ -181,6 +181,44 @@
           [ "$s" -le $((48 * 2)) ] \
             || die guard-check-width "the declaration check costs more than 2 thunks per body field: $s over 48 fields"
 
+          # den-hoag-named-include-instance-bodies-sfkyy: an applied named value's class costs a constant
+          # per sighting. appliedAt <arm> <n> leaves `thunks` set, read as above.
+          appliedAt() {
+            rm -f "$TMPDIR/stats"
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            evalArm "$1" "$2"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            [ "$rc" -eq 0 ] || die "$1" "n=$2: expected exit 0, got $rc"
+            [ -n "$val" ] && [ "$val" -gt 0 ] || die "$1" "n=$2: expected a site count, got '$val'"
+            [ -s "$TMPDIR/stats" ] || die "$1" "n=$2: could not measure, no statistics written"
+            thunks=$(sed -n 's/.*"nrThunks": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
+            [ -n "$thunks" ] || die "$1" "n=$2: could not measure, no nrThunks in the statistics"
+          }
+          appliedAt applied-factory 100; f1=$thunks
+          appliedAt applied-factory 200; f2=$thunks
+          appliedAt applied-factory 400; f3=$thunks
+          echo "applied-factory: thunks $f1 / $f2 / $f3 at n = 100 / 200 / 400"
+          # n distinct contents at one key are n digests, so the second slope is twice the first (measured
+          # exactly 2 on all three evaluators); deciding them pairwise roughly triples it. 0.5% slack.
+          [ $((100 * (f3 - f2))) -le $((201 * (f2 - f1))) ] \
+            || die applied-factory "thunks grow faster than linear in n: $f1 / $f2 / $f3 at n = 100 / 200 / 400"
+          # What a value's width costs the classes, at 16 and 32 hosts: the named arms less the unnamed
+          # control, between widths 16 and 64. A value shared by every host is read once, so the cost is
+          # the same at both host counts; read per host, it doubles.
+          widthAt() {
+            appliedAt applied-mixed-w64 "$1"; a=$thunks
+            appliedAt applied-mixed-w16 "$1"; b=$thunks
+            appliedAt applied-unnamed-w64 "$1"; c=$thunks
+            appliedAt applied-unnamed-w16 "$1"; d=$thunks
+            [ $((c - d)) -gt 0 ] || die applied-mixed "n=$1: could not measure: the unnamed control reads no width ($c - $d)"
+            w=$(((a - b) - (c - d)))
+          }
+          widthAt 16; w1=$w
+          widthAt 32; w2=$w
+          echo "applied-mixed: the width costs the classes $w1 / $w2 thunks at 16 / 32 hosts"
+          [ $((100 * w2)) -le $((100 * w1 + 50)) ] \
+            || die applied-mixed "a value's width costs the classes per host: $w1 / $w2 thunks at 16 / 32 hosts"
+
           # den-hoag-qxip5: the declared abort (identity design §4 row 4). Each cell dies on the
           # evaluator's stack-overflow channel, which Nix, Determinate ("stack overflow; max-call-depth
           # exceeded") and Lix ("stack overflow (possible infinite recursion)") all print; a value, an
@@ -198,8 +236,8 @@
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "15" ] || die runner "expected 15 evaluations, ran $ran"
-          echo "tests-process: 7 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "26" ] || die runner "expected 26 evaluations, ran $ran"
+          echo "tests-process: 9 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
