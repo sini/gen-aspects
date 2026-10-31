@@ -926,21 +926,25 @@ rec {
           );
           # AN APPLIED SIGHTING'S CLASS IS KEYED BY ITS CONTENT, through the one mint (ADR-0034), where
           # the mint takes it, so a key of n distinct values costs n digests and no pair. Pure Nix has no
-          # pointer equality but `==`'s shortcut on a shared value, so a sighting is first compared with
-          # the first sighting of its source (the aspect it was fired from, at its body position: the
-          # sightings most likely shared) and then with its key's first sighting; only a sighting equal
-          # to neither is digested, so a value shared by n hosts is read once, not per host. Every
-          # comparison here is between the reader's own sighting and one at its key, and a digest reads
-          # the reader's own value only, so a pair a reader is not compared with never reaches it.
-          #   * equal to its key's first sighting: that sighting's component, its id as before (bare
-          #     when it is the key's only class);
+          # pointer equality but `==`'s shortcut on a shared value, so a sighting first borrows the class
+          # of the first sighting of its source (the aspect it was fired from, at its body position: the
+          # sightings most likely shared) or of its key's first sighting, where the rung identifies them;
+          # only a sighting equal to neither is digested, so a value shared by n hosts is digested once,
+          # not per host. Every comparison here is between a member of the reader's own class and a
+          # sighting at its key, and a digest reads a member's own value only, so a pair a reader is not
+          # compared with never reaches it.
+          #   * the key's only class (no prior class at it, and every sighting the rung identifies with
+          #     the first): the bare §2 key;
           #   * else minted: `<key>/<aspect-content digest>`, which carries no `%2F` and so is never a
-          #     site's form; two sightings mint one digest exactly when `==` identifies them;
-          #   * else (a lambda, a path, a derivation, past the mint's bounds; ADR-0034's "what it cannot
-          #     take gets no identity at all"): its component by the rung, its least site's id.
-          # A DECLARED PRICE (ADR-0025 item 1): a digest reads the reader's whole value up to the mint's
-          # first refusal, so an `abort` there that no comparison would reach aborts that value's own
-          # readers.
+          #     site's form. Two sightings mint one digest exactly when `==` identifies them, so the id
+          #     is the class's whichever sighting computes it;
+          #   * else (a lambda, a path, a derivation, past the mint's bounds; ADR-0034's sealed limb, which
+          #     decides by comparison): its component by the rung, keyed by its least site.
+          # TWO DECLARED PRICES (ADR-0025 item 1). A digest reads a class member's whole value up to the
+          # mint's first refusal, so an `abort` there that no comparison would reach aborts that value's
+          # own readers. On ADR-0016 r4's excluded float domain the rung is not transitive and a minted
+          # integer can be `==` to a refused float, so a class there is the borrowed one, not the
+          # connected component, and can depend on which sighting is first (identity design §4).
           digestOf = builtins.listToAttrs (
             map (r: {
               name = r.addr;
@@ -960,23 +964,42 @@ rec {
               value =
                 let
                   g = srcFirst.${r.pk}.${r.s2}.${srcOf r};
+                  f = builtins.head (groupOf r);
                 in
-                if g.addr != r.addr && same g r && unjoined g then appliedIdOf.${g.addr} else ownIdOf r;
+                if g.addr != r.addr && same g r && unjoined g then
+                  appliedIdOf.${g.addr}
+                else if f.addr == r.addr || (builtins.elemAt ahead.${f.addr} (posOf r - 1) && unjoined f) then
+                  firstIdAt.${r.pk}.${r.s2}
+                else
+                  mintedIdOf r;
             }) cands
           );
-          ownIdOf =
+          # Read only by a member of the first sighting's class, so its comparisons are that class's own.
+          firstIdAt = builtins.mapAttrs (
+            _:
+            builtins.mapAttrs (
+              s2: rs:
+              let
+                f = builtins.head rs;
+                flags = ahead.${f.addr};
+              in
+              if
+                prior.classesAt.${s2} or [ ] == [ ]
+                && builtins.all (k: builtins.elemAt flags k && unjoined (builtins.elemAt rs (k + 1))) (
+                  builtins.genList (k: k) (builtins.length rs - 1)
+                )
+              then
+                qualify "@/includes/${s2}"
+              else
+                mintedIdOf f
+            )
+          ) recsAt;
+          mintedIdOf =
             r:
             let
-              rs = groupOf r;
-              f = builtins.head rs;
               d = digestOf.${r.addr};
             in
-            if f.addr == r.addr || (builtins.elemAt ahead.${f.addr} (posOf r - 1) && unjoined f) then
-              idByRep.${f.addr}
-            else if d != null then
-              "${qualify "@/includes/${r.s2}"}/${escape d}"
-            else
-              idByRep.${(repOf r).addr};
+            if d != null then "${qualify "@/includes/${r.s2}"}/${escape d}" else idByRep.${(repOf r).addr};
           # The mint's remainder: the first earlier unjoined sighting the rung identifies a sighting with,
           # or itself, followed to its own.
           repOf =
