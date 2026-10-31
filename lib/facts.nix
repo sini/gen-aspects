@@ -443,12 +443,9 @@ rec {
         in
         if r.kind == "content" then
           prelude.optionalAttrs targeted { inherit target; }
-          # On the applied stratum, a named sighting's §2 key and whether it joins a static class, without
-          # its id: a reader that needs no id (no second sighting at its key) never forces one.
-          // prelude.optionalAttrs (ix ? __atPos) {
-            k2 = if found != null then found.k2 or null else null;
-            joined = found != null && (found.joined or false);
-          }
+          # On the applied stratum, the sighting's record (`info`: its id, its §2 key `k2`, whether it joins
+          # a static class), so a reader that needs no id (no second sighting at its key) never forces one.
+          // (if ix ? __atPos then { info = found; } else { })
           // {
             kind = "content";
             sites =
