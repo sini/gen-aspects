@@ -680,6 +680,65 @@ rec {
       # Rung 2 is sound under failure: a comparison that throws (a lazy leaf no graph reader demands,
       # an unfree package's `outPath`) is NOT the same, so the two sightings stay two classes. `tryEval`
       # catches no `abort` and no stack overflow (identity design §4 row 4).
+      # THE RUNG'S PARTITION, refined the way `==` reads: a set of sightings is split by each value's
+      # head (its type, a set's attribute names, a list's length, a scalar's value without context, a
+      # number as a float), and only a part of two or more is refined further, child by child, so a
+      # value's child is read only where another value agrees with it on everything read before. Two
+      # values `==` identifies always share a part. A derivation, a function and a head that throws
+      # end refinement there (the rung decides inside the part), and so does the depth bound.
+      refineDepth = 32;
+      headOf =
+        v:
+        let
+          t = builtins.typeOf v;
+          h =
+            if t == "set" then
+              if v ? type && v.type == "derivation" then
+                "d"
+              else
+                "{${prelude.concatStringsSep "," (map builtins.toJSON (builtins.attrNames v))}"
+            else if t == "list" then
+              "[${toString (builtins.length v)}"
+            else if t == "string" then
+              "s${builtins.toJSON (builtins.unsafeDiscardStringContext v)}"
+            else if t == "int" || t == "float" then
+              "n${toString (v * 1.0)}"
+            else if t == "bool" then
+              (if v then "t" else "f")
+            else if t == "null" then
+              "z"
+            else if t == "path" then
+              "p${builtins.toJSON (toString v)}"
+            else
+              "?";
+          r = builtins.tryEval (builtins.seq h h);
+        in
+        if r.success then r.value else "!";
+      refine =
+        d: proj: xs:
+        if builtins.length xs < 2 || d == 0 then
+          [ xs ]
+        else
+          builtins.concatMap (g: refineIn d proj g) (
+            builtins.attrValues (builtins.groupBy (x: headOf (proj x)) xs)
+          );
+      refineIn =
+        d: proj: g:
+        let
+          v0 = proj (builtins.head g);
+          h = headOf v0;
+          step = gs: sub: builtins.concatMap (grp: refine (d - 1) sub grp) gs;
+        in
+        if builtins.length g < 2 then
+          [ g ]
+        else if builtins.substring 0 1 h == "{" then
+          builtins.foldl' (gs: k: step gs (x: (proj x).${k})) [ g ] (builtins.attrNames v0)
+        else if builtins.substring 0 1 h == "[" then
+          builtins.foldl' (gs: i: step gs (x: builtins.elemAt (proj x) i)) [ g ] (
+            builtins.genList (i: i) (builtins.length v0)
+          )
+        else
+          [ g ];
       same =
         a: b:
         if a.exact && b.exact then
@@ -892,23 +951,69 @@ rec {
           # is not compared with never reaches it. The component is computed once per REPRESENTATIVE:
           # following each sighting to the first unjoined sighting at its key the rung identifies it
           # with, until one is its own, so the readers of one class share it.
-          recsAt = builtins.mapAttrs (_: cs: builtins.groupBy (c: c.s2) (builtins.filter (c: c.named) cs)) (
+          keyAt = builtins.mapAttrs (_: cs: builtins.groupBy (c: c.s2) (builtins.filter (c: c.named) cs)) (
             builtins.groupBy (r: r.pk) cands
           );
-          posAt = builtins.mapAttrs (
+          # A key's sightings by bucket (`bucketOf`): the rung runs inside one bucket only. A lone
+          # sighting is never read.
+          recsAt = builtins.mapAttrs (
+            _:
+            builtins.mapAttrs (
+              _: rs: if builtins.length rs < 2 then { "" = rs; } else builtins.groupBy bucketOf rs
+            )
+          ) keyAt;
+          # A sighting the rung identifies with its key's FIRST sighting shares the first's bucket and is
+          # never read further (that comparison is the first one its step makes anyway); the rest are
+          # partitioned by `refine`, so a key of n distinct values costs n partial reads and no pair.
+          # Per key group, so a reader decides only its own key's buckets.
+          bucketsAt = builtins.mapAttrs (
             _:
             builtins.mapAttrs (
               _: rs:
+              let
+                first = builtins.head rs;
+                rest = builtins.filter (r: !r.exact && !(same first r)) rs;
+                parts = refine refineDepth (r: r.val) rest;
+                partOf = builtins.listToAttrs (
+                  builtins.concatLists (
+                    prelude.imap0 (
+                      i: g:
+                      map (r: {
+                        name = r.addr;
+                        value = "g${toString i}";
+                      }) g
+                    ) parts
+                  )
+                );
+              in
               builtins.listToAttrs (
-                prelude.imap0 (i: c: {
-                  name = c.addr;
-                  value = i;
+                map (r: {
+                  name = r.addr;
+                  value = if r.exact then "x" else partOf.${r.addr} or "";
                 }) rs
               )
             )
+          ) keyAt;
+          bucketOf =
+            r: if builtins.length (keyGroupOf r) < 2 then "" else bucketsAt.${r.pk}.${r.s2}.${r.addr};
+          keyGroupOf = r: keyAt.${r.pk}.${r.s2};
+          posAt = builtins.mapAttrs (
+            _:
+            builtins.mapAttrs (
+              _:
+              builtins.mapAttrs (
+                _: rs:
+                builtins.listToAttrs (
+                  prelude.imap0 (i: c: {
+                    name = c.addr;
+                    value = i;
+                  }) rs
+                )
+              )
+            )
           ) recsAt;
-          groupOf = r: recsAt.${r.pk}.${r.s2};
-          posOf = r: posAt.${r.pk}.${r.s2}.${r.addr};
+          groupOf = r: recsAt.${r.pk}.${r.s2}.${bucketOf r};
+          posOf = r: posAt.${r.pk}.${r.s2}.${bucketOf r}.${r.addr};
           unjoined = c: joinOf.${c.addr} == null;
           # Each pair at a key is decided once, by the earlier sighting (`ahead.<addr>`, a lazy row over
           # the later ones), and read by both: the later one's step and the earlier one's closure.
@@ -1003,7 +1108,7 @@ rec {
                   c = componentOf r;
                   base = qualify "@/includes/${r.s2}";
                 in
-                if prior.classesAt.${r.s2} or [ ] == [ ] && builtins.length c == builtins.length (groupOf r) then
+                if prior.classesAt.${r.s2} or [ ] == [ ] && builtins.length c == builtins.length (keyGroupOf r) then
                   base
                 else
                   "${base}/${escape (siteOfRec (leastOf c))}";
@@ -1030,8 +1135,14 @@ rec {
               }) rs
             );
           recAt = recIndex recs;
-          # Per host, so a reader forces only its own sightings' ids and the classes at their keys.
-          recAtOf = builtins.mapAttrs (_: recIndex) (builtins.groupBy (r: r.host) recs);
+          # Per host, so a reader forces only its own sightings' ids and the classes at their keys. An
+          # unnamed sighting with no `name` position at or above it is keyed by its position under its
+          # host, which the site walk derives itself (`contentId`), so it is not indexed.
+          recAtOf = builtins.mapAttrs (_: recIndex) (
+            builtins.groupBy (r: r.host) (builtins.filter (r: r.pk != null || pkAbove r) recs)
+          );
+          # By `name` POSITION only, so the filter reads no `name`.
+          pkAbove = r: r.parent != null && (r.parent.pk != null || pkAbove r.parent);
         in
         {
           inherit
@@ -1097,6 +1208,22 @@ rec {
             }
         else
           null;
+      # Whether a body holds a `name` POSITION at any content depth (an over-approximation of a
+      # candidate: it reads no `name`), walking the spine the record walk would, under the same depth
+      # budget. A body with none contributes no applied sighting, so it is never walked into records.
+      hasNamePos =
+        d: elems:
+        builtins.any (
+          e:
+          isContentElem e
+          && (
+            if d >= includeSitesMaxDepth then
+              throw "gen-aspects: include depth budget"
+            else
+              posKeyOf (if isNamedContent e then e.meta.sighting.value else e) != null
+              || hasNamePos (d + 1) (listOr (e.includes or includesDefault))
+          )
+        ) elems;
       appliedClassing =
         vertices:
         classing static (
@@ -1115,8 +1242,12 @@ rec {
                   r.pk
                 ]) recs) true
               );
+              any = builtins.tryEval (hasNamePos 1 (listOr (e.includes or includesDefault)));
             in
-            if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs
+            if !(builtins.isAttrs e) || isGuardLeaf e || !any.success || !any.value || !ok.success then
+              [ ]
+            else
+              recs
           ) (builtins.attrNames vertices)
         );
       sitesOfInstances =
