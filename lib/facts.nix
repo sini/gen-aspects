@@ -407,10 +407,6 @@ rec {
       # them); nothing is minted, and a nested position renders only inside a refusal. A `content`
       # site's `sites` is a thunk: a dangling reference inside inline content refuses only for a
       # reader that descends into it, and the depth budget above bounds that descent.
-      siteAt = siteAtWith recAt;
-      siteAtWith =
-        ix: id: parent:
-        siteAtIn ix id (parent != null) parent;
       # `hasParent` is passed beside `parent`, so a site's STRUCTURE (its kind, whether it names a
       # node, its nested sites) never forces an identifier: only reading `target` does, and with it
       # the classes at that one site's §2 key. A reader enumerating structure compares nothing.
@@ -423,6 +419,9 @@ rec {
           # within the depth budget. A static node's content is read off the enumerated sightings
           # (`recAt`), so named content names its CLASS and content inside a class is class-relative;
           # an applied body's (no sighting) is keyed by `contentId`.
+          # An applied vertex's index is ARMED at the first site with a `name` position (`__arm`): above
+          # it no sighting is named or inside a named value, so a site's id is its `contentId` and the
+          # vertex's index is never built for a body with no `name` position.
           found =
             if !hasParent then
               null
@@ -477,10 +476,6 @@ rec {
           qualify elem.key
         else
           "${parent}/includes/${toString (builtins.elemAt p (builtins.length p - 1))}";
-      sitesOf = sitesOfWith recAt;
-      sitesOfWith =
-        ix: id: parent:
-        sitesOfIn ix id (parent != null) parent;
       sitesOfIn =
         ix: id: hasParent: parent: pos:
         prelude.imap0 (i: siteAtIn ix id hasParent parent (pos ++ [ i ]));
@@ -542,7 +537,7 @@ rec {
             # here, and a term among them refuses at the declaration, never only when an instance fires.
             # A typed body's `includes` keeps its priority (gen-merge `partialSubmodule`, den-hoag-5ov3p),
             # so it is read through an override definition; a priority is resolved at fire time, never here.
-            unconditional = sitesOf id null [ ] (
+            unconditional = sitesOfIn recAt id false null [ ] (
               builtins.concatMap (
                 f:
                 let
@@ -573,14 +568,16 @@ rec {
               if dependent x then
                 { kind = "deferred"; }
               else
-                siteAt id null [ i ] (declValue id v "include position ${toString i}" x)
+                siteAtIn recAt id false null [ i ] (declValue id v "include position ${toString i}" x)
             ) inc.items
           )
         else if dependent inc then
           wholeDeferred
         else
           split (
-            sitesOf id null [ ] (expectList (memberDoor id) "includes" (declValue id v "`includes`" inc))
+            sitesOfIn recAt id false null [ ] (
+              expectList (memberDoor id) "includes" (declValue id v "`includes`" inc)
+            )
           );
       declOf = builtins.mapAttrs declInfo (prelude.filterAttrs (_: isGuardLeaf) walkNodeData);
 
@@ -589,7 +586,10 @@ rec {
       sitesOfEntry = id: v: sitesOfEntryAt id id v;
       sitesOfEntryAt =
         id: parent: v:
-        if isGuardLeaf v then (declInfo id v).sites else sitesOf id parent [ ] (includesOfValue id v);
+        if isGuardLeaf v then
+          (declInfo id v).sites
+        else
+          sitesOfIn recAt id true parent [ ] (includesOfValue id v);
 
       # AN INSTANCE'S SITES, read through its `instantiates` edge: the declaration's members, with each
       # `deferred` one classified at its own position of the instance's fired `includes` (only that
@@ -601,12 +601,12 @@ rec {
           key = entry.key or a;
         in
         if d.whole then
-          sitesOf key key [ ] (includesOfValue key entry)
+          sitesOfIn recAt key true key [ ] (includesOfValue key entry)
         else
           prelude.imap0 (
             i: s:
             if s.kind == "deferred" then
-              siteAt key key [ i ] (builtins.elemAt (includesOfValue key entry) i)
+              siteAtIn recAt key true key [ i ] (builtins.elemAt (includesOfValue key entry) i)
             else
               s
           ) d.sites;
@@ -824,9 +824,14 @@ rec {
               null
             else
               let
-                hits = builtins.filter (k: builtins.any (m: same m r) (builtins.elemAt prior.classesAt.${r.s2} k)) (
-                  builtins.genList (k: k) (builtins.length (prior.classesAt.${r.s2} or [ ]))
-                );
+                # A class whose members are not all of the sighting's regime (the mint takes it, or refuses
+                # it) is never joined, so minted and refused sightings never share a class (OQ7's fourth arm)
+                # through a static class either. The regime is read only where the rung identifies.
+                hits = builtins.filter (
+                  k:
+                  builtins.any (m: same m r) (builtins.elemAt prior.classesAt.${r.s2} k)
+                  && builtins.elemAt prior.regimesAt.${r.s2} k == (digestOf r != null)
+                ) (builtins.genList (k: k) (builtins.length (prior.classesAt.${r.s2} or [ ])));
                 ids = map (builtins.elemAt prior.classIds.${r.s2}) hits;
               in
               if ids == [ ] then null else builtins.head (builtins.sort builtins.lessThan ids);
@@ -842,6 +847,23 @@ rec {
           classesAt = builtins.mapAttrs (_: rs: componentsOf (builtins.filter (r: joinFor r == null) rs)) (
             builtins.groupBy (r: r.s2) namedRecs
           );
+          # Per class, whether the mint takes every member (true), refuses every member (false), or neither
+          # (null), read only by a later stratum's join.
+          regimesAt = builtins.mapAttrs (
+            _:
+            map (
+              c:
+              let
+                ms = map (m: ownDigest' m.val != null) c;
+              in
+              if builtins.all (x: x) ms then
+                true
+              else if builtins.any (x: x) ms then
+                null
+              else
+                false
+            )
+          ) classesAt;
           # Per §2 key, so a reader decides only the keys its own sightings sit at.
           classIx = builtins.mapAttrs (
             _: cs:
@@ -975,6 +997,7 @@ rec {
         {
           inherit
             classesAt
+            regimesAt
             classIds
             classIdOf
             parentIdOf
@@ -1015,6 +1038,7 @@ rec {
           pos = if builtins.isAttrs v then builtins.unsafeGetAttrPos "name" v else null;
         in
         if pos == null then null else "${toString pos.line}:${toString pos.column}:${pos.file}";
+      namePosOf = v: builtins.isAttrs v && builtins.unsafeGetAttrPos "name" v != null;
       appliedNamed =
         elem:
         if isNamedContent elem then
@@ -1043,23 +1067,42 @@ rec {
         vertices: iid:
         let
           e = vertices.${iid}.entry or null;
-          recs = recsFromWith appliedNamed true iid null null [ ] [ ] [ ] (
-            listOr (e.includes or includesDefault)
-          );
+          l = listOr (e.includes or includesDefault);
+          recs = recsFromWith appliedNamed true iid null null [ ] [ ] [ ] l;
           # What `classing` forces of a vertex, at any depth: its record spine, addresses and `name`
           # positions; a `name` itself is read only by the readers of its position.
+          # A body with no `name` position at any depth contributes no sighting, so it is never walked
+          # into records.
           ok = builtins.tryEval (
-            builtins.deepSeq (map (r: [
+            hasNamePos 1 l
+            && builtins.deepSeq (map (r: [
               r.addr
               r.pk
             ]) recs) true
           );
         in
-        if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs;
+        if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success || !ok.value then [ ] else recs;
+      # Whether a body holds a `name` POSITION at any content depth (an over-approximation of a
+      # candidate: it reads no `name`), walking the spine the record walk would, under the same depth
+      # budget. A body with none contributes no applied sighting, so it is never walked into records.
+      hasNamePos =
+        d: elems:
+        builtins.any (
+          e:
+          isContentElem e
+          && (
+            if d >= includeSitesMaxDepth then
+              throw "gen-aspects: include depth budget"
+            else
+              namePosOf (if isNamedContent e then e.meta.sighting.value else e)
+              || hasNamePos (d + 1) (listOr (e.includes or includesDefault))
+          )
+        ) elems;
+      # `localOf`: a vertex's own records, as its reader holds them, so they are walked once per vertex.
       appliedClassing =
-        vertices: instantiates:
+        vertices: instantiates: localOf:
         classing {
-          localOf = appliedRecsOf vertices;
+          inherit localOf;
           declNodeOf =
             r:
             let
@@ -1078,9 +1121,9 @@ rec {
         let
           b = v.body or null;
           inc = b.attrs.includes or null;
-          node = e: {
+          node = e: rec {
             v = if isNamedContent e then e.meta.sighting.value else e;
-            d = ownDigest' (if isNamedContent e then e.meta.sighting.value else e);
+            d = ownDigest' v;
             kids = map node (listOr (e.includes or includesDefault));
           };
           items =
@@ -1108,24 +1151,30 @@ rec {
         vertices: instantiates:
         let
           # Per vertex, from its own sightings, so one host's sites read no other vertex's.
-          inherit (appliedClassing vertices instantiates) recInfo;
+          inherit (appliedClassing vertices instantiates (iid: ixOf.${iid}.__recs or [ ])) recInfo;
           # Per vertex, its sightings by position (unique within a vertex), built only when looked up.
-          ixOf = builtins.mapAttrs (iid: _: {
+          # A record with no `name` position at or above it is keyed by its position under its vertex, which the
+          # site walk derives itself (`contentId`), so it is not indexed.
+          ixOf = builtins.mapAttrs (iid: _: rec {
+            __recs = appliedRecsOf vertices iid;
             __atPos = builtins.listToAttrs (
               map (r: {
                 name = builtins.toJSON r.pos;
                 value = recInfo r;
-              }) (appliedRecsOf vertices iid)
+              }) (builtins.filter (r: r.pk != null || pkAbove r) __recs)
             );
           }) vertices;
+          # By `name` POSITION only, so the filter reads no `name`.
+          pkAbove = r: r.parent != null && (r.parent.pk != null || pkAbove r.parent);
         in
         iid: entry:
         if isGuardLeaf entry then
           (declInfo iid entry).sites
         else
-          sitesOfWith (ixOf.${iid} or { }) (entry.key or "<entry>") iid [ ] (
-            includesOfValue (entry.key or "<entry>") entry
-          );
+          let
+            id = entry.key or "<entry>";
+          in
+          sitesOfIn (ixOf.${iid} or { }) id true iid [ ] (includesOfValue id entry);
       unnamedEntries = map (r: {
         name = idOfRec r;
         value = {
@@ -1176,7 +1225,7 @@ rec {
         walkSitesOf
         // builtins.mapAttrs (
           t: a:
-          sitesOf a.host t a.pos (
+          sitesOfIn recAt a.host true t a.pos (
             expectList (includesDoor a.host (prelude.concatStringsSep "." (map toString a.pos))) "includes" (
               a.value.includes or includesDefault
             )
