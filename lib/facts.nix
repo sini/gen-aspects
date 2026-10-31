@@ -943,8 +943,8 @@ rec {
           # TWO DECLARED PRICES (ADR-0025 item 1). A digest reads a class member's whole value up to the
           # mint's first refusal, so an `abort` there that no comparison would reach aborts that value's
           # own readers. On ADR-0016 r4's excluded float domain the rung is not transitive and a minted
-          # integer can be `==` to a refused float, so a class there is the borrowed one, not the
-          # connected component, and can depend on which sighting is first (identity design §4).
+          # integer can be `==` to a refused float, so a class there is a borrowed class or a star (below),
+          # not the connected component, and can depend on which sighting is first (identity design §4).
           digestOf = builtins.listToAttrs (
             map (r: {
               name = r.addr;
@@ -1018,41 +1018,22 @@ rec {
                   if same c r && unjoined c then repOf c else go (i + 1);
             in
             go 0;
-          # A representative's component, by breadth-first closure. No earlier sighting is an unjoined
-          # neighbour of a representative (its own step found none), so the first round reads its own
-          # row; every further round reads all that remain.
+          # A representative's class: the later sightings at its key the rung identifies with it, read off
+          # its own row (an earlier one would have been its step). Outside ADR-0016 r4's excluded float
+          # domain the rung is transitive there, so the star is the connected component.
           componentOf =
             rep:
             let
               rs = groupOf rep;
               i = posOf rep;
-              n = builtins.length rs;
               flags = ahead.${rep.addr};
-              firstIx = builtins.filter (
-                k: builtins.elemAt flags k && unjoined (builtins.elemAt rs (i + 1 + k))
-              ) (builtins.genList (k: k) (n - i - 1));
-              grow =
-                members: frontier: rest:
-                let
-                  split = builtins.partition (c: builtins.any (m: same m c) frontier && unjoined c) rest;
-                in
-                if split.right == [ ] then members else grow (members ++ split.right) split.right split.wrong;
-              first = map (k: builtins.elemAt rs (i + 1 + k)) firstIx;
             in
-            if firstIx == [ ] then
-              [ rep ]
-            else
-              grow ([ rep ] ++ first) first (
-                let
-                  taken = builtins.listToAttrs (
-                    map (c: {
-                      name = c.addr;
-                      value = null;
-                    }) ([ rep ] ++ first)
-                  );
-                in
-                builtins.filter (c: !(taken ? ${c.addr})) rs
-              );
+            [ rep ]
+            ++ map (k: builtins.elemAt rs (i + 1 + k)) (
+              builtins.filter (k: builtins.elemAt flags k && unjoined (builtins.elemAt rs (i + 1 + k))) (
+                builtins.genList (k: k) (builtins.length rs - i - 1)
+              )
+            );
           # The bare §2 key is the class's exactly when it is the only class at that key across the strata.
           idByRep = builtins.listToAttrs (
             map (r: {

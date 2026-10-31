@@ -218,6 +218,16 @@
           echo "applied-mixed: the width costs the classes $w1 / $w2 thunks at 16 / 32 hosts"
           [ $((100 * w2)) -le $((100 * w1 + 50)) ] \
             || die applied-mixed "a value's width costs the classes per host: $w1 / $w2 thunks at 16 / 32 hosts"
+          # Two classes at one key, each shared by every host, cost a constant per host whether the mint
+          # takes the values or not: a class is its representative's own row, never a closure over the rest.
+          for arm in applied-mixed-w16 applied-fnmixed; do
+            appliedAt "$arm" 50; m1=$thunks
+            appliedAt "$arm" 100; m2=$thunks
+            appliedAt "$arm" 200; m3=$thunks
+            echo "$arm: thunks $m1 / $m2 / $m3 at n = 50 / 100 / 200"
+            [ $((100 * (m3 - m2))) -le $((201 * (m2 - m1))) ] \
+              || die "$arm" "thunks grow faster than linear in hosts: $m1 / $m2 / $m3 at n = 50 / 100 / 200"
+          done
 
           # den-hoag-qxip5: the declared abort (identity design §4 row 4). Each cell dies on the
           # evaluator's stack-overflow channel, which Nix, Determinate ("stack overflow; max-call-depth
@@ -236,8 +246,8 @@
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "26" ] || die runner "expected 26 evaluations, ran $ran"
-          echo "tests-process: 9 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "32" ] || die runner "expected 32 evaluations, ran $ran"
+          echo "tests-process: 11 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
