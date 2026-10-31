@@ -141,7 +141,20 @@ let
   appliedMixed =
     named: k:
     let
-      v = m: if named then wide m k else builtins.removeAttrs (wide m k) [ "name" ];
+      v =
+        m:
+        if named == "fn" then
+          wide m k
+          // {
+            T = {
+              marks = [ m ];
+              fn = x: x;
+            };
+          }
+        else if named then
+          wide m k
+        else
+          builtins.removeAttrs (wide m k) [ "name" ];
       hs = builtins.genList (i: "h${toString i}") (builtins.fromJSON n);
     in
     appliedSites {
@@ -276,7 +289,8 @@ let
     # key), reached by one host, every include site's target read; the runner reads the slope at
     # n = 100 / 200 / 400. `applied-mixed-w<k>`: two guards holding two values at one §2 key, each k
     # attributes wide, reached by n hosts, and `applied-unnamed-w<k>` the same values without a `name`
-    # (no class work, the control); the runner reads what the width costs the classes at two host counts.
+    # (no class work, the control); the runner reads what the width costs the classes at two host counts,
+    # and the slope in hosts of `applied-mixed-w16` and of `applied-fnmixed` (the same values holding a lambda).
     applied-factory = appliedSites (
       let
         ix = builtins.genList (i: "a${toString i}") (builtins.fromJSON n);
@@ -295,6 +309,8 @@ let
     applied-mixed-w64 = appliedMixed true 64;
     applied-unnamed-w16 = appliedMixed false 16;
     applied-unnamed-w64 = appliedMixed false 64;
+    # The same two values each holding a lambda: outside the mint, decided by the rung.
+    applied-fnmixed = appliedMixed "fn" 0;
 
     # den-hoag-qxip5 (identity design §4 row 4, R7's declared exception): named content whose
     # structural comparison does not terminate aborts the whole graph. The verdict is the exit and its
