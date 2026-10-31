@@ -540,7 +540,8 @@ in
   # the rung. `a`'s value is the key's first sighting and apart from the rest, so each other value keys
   # its own class. `intFloat`: `{ v = 1; }` and `{ v = 1.0; }` are `==`, one class; `outPath`: two
   # records sharing an `outPath` with siblings apart are two; `fnShared`: one value holding a lambda,
-  # reached twice, is one class; `fnApart`: two values holding their own lambdas are two. RED a digest
+  # reached by two instances, is two classes, one per instance (owner 2026-10-31, P2-b: the mint's
+  # remainder is keyed per instance); `fnApart`: two values holding their own lambdas are two. RED a digest
   # by `toJSON` (which renders an `outPath` record as that string alone, and a float apart from its
   # integer): `intFloat` and `outPath` false, and `fnShared` aborts uncatchably; RED the mint's
   # remainder keyed as one class: `fnApart` false.
@@ -621,13 +622,106 @@ in
           several = true;
         };
         fnShared = {
-          same = true;
+          same = false;
           several = true;
         };
         fnApart = {
           same = false;
           several = true;
         };
+      };
+    };
+
+  # S13. On ADR-0016 r4's excluded float domain a minted value and a refused one can be `==`: one factory
+  # makes `{ v = 2^53 + 1; }`, which the mint takes, and `{ v = 2^53 as a float; }`, which it refuses.
+  # Minted and refused sightings never share a class, in either order (owner 2026-10-31, OQ7's fourth
+  # arm, "accept"): the minted one is keyed by its content, the refused one per instance. RED a refused
+  # sighting joined to a minted one it is `==` to (sfkyy-a4 `cfc6d21`): one id, both orders.
+  flake.tests.named-content-applied-bodies.test-minted-and-refused-sightings-never-share-a-class =
+    let
+      as =
+        (mkSchemaEval {
+          fixtureKeySemantics.T.category = "class";
+          modules = [ { config.aspects.s = { }; } ];
+        }).config.aspects;
+      f = v: {
+        name = "t";
+        T.marks = [ "t" ];
+        inherit v;
+      };
+      pair =
+        va: vb:
+        let
+          at = aspects.includeSitesOfInstance { } as {
+            vertices = {
+              a.entry.includes = [ (f va) ];
+              b.entry.includes = [ (f vb) ];
+            };
+          };
+          one = v: first (map (s: s.target) (at v));
+          int = if builtins.isInt va then "a" else "b";
+        in
+        {
+          eq = f va == f vb;
+          apart = one "a" != one "b";
+          mintedInt = minted "t" (one int);
+        };
+    in
+    {
+      expr = builtins.mapAttrs (_: tryValue) {
+        intFirst = pair 9007199254740993 9007199254740992.0;
+        floatFirst = pair 9007199254740992.0 9007199254740993;
+      };
+      expected = {
+        intFirst = {
+          eq = true;
+          apart = true;
+          mintedInt = true;
+        };
+        floatFirst = {
+          eq = true;
+          apart = true;
+          mintedInt = true;
+        };
+      };
+    };
+
+  # S14. What the mint cannot take is keyed per instance (owner 2026-10-31, P2-b): one value holding a
+  # lambda, included twice in one instance's body, is one class there (a diamond within the instance),
+  # and the same value in another instance is another class. RED the remainder decided across the relation
+  # (sfkyy-a4): `apart` false; RED each sighting its own class: `within` false.
+  flake.tests.named-content-applied-bodies.test-refused-content-is-keyed-per-instance =
+    let
+      as =
+        (mkSchemaEval {
+          fixtureKeySemantics.T.category = "class";
+          modules = [ { config.aspects.s = { }; } ];
+        }).config.aspects;
+      fv = {
+        name = "t";
+        T.marks = [ "t" ];
+        fn = x: x;
+      };
+      at = aspects.includeSitesOfInstance { } as {
+        vertices = {
+          a.entry.includes = [
+            fv
+            fv
+          ];
+          b.entry.includes = [ fv ];
+        };
+      };
+      ta = map (s: s.target) (at "a");
+      tb = map (s: s.target) (at "b");
+    in
+    {
+      expr = tryValue {
+        within = builtins.elemAt ta 0 == builtins.elemAt ta 1 && suffixed "t" (builtins.head ta);
+        apart = builtins.head ta != builtins.head tb;
+      };
+      expected = {
+        within = true;
+        apart = true;
       };
     };
 }
