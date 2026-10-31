@@ -499,25 +499,38 @@ in
     };
     # R-6. One classifier, two callers: `includeSitesOfInstance` over each node's value under its own
     # id is that node's `includeSitesOf`, inline content included (`wc`). RED (a top-level-only classifier): false.
-    test-include-sites-of-entry = {
-      expr = {
-        same = builtins.all (
-          id:
-          aspects.includeSitesOfInstance { } rel { vertices.${id}.entry = facts.nodeData.${id}; } id
-          == facts.includeSitesOf.${id}
-        ) facts.nodes;
-        wc = map (x: x.kind) (
-          aspects.includeSitesOfInstance { } rel { vertices.wc.entry = facts.nodeData.wc; } "wc"
+    # An applied content site also carries its §2 key and whether it joins a static class (`k2`, `joined`,
+    # den-hoag-named-include-instance-bodies-sfkyy P1-c), which a static site does not: compared without them.
+    test-include-sites-of-entry =
+      let
+        bare = map (
+          s:
+          builtins.removeAttrs s [
+            "k2"
+            "joined"
+          ]
+          // (if s ? sites then { sites = bare s.sites; } else { })
         );
+      in
+      {
+        expr = {
+          same = builtins.all (
+            id:
+            bare (aspects.includeSitesOfInstance { } rel { vertices.${id}.entry = facts.nodeData.${id}; } id)
+            == facts.includeSitesOf.${id}
+          ) facts.nodes;
+          wc = map (x: x.kind) (
+            aspects.includeSitesOfInstance { } rel { vertices.wc.entry = facts.nodeData.wc; } "wc"
+          );
+        };
+        expected = {
+          same = true;
+          wc = [
+            "content"
+            "local"
+          ];
+        };
       };
-      expected = {
-        same = true;
-        wc = [
-          "content"
-          "local"
-        ];
-      };
-    };
     # R-7. Fan-out: at a (h1, users u1, u2, u3) `u` has three ids, `e` one; c (binding u3) one; b (h2,
     # no user) no edge. RED (the first descendant tuple taken): one id, [ "u-u1" ].
     test-fan-out = {

@@ -362,6 +362,9 @@ let
       }
     );
     applied-mixed-w16 = appliedMixed true 16;
+    applied-mixed-w64 = appliedMixed true 64;
+    applied-unnamed-w16 = appliedMixed false 16;
+    applied-unnamed-w64 = appliedMixed false 64;
     applied-onehost = appliedOneHost true;
     applied-onehost-unnamed = appliedOneHost false;
     # The same two values each holding a lambda: outside the mint, decided by the rung.
