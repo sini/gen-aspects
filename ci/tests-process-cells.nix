@@ -92,8 +92,15 @@ let
 
   # One host per `hosts` entry, each its own entity binding `host`; every reached instance's include
   # site targets, forced. The value is the count of sites read.
+  # `staticOnly`: the same relation, its reach forced, and the static include targets of `s` read in
+  # place of every applied site, so it pays every static cost the applied read pays and nothing of the
+  # applied stratum.
   appliedSites =
-    { aspects, hosts }:
+    {
+      aspects,
+      hosts,
+      staticOnly ? false,
+    }:
     let
       as =
         (spiedDoored.evalModuleTree { } [
@@ -125,19 +132,14 @@ let
           m: builtins.concatMap (iid: map (s: s.target) (at iid)) rel.reaches.${h}.${m}
         ) hosts.${h}
       ) (builtins.attrNames hosts);
+      reach = map (h: map (m: rel.reaches.${h}.${m}) hosts.${h}) (builtins.attrNames hosts);
+      statics = (ga.graphFacts { } as).includesOf.s;
     in
-    builtins.deepSeq targets (builtins.length targets);
+    if staticOnly then
+      builtins.deepSeq reach (builtins.deepSeq statics (builtins.length statics))
+    else
+      builtins.deepSeq targets (builtins.length targets);
   # One factory: its `name` sits at one source position however often it is called.
-  wideElse = m: k: {
-    name = "t";
-    T.marks = [ m ];
-    extra = builtins.listToAttrs (
-      builtins.genList (i: {
-        name = "e${toString i}";
-        value.v = i;
-      }) k
-    );
-  };
   wide = m: k: {
     name = "t";
     T.marks = [ m ];
@@ -224,57 +226,78 @@ let
       walked = if lift then map (iid: shape (at iid)) (builtins.attrNames rel.vertices) else [ ];
     in
     builtins.deepSeq walked (builtins.deepSeq targets (builtins.length targets));
-  # `join`: the static contents are the same factory's (one `name` position, so the applied key's), else
-  # a copy of it at another source position (`wideElse`), so another key, and one more guard fires one
-  # `wideElse` content to one more host, so the control's join forces that key's static classes too.
-  # Both arms then pay the static classing once (its own cost, outside this stratum), and the difference
-  # is what the applied stratum's join adds.
+  # n guards, guard i firing one factory's content i to host i, and aspect `s` declaring all n contents
+  # statically, so n static classes sit at the one §2 key every applied sighting is joined against. `fn`:
+  # each content also holds a lambda, so the mint refuses every sighting and every static class. `static`:
+  # the same aspects, read for `s`'s static include targets alone (`graphFacts`) in a process of its own,
+  # so it pays the static classing the join arm pays, and nothing of the applied stratum.
   appliedStaticFactory =
-    join:
+    fn: static:
     let
       ix = builtins.genList (i: "a${toString i}") (builtins.fromJSON n);
-    in
-    appliedSites {
+      c =
+        i:
+        let
+          w = wide i 0;
+        in
+        if fn then
+          w
+          // {
+            T = w.T // {
+              fn = x: x;
+            };
+          }
+        else
+          w;
       aspects =
         builtins.listToAttrs (
           map (i: {
             name = i;
-            value = ga.guard (ga.pred.has "host") { includes = [ (wide i 0) ]; };
+            value = ga.guard (ga.pred.has "host") { includes = [ (c i) ]; };
           }) ix
         )
         // {
-          s.includes = map (i: if join then wide i 0 else wideElse i 0) ix;
-        }
-        // (
-          if join then { } else { z = ga.guard (ga.pred.has "host") { includes = [ (wideElse "z" 0) ]; }; }
-        );
-      hosts =
-        builtins.listToAttrs (
-          map (i: {
-            name = "h${i}";
-            value = [ i ];
-          }) ix
-        )
-        // (if join then { } else { hz = [ "z" ]; });
+          s.includes = map c ix;
+        };
+    in
+    appliedSites {
+      inherit aspects;
+      staticOnly = static;
+      hosts = builtins.listToAttrs (
+        map (i: {
+          name = "h${i}";
+          value = [ i ];
+        }) ix
+      );
     };
+  # One factory's value `t` fired in an applied body and declared statically with other content. The
+  # static `T` is one attribute wider, so `==` between them is false on the attribute count, in every
+  # evaluator's interning order, and never reads a leaf. `leaf`: where the uncatchable leaf (`T.zz`)
+  # sits: "fired", "static", or null (no static declaration: the control). The value read is the applied
+  # site's `info.joined`.
   appliedApartLeaf =
-    withStatic:
+    leaf:
     let
-      f = m: zz: {
+      bad = ({ }).nope;
+      f = m: zz: extra: {
         name = "t";
         T = {
           marks = [ m ];
           inherit zz;
-        };
+        }
+        // extra;
       };
       as =
         (spiedDoored.evalModuleTree { } [
           { options.aspects = (ga.mkAspectSchema { keySemantics.T.category = "class"; }).mkAspectOption { }; }
-          { aspects.s.includes = if withStatic then [ (f "s" 1) ] else [ ]; }
+          {
+            aspects.s.includes =
+              if leaf == null then [ ] else [ (f "s" (if leaf == "static" then bad else 1) { pad = 1; }) ];
+          }
         ]).config.aspects;
       site = builtins.head (
         ga.includeSitesOfInstance { } as {
-          vertices.v.entry.includes = [ (f "a" ({ }).nope) ];
+          vertices.v.entry.includes = [ (f "a" (if leaf == "fired" then bad else 1) { }) ];
         } "v"
       );
     in
@@ -447,19 +470,21 @@ let
         hosts.x = ix;
       }
     );
-    # n guards, guard i firing factory content i to host i, and aspect `s` declaring all n contents
-    # statically, so n static classes sit at the one §2 key each applied sighting is joined against
-    # (`-nojoin`: the static contents at another key, so no static class sits at the applied key).
-    applied-sfactory = appliedStaticFactory true;
-    applied-sfactory-nojoin = appliedStaticFactory false;
-    # P1's residue, the static join's reader (ADR-0025 item 1, declared): one factory's value `t` is fired
-    # in an applied body holding an uncatchable leaf (`T.zz`) and declared statically with other content,
-    # so the rung says apart at `T.marks` and never reaches the leaf. Whether the sighting joins a static
-    # class (its site's `info.joined`) reads its digest there, and the digest reads the leaf: the cell
-    # dies on the evaluator's missing-attribute channel. `-control`: no static class at the key, so
-    # nothing reads the digest and it reads `false`.
-    applied-apart-leaf = appliedApartLeaf true;
-    applied-apart-leaf-control = appliedApartLeaf false;
+    # n static classes at the applied key, minted (`sfactory`) and refused (`sfnfactory`); `-static`, the
+    # same aspects' static classing alone, in its own process.
+    applied-sfactory = appliedStaticFactory false false;
+    applied-sfactory-static = appliedStaticFactory false true;
+    applied-sfnfactory = appliedStaticFactory true false;
+    applied-sfnfactory-static = appliedStaticFactory true true;
+    # P1's residue, the static join's reader (ADR-0025 item 1, declared): an applied value at a key holding
+    # a static class whose content differs, so the rung says apart on the attribute count. Whether the
+    # sighting joins (`info.joined`) reads its digest and every static member's digest at the key, so an
+    # uncatchable leaf in either (`-apart-`: the fired value's; `-static-`: the static value's) dies on
+    # the evaluator's missing-attribute channel. `-control`: no static class at the key, so nothing reads
+    # a digest and it reads `false`.
+    applied-apart-leaf = appliedApartLeaf "fired";
+    applied-static-leaf = appliedApartLeaf "static";
+    applied-apart-leaf-control = appliedApartLeaf null;
     applied-mixed-w16 = appliedMixed true 16;
     applied-mixed-w64 = appliedMixed true 64;
     applied-unnamed-w16 = appliedMixed false 16;

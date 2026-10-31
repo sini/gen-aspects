@@ -639,10 +639,10 @@ in
   # arm, "accept"; den-hoag-c4ucc carries the owner's deeper review): the minted one is keyed by its
   # content, the refused one per instance. RED a refused sighting joined to a minted one it is `==` to
   # (`sfkyy-a4-join`, `cfc6d21`): one id, both orders.
-  # Through a static class too: a static class at the key is joined only by a sighting of its members'
-  # regime, so with the int declared statically the applied int reads its id and the applied float does
-  # not, and with the float declared statically the reverse. RED the join decided by the rung alone
-  # (`sfkyy-a5`, `a322c17`): both read the static id.
+  # Through a static class too: only a sighting the mint takes joins one, and only a class the mint
+  # takes, so with the int declared statically the applied int reads its id and the applied float does
+  # not, and with the float declared statically neither does (refused content is keyed per instance,
+  # P2-b). RED the join decided by the rung alone (`sfkyy-a5`, `a322c17`): both read the static id.
   flake.tests.named-content-applied-bodies.test-a-refused-sighting-never-shares-a-minted-class =
     let
       as =
@@ -710,7 +710,7 @@ in
         };
         staticFloat = {
           intJoins = false;
-          floatJoins = true;
+          floatJoins = false;
           apart = true;
         };
         intFirst = {
@@ -730,8 +730,10 @@ in
   # lambda, included twice in one instance's body, is one class there (a diamond within the instance),
   # and the same value in another instance is another class. RED the remainder decided across the relation
   # (sfkyy-a4): `apart` false; RED each sighting its own class: `within` false.
-  # A static class at the key holding that value is joined by both instances' sightings, so under it they
-  # read one id, the static one (`joined`). RED a join refused to every sighting the mint refuses: two ids.
+  # A static class at the key holding that value is joined by neither instance's sighting: content the
+  # mint refuses is keyed per instance whatever is declared statically (owner P2-b), so under it they
+  # read two ids, neither the static one (`joined`). RED a refused sighting joined to an `==` refused
+  # static class (`sfkyy-v3`, `6f156f3`): both read the static id.
   flake.tests.named-content-applied-bodies.test-refused-content-is-keyed-per-instance =
     let
       as =
@@ -776,14 +778,16 @@ in
           "a"
           "b"
         ];
+        joinedApart = first (map (s: s.target) (atS "a")) != first (map (s: s.target) (atS "b"));
       };
       expected = {
         within = true;
         apart = true;
         joined = [
-          true
-          true
+          false
+          false
         ];
+        joinedApart = true;
       };
     };
 }

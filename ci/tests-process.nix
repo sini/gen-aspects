@@ -258,20 +258,22 @@
           echo "applied-mixed: the width costs the classes $w1 / $w2 thunks at 16 / 32 hosts"
           [ $((100 * w2)) -le $((100 * w1 + 50)) ] \
             || die applied-mixed "a value's width costs the classes per host: $w1 / $w2 thunks at 16 / 32 hosts"
-          # n static classes at the applied key: what the applied stratum's join adds (the arm less its
-          # control, which pays the same static classing) is linear in n when a sighting reaches only the
-          # static classes that could match it; scanning every static class at the key is quadratic. The
-          # static classing's own cost is outside it. The increment's first point may be below zero (the
-          # control's extra host), so it is measured by its slope.
-          for k in 100 200 400; do
-            appliedAt applied-sfactory "$k"; a=$thunks
-            appliedAt applied-sfactory-nojoin "$k"; b=$thunks
-            eval "j$k=$((a - b))"
+          # n static classes at the applied key, minted and refused: what the applied stratum adds (the arm
+          # less `-static`, the same relation's static costs read alone, in its own process) is linear in n,
+          # its index and its join both. Main's static classing (quadratic in classes at one key) is paid
+          # in both arms. A scan of every static class at the key, per sighting or once per key, is
+          # quadratic.
+          for arm in applied-sfactory applied-sfnfactory; do
+            for k in 100 200 400; do
+              appliedAt "$arm" "$k"; a=$thunks
+              appliedAt "$arm-static" "$k"; b=$thunks
+              eval "j$k=$((a - b))"
+            done
+            echo "$arm: the applied stratum costs $j100 / $j200 / $j400 thunks over the static at n = 100 / 200 / 400"
+            [ $((j200 - j100)) -gt 0 ] || die "$arm" "could not measure: the increment does not grow ($j100 / $j200)"
+            [ $((100 * (j400 - j200))) -le $((210 * (j200 - j100))) ] \
+              || die "$arm" "the applied stratum over n static classes grows faster than linear: $j100 / $j200 / $j400 at n = 100 / 200 / 400"
           done
-          echo "applied-sfactory: the join costs $j100 / $j200 / $j400 thunks at n = 100 / 200 / 400"
-          [ $((j200 - j100)) -gt 0 ] || die applied-sfactory "could not measure: the join's increment does not grow ($j100 / $j200)"
-          [ $((100 * (j400 - j200))) -le $((210 * (j200 - j100))) ] \
-            || die applied-sfactory "the static join grows faster than linear in n: $j100 / $j200 / $j400 at n = 100 / 200 / 400"
           # Two classes at one key, each shared by every host, cost a constant per host whether the mint
           # takes the values or not: a class is its representative's own row, never a closure over the rest.
           for arm in applied-mixed-w16 applied-fnmixed; do
@@ -299,21 +301,24 @@
           done
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
-          # P1's residue at the static join (declared): the join test reads the sighting's digest beside a
-          # static class at its key, so a leaf the rung never reaches aborts it; without the static class
-          # it reads `false`. The abort is a missing attribute, which `tryEval` cannot catch.
+          # P1's residue at the static join (declared): beside a static class at its key, the join reads the
+          # applied value's digest and every static member's, so an uncatchable leaf in either aborts it,
+          # though the rung says apart on the attribute count; without the static class it reads `false`.
+          # The abort is a missing attribute, which `tryEval` cannot catch.
           evalArm applied-apart-leaf-control
           [ "$rc" -eq 0 ] && [ "$val" = "false" ] \
             || die applied-apart-leaf-control "expected exit 0 and false, got $rc and '$val'"
-          evalArm applied-apart-leaf
-          [ "$rc" -ne 0 ] || die applied-apart-leaf "expected the declared abort, got exit 0 and '$val'"
-          grep -q "attribute 'nope' missing" "$TMPDIR/err" \
-            || die applied-apart-leaf "expected the missing-attribute channel (exit $rc), got: $(grep error "$TMPDIR/err" | head -2)"
-          echo "applied-apart-leaf: the join test beside a static class reads the digest and dies on the declared channel; alone, false"
+          for arm in applied-apart-leaf applied-static-leaf; do
+            evalArm "$arm"
+            [ "$rc" -ne 0 ] || die "$arm" "expected the declared abort, got exit 0 and '$val'"
+            grep -q "attribute 'nope' missing" "$TMPDIR/err" \
+              || die "$arm" "expected the missing-attribute channel (exit $rc), got: $(grep error "$TMPDIR/err" | head -2)"
+          done
+          echo "applied-apart-leaf: beside a static class the join reads the fired and the static digests and dies on the declared channel; alone, false"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "50" ] || die runner "expected 50 evaluations, ran $ran"
-          echo "tests-process: 17 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "57" ] || die runner "expected 57 evaluations, ran $ran"
+          echo "tests-process: 19 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
