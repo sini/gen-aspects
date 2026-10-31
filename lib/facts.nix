@@ -1070,8 +1070,14 @@ rec {
               }) rs
             );
           recAt = recIndex recs;
-          # Per host, so a reader forces only its own sightings' ids and the classes at their keys.
-          recAtOf = builtins.mapAttrs (_: recIndex) (builtins.groupBy (r: r.host) recs);
+          # Per host, so a reader forces only its own sightings' ids and the classes at their keys. An
+          # unnamed sighting with no `name` position at or above it is keyed by its position under its
+          # host, which the site walk derives itself (`contentId`), so it is not indexed.
+          recAtOf = builtins.mapAttrs (_: recIndex) (
+            builtins.groupBy (r: r.host) (builtins.filter (r: r.pk != null || pkAbove r) recs)
+          );
+          # By `name` POSITION only, so the filter reads no `name`.
+          pkAbove = r: r.parent != null && (r.parent.pk != null || pkAbove r.parent);
         in
         {
           inherit
@@ -1137,6 +1143,22 @@ rec {
             }
         else
           null;
+      # Whether a body holds a `name` POSITION at any content depth (an over-approximation of a
+      # candidate: it reads no `name`), walking the spine the record walk would, under the same depth
+      # budget. A body with none contributes no applied sighting, so it is never walked into records.
+      hasNamePos =
+        d: elems:
+        builtins.any (
+          e:
+          isContentElem e
+          && (
+            if d >= includeSitesMaxDepth then
+              throw "gen-aspects: include depth budget"
+            else
+              posKeyOf (if isNamedContent e then e.meta.sighting.value else e) != null
+              || hasNamePos (d + 1) (listOr (e.includes or includesDefault))
+          )
+        ) elems;
       appliedClassing =
         vertices: instantiates:
         classingWith
@@ -1164,8 +1186,12 @@ rec {
                     r.pk
                   ]) recs) true
                 );
+                any = builtins.tryEval (hasNamePos 1 (listOr (e.includes or includesDefault)));
               in
-              if !(builtins.isAttrs e) || isGuardLeaf e || !ok.success then [ ] else recs
+              if !(builtins.isAttrs e) || isGuardLeaf e || !any.success || !any.value || !ok.success then
+                [ ]
+              else
+                recs
             ) (builtins.attrNames vertices)
           );
       sitesOfInstances =
