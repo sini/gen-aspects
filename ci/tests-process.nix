@@ -203,22 +203,21 @@
           # the slowly growing term Lix reads on every applied fixture, its unnamed control included.
           [ $((100 * (f3 - f2))) -le $((210 * (f2 - f1))) ] \
             || die applied-factory "thunks grow faster than linear in n: $f1 / $f2 / $f3 at n = 100 / 200 / 400"
-          # What a value's width costs the classes, at 16 and 32 hosts: the named arms less the unnamed
-          # control, between widths 16 and 64. A value shared by every host is read once, so the cost is
-          # the same at both host counts; read per host, it doubles.
-          widthAt() {
-            appliedAt applied-mixed-w64 "$1"; a=$thunks
-            appliedAt applied-mixed-w16 "$1"; b=$thunks
-            appliedAt applied-unnamed-w64 "$1"; c=$thunks
-            appliedAt applied-unnamed-w16 "$1"; d=$thunks
-            [ $((c - d)) -gt 0 ] || die applied-mixed "n=$1: could not measure: the unnamed control reads no width ($c - $d)"
-            w=$(((a - b) - (c - d)))
+          # What the classes cost ONE host's read, at 16 and 128 hosts: the named arm less the unnamed
+          # control. An applied id is a function of the reader's own sightings, so it is the same at both
+          # fleet sizes; classing over every vertex for each reader grows with the fleet.
+          onehostAt() {
+            appliedAt applied-onehost "$1"; a=$thunks
+            appliedAt applied-onehost-unnamed "$1"; b=$thunks
+            [ $((b)) -gt 0 ] || die applied-onehost "n=$1: could not measure"
+            o=$((a - b))
           }
-          widthAt 16; w1=$w
-          widthAt 32; w2=$w
-          echo "applied-mixed: the width costs the classes $w1 / $w2 thunks at 16 / 32 hosts"
-          [ $((100 * w2)) -le $((100 * w1 + 50)) ] \
-            || die applied-mixed "a value's width costs the classes per host: $w1 / $w2 thunks at 16 / 32 hosts"
+          onehostAt 16; o1=$o
+          onehostAt 128; o2=$o
+          echo "applied-onehost: the classes cost one host $o1 / $o2 thunks at 16 / 128 hosts"
+          [ "$o1" -gt 0 ] || die applied-onehost "could not measure: the classes cost one host nothing ($o1)"
+          [ $((100 * o2)) -le $((101 * o1)) ] \
+            || die applied-onehost "one host's classes grow with the fleet: $o1 / $o2 thunks at 16 / 128 hosts"
           # Two classes at one key, each shared by every host, cost a constant per host whether the mint
           # takes the values or not: a class is its representative's own row, never a closure over the rest.
           for arm in applied-mixed-w16 applied-fnmixed; do

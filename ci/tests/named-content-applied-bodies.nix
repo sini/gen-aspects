@@ -64,6 +64,9 @@ let
   # Total over a RED arm: an absent target reads `<none>`, never an abort.
   first = l: if builtins.isList l && l != [ ] then builtins.head l else "<none>";
   bare = n: id: builtins.match "@/includes/${n}@[^/]*" id != null;
+  # An applied class the mint takes is keyed by its content, at every key, so its id is the same at
+  # every host that reaches it.
+  minted = n: id: builtins.match "@/includes/${n}@[^/]*/aspect-content:[0-9a-f]+" id != null;
   suffixed = n: id: builtins.match "@/includes/${n}@[^/]*/.+" id != null;
   inApplied = id: lib.hasPrefix "aspect-instance:" id;
   g = body: guard (pred.has "host") body;
@@ -186,8 +189,8 @@ in
     in
     {
       expr = tryValue {
-        hostsTwo = one hostsTwo "x" "a" == one hostsTwo "y" "a" && bare "tmux" (one hostsTwo "x" "a");
-        guardsTwo = one guardsTwo "x" "a" == one guardsTwo "x" "b" && bare "tmux" (one guardsTwo "x" "a");
+        hostsTwo = one hostsTwo "x" "a" == one hostsTwo "y" "a" && minted "tmux" (one hostsTwo "x" "a");
+        guardsTwo = one guardsTwo "x" "a" == one guardsTwo "x" "b" && minted "tmux" (one guardsTwo "x" "a");
         joinsStatic =
           one withStatic "x" "a" == first withStatic.f.includesOf.s
           && withStatic.f.nodeData ? ${one withStatic "x" "a"};
@@ -310,7 +313,7 @@ in
       expr = {
         shallow = map (s: s.target or "<none>") (at "v1");
         deep = tryValue (at "v1");
-        good = tryValue (map (s: bare "tmux" s.target) (at "good"));
+        good = tryValue (map (s: minted "tmux" s.target) (at "good"));
       };
       expected = {
         shallow = [ "v1/includes/0" ];
@@ -345,7 +348,7 @@ in
     in
     {
       expr = {
-        good = tryValue (map (s: bare "tmux" s.target) (at "good"));
+        good = tryValue (map (s: minted "tmux" s.target) (at "good"));
         bad = tryValue (at "bad");
         nested = tryValue (at "nested");
       };
@@ -376,7 +379,7 @@ in
     {
       expr = {
         empty = at "empty";
-        good = map (s: bare "tmux" s.target) (at "good");
+        good = map (s: minted "tmux" s.target) (at "good");
       };
       expected = {
         empty = [ ];
@@ -412,16 +415,16 @@ in
     in
     {
       expr = {
-        twoVertices = map (bare "tmux") (read {
+        twoVertices = map (minted "tmux") (read {
           x = mkc [ ];
           z = mkc [ ];
           y = tmux;
         });
-        ancestorChain = map (bare "tmux") (read {
+        ancestorChain = map (minted "tmux") (read {
           x = mkc [ (mkc [ ]) ];
           y = tmux;
         });
-        belowOneClass = map (bare "tf") (read {
+        belowOneClass = map (minted "tf") (read {
           x = mkc [ (mkc [ (tf "a") ]) ];
           y = tf "a";
         });
@@ -447,7 +450,7 @@ in
       };
     in
     {
-      expr = map (s: bare "tmux" s.target) (at "y");
+      expr = map (s: minted "tmux" s.target) (at "y");
       expected = [ true ];
     };
   flake.tests.named-content-applied-bodies.test-a-row-4-pair-at-a-key-stays-with-its-members =
@@ -519,7 +522,7 @@ in
       };
     in
     {
-      expr = lib.mapAttrs (_: map (bare "tmux")) r // {
+      expr = lib.mapAttrs (_: map (minted "tmux")) r // {
         nested = lib.mapAttrs (_: map (suffixed "tf")) nested;
       };
       expected = {
