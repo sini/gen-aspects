@@ -141,8 +141,11 @@ let
   # n hosts reaching ONE guard that includes its context's `host` value, so each host's instance fires
   # its own value (the factory's content i, named, or the same without a `name`) and the declarations do
   # not grow with the fleet; only the first host's sites are read.
+  # `lift`: also walk every vertex's site STRUCTURE (each site's kind, whether it names a node, its nested
+  # sites), as a consumer projecting every instance does (gen-delivery's every-vertex lift), reading no
+  # target but the first host's.
   appliedOneHost =
-    named:
+    named: lift:
     let
       ix = builtins.genList (i: "h${toString (100000 + i)}") (builtins.fromJSON n);
       # The control renames `name` to `nm`: the same body shape, so every reader but the classes
@@ -188,11 +191,16 @@ let
               }) ix
             )
           );
-      targets = map (s: s.target) (
-        ga.includeSitesOfInstance { } as rel (builtins.head rel.reaches.${builtins.head ix}.g)
-      );
+      at = ga.includeSitesOfInstance { } as rel;
+      targets = map (s: s.target) (at (builtins.head rel.reaches.${builtins.head ix}.g));
+      shape = map (s: [
+        s.kind
+        (s ? target)
+        (if s.kind == "content" then shape s.sites else [ ])
+      ]);
+      walked = if lift then map (iid: shape (at iid)) (builtins.attrNames rel.vertices) else [ ];
     in
-    builtins.deepSeq targets (builtins.length targets);
+    builtins.deepSeq walked (builtins.deepSeq targets (builtins.length targets));
   appliedMixed =
     named: k:
     let
@@ -365,8 +373,11 @@ let
     applied-mixed-w64 = appliedMixed true 64;
     applied-unnamed-w16 = appliedMixed false 16;
     applied-unnamed-w64 = appliedMixed false 64;
-    applied-onehost = appliedOneHost true;
-    applied-onehost-unnamed = appliedOneHost false;
+    applied-onehost = appliedOneHost true false;
+    applied-onehost-unnamed = appliedOneHost false false;
+    # The same, with every vertex's site structure walked: the runner reads, per extra host, what the
+    # structural walk costs over the one host's read (`applied-onehost`), against main's figure.
+    applied-onehost-lift = appliedOneHost true true;
     # The same two values each holding a lambda: outside the mint, decided by the rung.
     applied-fnmixed = appliedMixed "fn" 0;
 

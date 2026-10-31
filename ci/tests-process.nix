@@ -218,6 +218,20 @@
           [ "$o1" -gt 0 ] || die applied-onehost "could not measure: the classes cost one host nothing ($o1)"
           [ $((100 * o2)) -le $((101 * o1)) ] \
             || die applied-onehost "one host's classes grow with the fleet: $o1 / $o2 thunks at 16 / 128 hosts"
+          # What walking every OTHER vertex's site structure costs per extra host (a consumer projecting every
+          # instance walks them all): the lift arm less the one-host read, between 16 and 128 hosts. A
+          # bound, not a ratio: the walk is 37 thunks per vertex on all three evaluators (main reads 41 in
+          # this harness through its two-argument `iid entry` call), so one more thunk per site reds it,
+          # which the named-less-unnamed figure above cannot see (both arms share the walk).
+          appliedAt applied-onehost-lift 16; l1=$thunks
+          appliedAt applied-onehost 16; h1=$thunks
+          appliedAt applied-onehost-lift 128; l2=$thunks
+          appliedAt applied-onehost 128; h2=$thunks
+          wk=$(((l2 - h2) - (l1 - h1)))
+          echo "applied-onehost-lift: the structural walk costs $wk thunks over 112 extra hosts"
+          [ "$wk" -gt 0 ] || die applied-onehost-lift "could not measure: the walk costs nothing ($l1 - $h1, $l2 - $h2)"
+          [ "$wk" -le $((112 * 37)) ] \
+            || die applied-onehost-lift "the structural walk costs more than 37 thunks per extra host: $wk over 112"
           # What a value's width costs the classes, at 16 and 32 hosts: the named arms less the unnamed
           # control, between widths 16 and 64. A value shared by every host is read once, so the cost is
           # the same at both host counts; read per host, it doubles.
@@ -263,7 +277,7 @@
 
           # 0/0 is a false pass: the runner must have executed every cell above.
           [ "$ran" = "36" ] || die runner "expected 36 evaluations, ran $ran"
-          echo "tests-process: 13 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          echo "tests-process: 14 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"
