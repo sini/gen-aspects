@@ -954,14 +954,15 @@ rec {
               in
               if m != null then appliedIdOf m else idByRep.${rep.addr};
           # A refused class the rung identifies with a minted sighting joins that one's class, in either
-          # order; decided once per representative, and only a refused reader looks, so a minted reader
-          # never reads a refused sighting.
+          # order: the first minted member of its representative's star (the comparisons its own id is
+          # made of, so the join adds none). Only a refused reader looks, so a minted reader never reads a
+          # refused sighting.
           mintedOf = builtins.listToAttrs (
             map (rep: {
               name = rep.addr;
               value =
                 let
-                  m = builtins.filter (c: unjoined c && same c rep && digestOf c != null) (groupOf rep);
+                  m = builtins.filter (c: digestOf c != null) (componentOf rep);
                 in
                 if m == [ ] then null else builtins.head m;
             }) cands
