@@ -212,8 +212,8 @@
             [ $((b)) -gt 0 ] || die applied-onehost "n=$1: could not measure"
             o=$((a - b))
           }
-          onehostAt 16; o1=$o
-          onehostAt 128; o2=$o
+          onehostAt 16; o1=$o; h1=$a
+          onehostAt 128; o2=$o; h2=$a
           echo "applied-onehost: the classes cost one host $o1 / $o2 thunks at 16 / 128 hosts"
           [ "$o1" -gt 0 ] || die applied-onehost "could not measure: the classes cost one host nothing ($o1)"
           [ $((100 * o2)) -le $((101 * o1)) ] \
@@ -224,9 +224,7 @@
           # this harness through its two-argument `iid entry` call), so one more thunk per site reds it,
           # which the named-less-unnamed figure above cannot see (both arms share the walk).
           appliedAt applied-onehost-lift 16; l1=$thunks
-          appliedAt applied-onehost 16; h1=$thunks
           appliedAt applied-onehost-lift 128; l2=$thunks
-          appliedAt applied-onehost 128; h2=$thunks
           wk=$(((l2 - h2) - (l1 - h1)))
           echo "applied-onehost-lift: the structural walk costs $wk thunks over 112 extra hosts"
           [ "$wk" -gt 0 ] || die applied-onehost-lift "could not measure: the walk costs nothing ($l1 - $h1, $l2 - $h2)"
@@ -276,7 +274,7 @@
           echo "named-content-abort: named-cycle and named-unfolding die on the stack-overflow channel"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "36" ] || die runner "expected 36 evaluations, ran $ran"
+          [ "$ran" = "38" ] || die runner "expected 38 evaluations, ran $ran"
           echo "tests-process: 14 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
