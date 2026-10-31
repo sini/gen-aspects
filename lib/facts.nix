@@ -949,13 +949,23 @@ rec {
               "${qualify "@/includes/${r.s2}"}/${escape d}"
             else
               let
-                # A refused sighting the rung identifies with a minted one joins that one's class, in either
-                # order; only a refused reader looks, so a minted reader never reads a refused sighting.
-                m = builtins.filter (c: c.addr != r.addr && unjoined c && same c r && digestOf c != null) (
-                  groupOf r
-                );
+                rep = repOf r;
+                m = mintedOf.${rep.addr};
               in
-              if m != [ ] then appliedIdOf (builtins.head m) else idByRep.${(repOf r).addr};
+              if m != null then appliedIdOf m else idByRep.${rep.addr};
+          # A refused class the rung identifies with a minted sighting joins that one's class, in either
+          # order; decided once per representative, and only a refused reader looks, so a minted reader
+          # never reads a refused sighting.
+          mintedOf = builtins.listToAttrs (
+            map (rep: {
+              name = rep.addr;
+              value =
+                let
+                  m = builtins.filter (c: unjoined c && same c rep && digestOf c != null) (groupOf rep);
+                in
+                if m == [ ] then null else builtins.head m;
+            }) cands
+          );
           # The mint's remainder: the first earlier unjoined sighting the rung identifies a sighting with,
           # or itself, followed to its own.
           repOf =
