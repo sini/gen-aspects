@@ -825,24 +825,16 @@ rec {
               null
             else
               let
-                # A class whose members are not all of the sighting's regime (the mint takes it, or refuses
-                # it) is never joined, so minted and refused sightings never share a class (OQ7's fourth arm)
-                # through a static class either. A sighting the mint takes is compared only with the static
-                # classes whose content mints its digest (`digestIxAt`), so the join is one lookup however
-                # many static classes sit at the key; one it refuses, only with the refused classes. A DECLARED
-                # PRICE (ADR-0025 item 1, P1's residue): the join reads a sighting's digest wherever a static
-                # class sits at its key, and nowhere else.
+                # Only a sighting the mint takes joins a static class, and only one whose members the mint
+                # all takes (`digestIxAt`): content the mint refuses is keyed per instance whatever is declared
+                # statically (owner 2026-10-31, P2-b), so minted and refused sightings never share a class
+                # (OQ7's fourth arm). A minted sighting is compared only with the static classes one of whose
+                # members mints its digest, so the join is one lookup however many static classes sit at the
+                # key. A DECLARED PRICE (ADR-0025 item 1, P1's residue): wherever a static class sits at a
+                # sighting's key, the join reads the sighting's digest and every static member's at that key.
                 cs = prior.classesAt.${r.s2} or [ ];
                 d = digestOf r;
-                cands =
-                  if cs == [ ] then
-                    [ ]
-                  else if d != null then
-                    prior.digestIxAt.${r.s2}.${d} or [ ]
-                  else
-                    builtins.filter (k: builtins.elemAt prior.regimesAt.${r.s2} k == false) (
-                      builtins.genList (k: k) (builtins.length cs)
-                    );
+                cands = if cs == [ ] || d == null then [ ] else prior.digestIxAt.${r.s2}.${d} or [ ];
                 hits = builtins.filter (k: builtins.any (m: same m r) (builtins.elemAt cs k)) cands;
                 ids = map (builtins.elemAt prior.classIds.${r.s2}) hits;
               in
@@ -957,8 +949,8 @@ rec {
           # site's form. Two sightings mint one digest exactly when `==` identifies them, so the id is the
           # class's whichever host reads it, and it is a function of the reader's own sighting alone: one
           # host's ids read no other host's sightings, and a key of n distinct values costs n digests and
-          # no pair. A sighting the rung identifies with a static class joins it where every member of
-          # that class is of the sighting's regime (`regimesAt`; that key's static classes only). The
+          # no pair. A sighting the mint takes, which the rung identifies with a static class every member
+          # of which the mint takes, joins it (`joinFor`; that key's static classes only). The
           # digest is bound at the content's DECLARATION: a sighting `==` to its instance's declared value
           # (Nix's pointer shortcut where the fired value is the declared one, a structural comparison
           # elsewhere) reads the digest built once on the declaration, so a value every host fires is
@@ -969,10 +961,12 @@ rec {
           # its id that component's least site, which is instance-relative. Minted and refused sightings
           # never share a class (owner 2026-10-31, OQ7's fourth arm).
           # A DECLARED PRICE (ADR-0025 item 1, P1's residue): a digest reads the value up to the mint's
-          # first refusal, so an `abort` there that no comparison would reach aborts exactly the readers
-          # that force the digest: a reader of the value's id, and a receiver deduplicating it beside a
-          # second sighting at its key (applied, or a static named class). A receiver holding it alone at
-          # its key reads its `info` and is served without it.
+          # first refusal, so an `abort` there that no comparison would reach aborts the readers that force
+          # a digest: a reader of the value's id; a receiver deduplicating it beside a second sighting at its
+          # key (applied, or a static named class); and a receiver of a value fired at a key holding a static
+          # class, where any content at that key, applied or static, holds such a leaf (`joinFor`). A
+          # receiver holding a value alone at a key no static class shares reads its `info` and is served
+          # without its digest.
           ownDigest = ownDigest';
           digestOf =
             r:
@@ -1010,7 +1004,8 @@ rec {
             id = idOfRec r;
             # The §2 key, read only by a reader asking whether two sightings could meet.
             k2 = if r.named then r.s2 else null;
-            # Whether it joins a static class: the rung against that key's static classes, no digest.
+            # Whether it joins a static class: the digest lookup, then the rung, where a static class sits at
+            # its key; nothing is read where none does.
             joined = r.named && joinFor r != null;
           };
           recIndex =
