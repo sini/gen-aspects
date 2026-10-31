@@ -198,9 +198,10 @@
           appliedAt applied-factory 200; f2=$thunks
           appliedAt applied-factory 400; f3=$thunks
           echo "applied-factory: thunks $f1 / $f2 / $f3 at n = 100 / 200 / 400"
-          # n distinct contents at one key are n digests, so the second slope is twice the first (measured
-          # exactly 2 on all three evaluators); deciding them pairwise roughly triples it. 0.5% slack.
-          [ $((100 * (f3 - f2))) -le $((201 * (f2 - f1))) ] \
+          # n distinct contents at one key are n digests, so the second slope is twice the first (2.000 on
+          # Nix and Determinate, 2.001 on Lix); deciding them pairwise makes it 2.5 or more. 5% slack, for
+          # the slowly growing term Lix reads on every applied fixture, its unnamed control included.
+          [ $((100 * (f3 - f2))) -le $((210 * (f2 - f1))) ] \
             || die applied-factory "thunks grow faster than linear in n: $f1 / $f2 / $f3 at n = 100 / 200 / 400"
           # What a value's width costs the classes, at 16 and 32 hosts: the named arms less the unnamed
           # control, between widths 16 and 64. A value shared by every host is read once, so the cost is
@@ -225,7 +226,7 @@
             appliedAt "$arm" 100; m2=$thunks
             appliedAt "$arm" 200; m3=$thunks
             echo "$arm: thunks $m1 / $m2 / $m3 at n = 50 / 100 / 200"
-            [ $((100 * (m3 - m2))) -le $((201 * (m2 - m1))) ] \
+            [ $((100 * (m3 - m2))) -le $((210 * (m2 - m1))) ] \
               || die "$arm" "thunks grow faster than linear in hosts: $m1 / $m2 / $m3 at n = 50 / 100 / 200"
           done
 
