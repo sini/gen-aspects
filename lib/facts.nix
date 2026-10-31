@@ -410,7 +410,7 @@ rec {
       # `hasParent` is passed beside `parent`, so a site's STRUCTURE (its kind, whether it names a
       # node, its nested sites) never forces an identifier: only reading `target` does, and with it
       # the classes at that one site's §2 key. A reader enumerating structure compares nothing.
-      siteAtIn =
+      siteAt =
         ix: id: hasParent: parent: p: elem:
         let
           at = prelude.concatStringsSep "." (map toString p);
@@ -460,7 +460,7 @@ rec {
               if builtins.length p >= includeSitesMaxDepth then
                 throw (includeSitesDepthRefusal id at)
               else
-                sitesOfIn ix id targeted target p (
+                sitesOf ix id targeted target p (
                   expectList (includesDoor id at) "includes" (elem.includes or includesDefault)
                 );
           }
@@ -476,9 +476,9 @@ rec {
           qualify elem.key
         else
           "${parent}/includes/${toString (builtins.elemAt p (builtins.length p - 1))}";
-      sitesOfIn =
+      sitesOf =
         ix: id: hasParent: parent: pos:
-        prelude.imap0 (i: siteAtIn ix id hasParent parent (pos ++ [ i ]));
+        prelude.imap0 (i: siteAt ix id hasParent parent (pos ++ [ i ]));
 
       # ── a PARAMETRIC DECLARATION'S MEMBERS, published without firing it (ADR-0010 §4(a) clause 2) ──
       #
@@ -537,7 +537,7 @@ rec {
             # here, and a term among them refuses at the declaration, never only when an instance fires.
             # A typed body's `includes` keeps its priority (gen-merge `partialSubmodule`, den-hoag-5ov3p),
             # so it is read through an override definition; a priority is resolved at fire time, never here.
-            unconditional = sitesOfIn recAt id false null [ ] (
+            unconditional = sitesOf recAt id false null [ ] (
               builtins.concatMap (
                 f:
                 let
@@ -568,14 +568,14 @@ rec {
               if dependent x then
                 { kind = "deferred"; }
               else
-                siteAtIn recAt id false null [ i ] (declValue id v "include position ${toString i}" x)
+                siteAt recAt id false null [ i ] (declValue id v "include position ${toString i}" x)
             ) inc.items
           )
         else if dependent inc then
           wholeDeferred
         else
           split (
-            sitesOfIn recAt id false null [ ] (
+            sitesOf recAt id false null [ ] (
               expectList (memberDoor id) "includes" (declValue id v "`includes`" inc)
             )
           );
@@ -589,7 +589,7 @@ rec {
         if isGuardLeaf v then
           (declInfo id v).sites
         else
-          sitesOfIn recAt id true parent [ ] (includesOfValue id v);
+          sitesOf recAt id true parent [ ] (includesOfValue id v);
 
       # AN INSTANCE'S SITES, read through its `instantiates` edge: the declaration's members, with each
       # `deferred` one classified at its own position of the instance's fired `includes` (only that
@@ -601,12 +601,12 @@ rec {
           key = entry.key or a;
         in
         if d.whole then
-          sitesOfIn recAt key true key [ ] (includesOfValue key entry)
+          sitesOf recAt key true key [ ] (includesOfValue key entry)
         else
           prelude.imap0 (
             i: s:
             if s.kind == "deferred" then
-              siteAtIn recAt key true key [ i ] (builtins.elemAt (includesOfValue key entry) i)
+              siteAt recAt key true key [ i ] (builtins.elemAt (includesOfValue key entry) i)
             else
               s
           ) d.sites;
@@ -1178,7 +1178,7 @@ rec {
           let
             id = entry.key or "<entry>";
           in
-          sitesOfIn (ixOf.${iid} or { }) id true iid [ ] (includesOfValue id entry);
+          sitesOf (ixOf.${iid} or { }) id true iid [ ] (includesOfValue id entry);
       unnamedEntries = map (r: {
         name = idOfRec r;
         value = {
@@ -1229,7 +1229,7 @@ rec {
         walkSitesOf
         // builtins.mapAttrs (
           t: a:
-          sitesOfIn recAt a.host true t a.pos (
+          sitesOf recAt a.host true t a.pos (
             expectList (includesDoor a.host (prelude.concatStringsSep "." (map toString a.pos))) "includes" (
               a.value.includes or includesDefault
             )
