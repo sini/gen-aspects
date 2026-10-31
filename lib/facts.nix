@@ -827,12 +827,23 @@ rec {
               let
                 # A class whose members are not all of the sighting's regime (the mint takes it, or refuses
                 # it) is never joined, so minted and refused sightings never share a class (OQ7's fourth arm)
-                # through a static class either. The regime is read only where the rung identifies.
-                hits = builtins.filter (
-                  k:
-                  builtins.any (m: same m r) (builtins.elemAt prior.classesAt.${r.s2} k)
-                  && builtins.elemAt prior.regimesAt.${r.s2} k == (digestOf r != null)
-                ) (builtins.genList (k: k) (builtins.length (prior.classesAt.${r.s2} or [ ])));
+                # through a static class either. A sighting the mint takes is compared only with the static
+                # classes whose content mints its digest (`digestIxAt`), so the join is one lookup however
+                # many static classes sit at the key; one it refuses, only with the refused classes. A DECLARED
+                # PRICE (ADR-0025 item 1, P1's residue): the join reads a sighting's digest wherever a static
+                # class sits at its key, and nowhere else.
+                cs = prior.classesAt.${r.s2} or [ ];
+                d = digestOf r;
+                cands =
+                  if cs == [ ] then
+                    [ ]
+                  else if d != null then
+                    prior.digestIxAt.${r.s2}.${d} or [ ]
+                  else
+                    builtins.filter (k: builtins.elemAt prior.regimesAt.${r.s2} k == false) (
+                      builtins.genList (k: k) (builtins.length cs)
+                    );
+                hits = builtins.filter (k: builtins.any (m: same m r) (builtins.elemAt cs k)) cands;
                 ids = map (builtins.elemAt prior.classIds.${r.s2}) hits;
               in
               if ids == [ ] then null else builtins.head (builtins.sort builtins.lessThan ids);
@@ -850,12 +861,14 @@ rec {
           );
           # Per class, whether the mint takes every member (true), refuses every member (false), or neither
           # (null), read only by a later stratum's join.
+          # Each member's digest, per class, computed once for both indexes below.
+          digestsAt = builtins.mapAttrs (_: map (map (m: ownDigest' m.val))) classesAt;
           regimesAt = builtins.mapAttrs (
             _:
             map (
-              c:
+              ds:
               let
-                ms = map (m: ownDigest' m.val != null) c;
+                ms = map (d: d != null) ds;
               in
               if builtins.all (x: x) ms then
                 true
@@ -863,6 +876,22 @@ rec {
                 null
               else
                 false
+            )
+          ) digestsAt;
+          # Per §2 key, the classes the mint takes, indexed by every member's digest (so OQ8's `==`-equal
+          # pair with two digests is reached from either), read only by a later stratum's join.
+          digestIxAt = builtins.mapAttrs (
+            s2: cs:
+            builtins.mapAttrs (_: es: prelude.unique (map (e: e.k) es)) (
+              builtins.groupBy (e: e.d) (
+                builtins.concatMap (
+                  k:
+                  if builtins.elemAt regimesAt.${s2} k == true then
+                    map (d: { inherit k d; }) (builtins.elemAt digestsAt.${s2} k)
+                  else
+                    [ ]
+                ) (builtins.genList (k: k) (builtins.length cs))
+              )
             )
           ) classesAt;
           # Per §2 key, so a reader decides only the keys its own sightings sit at.
@@ -1003,6 +1032,7 @@ rec {
           inherit
             classesAt
             regimesAt
+            digestIxAt
             classIds
             classIdOf
             parentIdOf
