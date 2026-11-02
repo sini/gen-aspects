@@ -220,9 +220,10 @@
             || die applied-onehost "one host's classes grow with the fleet: $o1 / $o2 thunks at 16 / 128 hosts"
           # What walking every OTHER vertex's site structure costs per extra host (a consumer projecting every
           # instance walks them all): the lift arm less the one-host read, between 16 and 128 hosts. A
-          # bound, not a ratio: the walk is 37 thunks per vertex on all three evaluators (main reads 41 in
-          # this harness through its two-argument `iid entry` call), so one more thunk per site reds it,
-          # which the named-less-unnamed figure above cannot see (both arms share the walk).
+          # bound, not a ratio: the walk is 36 thunks per vertex on all three evaluators against the bound
+          # of 37 (main reads 41 in this harness through its two-argument `iid entry` call), so one more
+          # thunk per site reads exactly the bound and passes, and two more red it, which the
+          # named-less-unnamed figure above cannot see (both arms share the walk).
           appliedAt applied-onehost-lift 16; l1=$thunks
           appliedAt applied-onehost-lift 128; l2=$thunks
           wk=$(((l2 - h2) - (l1 - h1)))
