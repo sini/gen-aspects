@@ -352,8 +352,12 @@ rec {
           # nothing checks, instead of the local sibling the writer named.
           local (includesDoor id i) elem
         else if builtins.isAttrs elem && !(isGuardLeaf elem) then
-          # Key-less inline content (above): an applied body's literal, or a raw tree's.
-          { kind = "content"; }
+          # Key-less inline content (above): an applied body's literal, or a raw tree's. The type never
+          # stamped it, so an authored `id` refuses here, as it does at every include member.
+          if elem ? id then
+            throw "${includesDoor id i}: an include element writes `id', which is reserved on an include element: an include element is never keyed by an `id' it writes. Declare the node as an aspect and include it, or remove the definition."
+          else
+            { kind = "content"; }
         else
           { kind = "sealed"; };
 
@@ -1210,7 +1214,12 @@ rec {
         value = {
           inherit (r) host pos;
           parent = parentIdOf r;
-          value = r.elem;
+          # Refused where it is read, as at `resolve`: a key-less element the type never stamped.
+          value =
+            if !(r.elem ? key) && r.elem ? id then
+              throw "${includesDoor r.host (prelude.concatStringsSep "." (map toString r.pos))}: an include element writes `id', which is reserved on an include element: an include element is never keyed by an `id' it writes. Declare the node as an aspect and include it, or remove the definition."
+            else
+              r.elem;
           inClass = r.encl != null;
         };
       }) (builtins.filter (r: !r.named) allRecs);

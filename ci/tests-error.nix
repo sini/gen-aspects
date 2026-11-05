@@ -1778,6 +1778,20 @@ in
       elementWrites =
         field:
         exactly "gen-aspects: an include element named `t' writes `${field}', which the aspect type writes; remove the definition.";
+      # One include element exactly as written (no `name` added).
+      elAs =
+        e:
+        builtins.head
+          (mkSchemaEval {
+            modules = [ { config.aspects.loom.includes = [ e ]; } ];
+          }).config.aspects.loom.includes;
+      # `id` on an include element is reserved (den-hoag-l2yba; ADR-0034; ADR-0025 item 1): at a
+      # stamped member by name, and where the reader meets data the type never stamped, at its door.
+      idNamed = exactly "gen-aspects: an include element named `t' writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition.";
+      idUnnamed = exactly "gen-aspects: an unnamed include element writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition.";
+      idRead =
+        host:
+        exactly "gen-aspects.includes (aspect '${host}', include position 0): an include element writes `id', which is reserved on an include element: an include element is never keyed by an `id' it writes. Declare the node as an aspect and include it, or remove the definition.";
     in
     {
       test-key = thrown (at { key = "y"; }).key (typeWrites "key");
@@ -1793,6 +1807,55 @@ in
       test-element-loc = thrown (aspects.key (el {
         meta.loc = [ "q" ];
       })) (elementWrites "meta.loc");
+      test-element-id = thrown (aspects.key (el {
+        id = "q";
+      })) idNamed;
+      test-unnamed-element-id = thrown (aspects.key (elAs {
+        id = "q";
+      })) idUnnamed;
+      test-bare-module-element-id = thrown (aspects.key (elAs {
+        imports = [ { } ];
+        id = "q";
+      })) idUnnamed;
+      test-bare-module-named-element-id = thrown (aspects.key (elAs {
+        name = "t";
+        imports = [ { } ];
+        id = "q";
+      })) idNamed;
+      # A non-string `name` is rendered by its type, never coerced (an uncatchable abort before).
+      test-element-key-nonstring-name =
+        thrown
+          (elAs {
+            name = 5;
+            key = "q";
+          }).key
+          (
+            exactly "gen-aspects: an include element named `<a int>' writes `key', which the aspect type writes; remove the definition."
+          );
+      test-fired-element-id = thrown (aspects.includeSitesOfInstance { }
+        (mkSchemaEval { modules = [ ]; }).config.aspects
+        {
+          vertices.y.entry.includes = [
+            {
+              name = "t";
+              id = "q";
+            }
+          ];
+        }
+        "y"
+      ) (idRead "<entry>");
+      test-guard-body-element-id =
+        thrown
+          (aspects.graphFacts { }
+            (mkSchemaEval {
+              modules = [
+                {
+                  config.aspects.a = gv.vocab.whenEq [ "host" ] "h" { includes = [ { id = "q"; } ]; };
+                }
+              ];
+            }).config.aspects
+          ).includesOf.a
+          (idRead "a");
     };
 
   # A functor-form module function at an aspect position is refused by name at every site that reads a

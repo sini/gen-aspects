@@ -106,9 +106,14 @@ let
   # `prefix` (its declared position, `includeEntryCoercedAt`) and its own authored value. An authored `key`, `id_hash` or
   # `meta.loc` refuses by name BEFORE the wrap: inside `imports` the attrset is a module, and its
   # top-level `key` would be the module key, dropped silently or deduplicating the element away.
+  # `id` is reserved and refuses too: the element is keyed by its declaring position, so an authored
+  # `id` would key nothing while reading as if it did (ADR-0034; ADR-0025 item 1).
   stampIncludeSite =
     d:
     let
+      # Rendered by type, never coerced: a non-string `name` reaches this door.
+      name =
+        if builtins.isString d.value.name then d.value.name else "<a ${builtins.typeOf d.value.name}>";
       written =
         builtins.filter (k: d.value ? ${k}) [
           "key"
@@ -120,7 +125,9 @@ let
         ) "meta.sighting";
     in
     if written != [ ] then
-      throw "gen-aspects: an include element named `${d.value.name or "<unnamed>"}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
+      throw "gen-aspects: an include element named `${name}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
+    else if d.value ? id then
+      throw "gen-aspects: an include element named `${name}' writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition."
     else
       d
       // {
@@ -207,6 +214,8 @@ let
       && v.meta ? loc
     then
       throw "gen-aspects: an unnamed include element writes `meta.loc', which the aspect type writes; remove the definition."
+    else if d ? declAt && builtins.isAttrs v && !(v ? config || v ? options || v ? _type) && v ? id then
+      throw "gen-aspects: an unnamed include element writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition."
     else if d ? declAt && builtins.isAttrs v && !(v ? config || v ? options || v ? _type) then
       d
       // {
@@ -1202,8 +1211,22 @@ let
       # attrset def as config (gen-merge `types.submodule`, as nixpkgs), which would make
       # `imports` a freeform key and drop the imported content, so the def is handed over as a
       # function module, which the submodule reads as a module. It is an unnamed declaration like
-      # any other, so it is stamped at its declared site (`stampUnnamed`'s module arm).
-      (includeEntryCoerced (aspectSubmodule cnf) (d: stampUnnamed (d // { value = _: d.value; })))
+      # any other, so it is stamped at its declared site (`stampUnnamed`'s module arm). An authored
+      # `id` beside its `imports` refuses here, before the wrap hides it, as at the other members.
+      (includeEntryCoerced (aspectSubmodule cnf) (
+        d:
+        if d.value ? id then
+          throw (
+            if d.value ? name then
+              "gen-aspects: an include element named `${
+                if builtins.isString d.value.name then d.value.name else "<a ${builtins.typeOf d.value.name}>"
+              }' writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition."
+            else
+              "gen-aspects: an unnamed include element writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition."
+          )
+        else
+          stampUnnamed (d // { value = _: d.value; })
+      ))
       (includeAspectOrFn cnf)
       (includeEntryCoercedAt includeSite (aspectSubmodule cnf) stampIncludeSite)
       (includeEntryCoerced (aspectSubmodule cnf) restampCopy)
