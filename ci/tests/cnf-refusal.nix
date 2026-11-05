@@ -24,6 +24,7 @@
 {
   aspects,
   cnfInternals,
+  genPrelude,
   genMerge,
   genSchema,
   genIdentity,
@@ -442,7 +443,7 @@ in
       door = cnfInternals.nativeStructuralKeys;
       definitions =
         builtins.filter
-          (f: lib.hasInfix "nativeStructuralKeys = [" (builtins.readFile (../../lib + "/${f}")))
+          (f: genPrelude.hasInfix "nativeStructuralKeys = [" (builtins.readFile (../../lib + "/${f}")))
           (
             builtins.attrNames (
               lib.filterAttrs (f: t: t == "regular" && lib.hasSuffix ".nix" f) (builtins.readDir ../../lib)
