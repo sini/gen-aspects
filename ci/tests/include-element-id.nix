@@ -335,10 +335,16 @@ in
         config.T.marks = [ "c" ];
       };
       srcTree = ev { src.includes = [ cfgSrc ]; };
+      # The typed D4 element at the node surface: `unnamedEntries` refuses only a KEY-LESS element
+      # writing `id`, so a keyed (typed) one's node data is served with its `config.id`.
+      d4Facts = aspects.graphFacts { } (ev {
+        loom.includes = [ { config = withId unnamed; } ];
+      });
     in
     {
       expr = {
         configModule = key { config = withId unnamed; };
+        configModuleNode = d4Facts.nodeData.${unnamedKey}.id;
         reference = map aspects.key (
           (mkSchemaEval {
             keySemantics.T.category = "class";
@@ -374,6 +380,7 @@ in
       };
       expected = {
         configModule = unnamedKey;
+        configModuleNode = "q";
         reference = [ "foo" ];
         keyRef = "q";
         copyId = "q";
