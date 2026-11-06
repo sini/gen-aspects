@@ -2,10 +2,10 @@
 # identity design 2026-09-30 §2, Q5 "yes").
 #
 # A named value in an instance's fired body is a sighting at its §2 key like a static one, keyed by its
-# own sighting (spec §5): the static classes are the frozen prior, and a sighting the rung identifies
-# with a static class of its own regime joins it, so no static id depends on an instance (ADR-0016 r7;
-# ADR-0033); else content the mint takes is keyed by its digest, and content it refuses within its own
-# instance (owner P2-b).
+# own sighting (spec §5): the static classes are the frozen prior, and a sighting the mint takes that
+# the rung identifies with a static member the mint takes joins that member's class, so no static id
+# depends on an instance (ADR-0016 r7; ADR-0033); else content the mint takes is keyed by its digest,
+# and content it refuses within its own instance (owner P2-b).
 #
 # Each cell carries the arm that discriminates it: the `RED` comment names the edit that turns it.
 {
@@ -639,10 +639,11 @@ in
   # arm, "accept"; den-hoag-c4ucc carries the owner's deeper review): the minted one is keyed by its
   # content, the refused one per instance. RED a refused sighting joined to a minted one it is `==` to
   # (`sfkyy-a4-join`, `cfc6d21`): one id, both orders.
-  # Through a static class too: only a sighting the mint takes joins one, and only a class the mint
-  # takes, so with the int declared statically the applied int reads its id and the applied float does
-  # not, and with the float declared statically neither does (refused content is keyed per instance,
-  # P2-b). RED the join decided by the rung alone (`sfkyy-a5`, `a322c17`): both read the static id.
+  # Through a static class too: only a sighting the mint takes joins one, and only through a member the
+  # mint takes, so with the int declared statically the applied int reads its id and the applied float
+  # does not, and with the float declared statically neither does (refused content is keyed per
+  # instance, P2-b). RED the join decided by the rung alone (`sfkyy-a5`, `a322c17`): both read the
+  # static id.
   flake.tests.named-content-applied-bodies.test-a-refused-sighting-never-shares-a-minted-class =
     let
       as =
@@ -723,6 +724,55 @@ in
           apart = true;
           mintedInt = true;
         };
+      };
+    };
+
+  # S15. An applied sighting joins its static twin whatever the twin's co-members are (owner 2026-11-05,
+  # den-hoag-c4ucc arm (D)): the static `{ v = 2^53 + 1; }` and `{ v = 2^53 as a float; }` are `==`, so
+  # one static class, and the applied int joins it through the int member's digest; the applied float,
+  # which the mint refuses, still does not (P2-b). `oneClass` pins that the static pair is one class, so
+  # the join is not read off a static split. RED the join gated on every member of the class minting
+  # (the regime gate `regimesAt`, gen-aspects `3d210b8`): `intJoins` false.
+  flake.tests.named-content-applied-bodies.test-an-applied-sighting-joins-its-static-twin-whatever-its-co-members =
+    let
+      f = v: {
+        name = "t";
+        T.marks = [ "t" ];
+        inherit v;
+      };
+      as =
+        (mkSchemaEval {
+          fixtureKeySemantics.T.category = "class";
+          modules = [
+            {
+              config.aspects.s.includes = [
+                (f 9007199254740993)
+                (f 9007199254740992.0)
+              ];
+            }
+          ];
+        }).config.aspects;
+      at = aspects.includeSitesOfInstance { } as {
+        vertices = {
+          a.entry.includes = [ (f 9007199254740993) ];
+          b.entry.includes = [ (f 9007199254740992.0) ];
+        };
+      };
+      one = v: first (map (s: s.target) (at v));
+      sts = (aspects.graphFacts { } as).includesOf.s;
+    in
+    {
+      expr = tryValue {
+        oneClass = sts != [ ] && builtins.all (i: i == builtins.head sts) sts;
+        intJoins = one "a" == builtins.head sts;
+        floatJoins = one "b" == builtins.head sts;
+        apart = one "a" != one "b";
+      };
+      expected = {
+        oneClass = true;
+        intJoins = true;
+        floatJoins = false;
+        apart = true;
       };
     };
 

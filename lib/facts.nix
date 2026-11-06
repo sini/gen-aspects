@@ -829,13 +829,14 @@ rec {
               null
             else
               let
-                # Only a sighting the mint takes joins a static class, and only one whose members the mint
-                # all takes (`digestIxAt`): content the mint refuses is keyed per instance whatever is declared
-                # statically (owner 2026-10-31, P2-b), so minted and refused sightings never share a class
-                # (OQ7's fourth arm). A minted sighting is compared only with the static classes one of whose
-                # members mints its digest, so the join is one lookup however many static classes sit at the
-                # key. A DECLARED PRICE (ADR-0025 item 1, P1's residue): wherever a static class sits at a
-                # sighting's key, the join reads the sighting's digest and every static member's at that key.
+                # Only a sighting the mint takes joins a static class: content the mint refuses is keyed per
+                # instance whatever is declared statically (owner 2026-10-31, P2-b). The join is decided per
+                # member, never by the class's regime: a minted sighting is compared only with the static
+                # classes one of whose members mints its digest (`digestIxAt`), whatever the class's other
+                # members are (owner 2026-11-05, arm (D)), so the join is one lookup however many static
+                # classes sit at the key. A DECLARED PRICE (ADR-0025 item 1, P1's residue): wherever a static
+                # class sits at a sighting's key, the join reads the sighting's digest and every static
+                # member's at that key.
                 cs = prior.classesAt.${r.s2} or [ ];
                 d = digestOf r;
                 cands = if cs == [ ] || d == null then [ ] else prior.digestIxAt.${r.s2}.${d} or [ ];
@@ -855,37 +856,19 @@ rec {
           classesAt = builtins.mapAttrs (_: rs: componentsOf (builtins.filter (r: joinFor r == null) rs)) (
             builtins.groupBy (r: r.s2) namedRecs
           );
-          # Per class, whether the mint takes every member (true), refuses every member (false), or neither
-          # (null), read only by a later stratum's join.
-          # Each member's digest, per class, computed once for both indexes below.
+          # Each member's digest, per class (null where the mint refuses the member).
           digestsAt = builtins.mapAttrs (_: map (map (m: ownDigest' m.val))) classesAt;
-          regimesAt = builtins.mapAttrs (
-            _:
-            map (
-              ds:
-              let
-                ms = map (d: d != null) ds;
-              in
-              if builtins.all (x: x) ms then
-                true
-              else if builtins.any (x: x) ms then
-                null
-              else
-                false
-            )
-          ) digestsAt;
-          # Per §2 key, the classes the mint takes, indexed by every member's digest (so OQ8's `==`-equal
-          # pair with two digests is reached from either), read only by a later stratum's join.
+          # Per §2 key, every class indexed by each digest its members mint (so OQ8's `==`-equal pair with
+          # two digests is reached from either), read only by a later stratum's join.
           digestIxAt = builtins.mapAttrs (
             s2: cs:
             builtins.mapAttrs (_: es: prelude.unique (map (e: e.k) es)) (
               builtins.groupBy (e: e.d) (
                 builtins.concatMap (
                   k:
-                  if builtins.elemAt regimesAt.${s2} k == true then
-                    map (d: { inherit k d; }) (builtins.elemAt digestsAt.${s2} k)
-                  else
-                    [ ]
+                  builtins.concatMap (d: if d == null then [ ] else [ { inherit k d; } ]) (
+                    builtins.elemAt digestsAt.${s2} k
+                  )
                 ) (builtins.genList (k: k) (builtins.length cs))
               )
             )
@@ -1030,7 +1013,6 @@ rec {
         {
           inherit
             classesAt
-            regimesAt
             digestIxAt
             classIds
             classIdOf
