@@ -148,8 +148,8 @@ sites): a key-less attrset that is not a guard leaf is content (den-hoag-lwbb1 O
 writing `id` refuses by name at `includesDoor` (den-hoag-l2yba; `ci/tests/include-element-id.nix`), each
 content site's `target` is `<iid>/includes/<i>`, recursively (den-hoag-8hlo3), and a named value's
 `target` is its class (den-hoag-named-include-instance-bodies-sfkyy spec §5): the static class it joins
-(the static classes a frozen prior, joined only where every member is of the sighting's regime, OQ7's
-fourth arm), else `<key>/<aspect-content digest>` where the mint takes it, else (P2-b) the rung's
+(the static classes a frozen prior, joined by a sighting the mint takes through any static member the mint
+takes, whatever the class's other members are; den-hoag-c4ucc arm (D)), else `<key>/<aspect-content digest>` where the mint takes it, else (P2-b) the rung's
 component among its own instance's refused sightings, keyed by its least instance-relative site. The
 site carries a lazy `info` (`id`, `k2`, `joined`) so a reader with no second sighting at the key never
 forces the digest (P1-c). Tests: `ci/tests/named-content-applied-bodies.nix`. The declared string-context
