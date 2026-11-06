@@ -845,12 +845,6 @@ rec {
               in
               if ids == [ ] then null else builtins.head (builtins.sort builtins.lessThan ids);
           namedRecs = builtins.filter (r: r.named) recs;
-          # The sightings a key is read over. An applied candidate is keyed by its `name`'s POSITION
-          # first (`builtins.unsafeGetAttrPos`, which forces no value), and its `name` is read only
-          # inside the position group of the reader that needs it: a §2 key is the name AND its
-          # position, so a candidate at another position is never at the reader's key, whatever its
-          # `name` evaluates to.
-          cands = if prior == null then namedRecs else builtins.filter (r: r.pk != null) recs;
           # The join is decided per §2 key, inside that key's group, so a reader forces the joins at
           # its own keys only.
           classesAt = builtins.mapAttrs (_: rs: componentsOf (builtins.filter (r: joinFor r == null) rs)) (
@@ -1045,9 +1039,11 @@ rec {
       # static classes are the frozen prior (`classing`): one class spans static and applied sightings,
       # and no static id depends on an instance. A vertex whose `includes` refuses is
       # skipped here and refuses where it is read.
-      # A candidate is keyed by its `name`'s position (`pk`) before its `name` is read (`named`, `s2`):
-      # see `classing`'s `cands`. A `name` whose read refuses names nothing, as a position-less one
-      # (F14), so its sighting is keyed under the instance.
+      # A candidate is keyed by its `name`'s position (`pk`, `builtins.unsafeGetAttrPos`, which forces no
+      # value) before its `name` is read (`named`, `s2`): a §2 key is the name AND its position, so a
+      # candidate at another position is never at the reader's key, whatever its `name` evaluates to. A
+      # `name` whose read refuses names nothing, as a position-less one (F14), so its sighting is keyed
+      # under the instance.
       posKeyOf =
         v:
         let
