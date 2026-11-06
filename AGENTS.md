@@ -149,7 +149,8 @@ writing `id` refuses by name at `includesDoor` (den-hoag-l2yba; `ci/tests/includ
 content site's `target` is `<iid>/includes/<i>`, recursively (den-hoag-8hlo3), and a named value's
 `target` is its class (den-hoag-named-include-instance-bodies-sfkyy spec §5): the static class it joins
 (the static classes a frozen prior, joined by a sighting the mint takes through any static member the mint
-takes, whatever the class's other members are; den-hoag-c4ucc arm (D)), else `<key>/<aspect-content digest>` where the mint takes it, else (P2-b) the rung's
+takes, whatever the class's other members are, which differ only on ADR-0016 r4's excluded `2^53` float domain;
+den-hoag-c4ucc arm (D)), else `<key>/<aspect-content digest>` where the mint takes it, else (P2-b) the rung's
 component among its own instance's refused sightings, keyed by its least instance-relative site. The
 site carries a lazy `info` (`id`, `k2`, `joined`) so a reader with no second sighting at the key never
 forces the digest (P1-c). Tests: `ci/tests/named-content-applied-bodies.nix`. The declared string-context
