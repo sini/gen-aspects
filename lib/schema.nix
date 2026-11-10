@@ -135,6 +135,28 @@ let
       inherit kind;
     }
     // collections
+    # THE DEFINITIONS EACH INSTANCE RECEIVES FROM THIS KIND (den-hoag-ien5k T3): this function constructs the
+    # instance's modules, so it states them, by gen-schema's own walk over the same defs `allModules` imports and
+    # stamped as gen-schema's, which publishes them as the kind's datum (`declaredField` reads it). A gen-schema
+    # publishing neither the walk nor the stamp is given none.
+    // prelude.optionalAttrs (genSchema ? _internal.stampInstanceDefinitions) {
+      _instanceDefinitions =
+        let
+          walked = genSchema._internal.instanceDefinitionsOf (
+            builtins.filter (
+              d: builtins.isAttrs d.value || builtins.isFunction d.value || builtins.isPath d.value
+            ) defs
+            ++ prelude.optional (kindModule != null) {
+              file = "<gen-aspects: kind '${kind}' module>";
+              value = kindModule;
+            }
+          );
+        in
+        if formalNamed != [ ] || walked == null then
+          null
+        else
+          genSchema._internal.stampInstanceDefinitions walked;
+    }
     // prelude.optionalAttrs (defsModules != [ ]) {
       __defsModule = {
         imports = defsModules;
