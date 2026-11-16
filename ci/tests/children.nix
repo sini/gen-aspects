@@ -2,7 +2,8 @@
 # the tree's checked origin, and the named include value over them. Ids are asserted by their RELATIONS, never by a literal: a bundle's id
 # carries the source position of its `name` (identity design §2).
 #
-# Each cell carries the arm that discriminates it: the `RED` comment names the edit that turns it.
+# Each cell carries the arm that discriminates it: the `RED` comment names the edit that turns it. Every
+# read is total (`or`), so a cell reads FAIL under its mutant on any runner, not only under nix-unit.
 {
   aspects,
   genMerge,
@@ -209,7 +210,7 @@ in
   # RED: `isChild = isNestedAspect` drops the guard leaf; `isChild = isAttrs` adds `couching`, which
   # then refuses as a dangling reference.
   flake.tests.children.test-members-are-the-walks-children = {
-    expr = map (r: r.key) (childrenOf cnf (main { }) [ "loom" ]);
+    expr = map (r: r.key or r) (childrenOf cnf (main { }) [ "loom" ]);
     expected = [
       "loom/gate"
       "loom/warp"
@@ -275,7 +276,7 @@ in
       farUnderRoot = try (childrenOf cnf far [ "loom" ]);
       rootUnderFar = try (childrenOf (cnfAt [ "far" ]) (main { }) [ "loom" ]);
       stampless = try (childrenOf cnf { loom = { name = "loom"; warp.name = "warp"; }; } [ "loom" ]);
-      control = map (r: r.origin) (childrenOf (cnfAt [ "far" ]) far [ "loom" ]);
+      control = map (r: r.origin or r) (childrenOf (cnfAt [ "far" ]) far [ "loom" ]);
     };
     expected = {
       farUnderRoot = "REFUSED";
@@ -288,8 +289,8 @@ in
   # `toJSON`, which `tryEval` does not catch, and the whole cell dies.
   flake.tests.children.test-a-bad-path-refuses-before-the-name-renders = {
     expr = {
-      fn = try (childBundle cnf (main { }) (y: y)).name;
-      str = try (childBundle cnf (main { }) "loom").name;
+      fn = try ((childBundle cnf (main { }) (y: y)).name or "<no name>");
+      str = try ((childBundle cnf (main { }) "loom").name or "<no name>");
     };
     expected = {
       fn = "REFUSED";
