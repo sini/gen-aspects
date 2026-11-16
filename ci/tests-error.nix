@@ -2246,4 +2246,13 @@ in
         };
       } (g (t.ref rid))) (gate "hm");
     };
+  # lib/children.nix: an absent parent is refused by name, never read as a childless one.
+  flake.testsError.children-refusal = {
+    test-absent-parent = thrown (aspects.childrenOf { } { } [ "nope" ]) (
+      exactly "gen-aspects.childrenOf: the parent `nope' is absent; name an aspect of this tree by its container-relative path (a list of segments)."
+    );
+    test-guard-leaf-parent = thrown (aspects.children { } { g = aspects.guard (aspects.pred.has "rope") { }; } [ "g" ]) (
+      exactly "gen-aspects.children: the parent `g' is a guard leaf, whose content exists only once a context is supplied; name an aspect of this tree by its container-relative path (a list of segments)."
+    );
+  };
 }
