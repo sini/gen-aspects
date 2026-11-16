@@ -45,6 +45,7 @@ let
   childrenModule = import ./children.nix {
     inherit prelude cnfDoor;
     inherit (aspectIdentity) keyRef;
+    inherit (types) aspectId;
   };
   cnfModule = import ./cnf.nix;
   canTakeModule = import ./can-take.nix { inherit prelude; };
@@ -167,10 +168,10 @@ in
   # are BOTH the node's walk position, so a disagreement between them is inexpressible — see
   # lib/facts.nix for the measurement that makes one source a correctness requirement.
   inherit (factsModule) graphFacts;
-  # `childrenOf cnf aspects path` → a node's children as structured references, and `children cnf
-  # aspects path` → the named include value over them, one node wherever it is included. See
-  # lib/children.nix.
-  inherit (childrenModule) childrenOf children;
+  # `childrenOf cnf aspects path` → a node's children as structured references under the tree's checked
+  # origin, and `childBundle cnf aspects path` → the named include value over them, one node wherever it is
+  # included from one gen-aspects source. See lib/children.nix.
+  inherit (childrenModule) childrenOf childBundle;
   # `includeSitesOfInstance cnf aspects instances iid` — an applied instance body's include sites,
   # by `graphFacts`' classification, over the instance relation `instances` (`instancesFor`'s): its
   # anonymous content keyed under `iid`, and a named value keyed by its own sighting: a static class it

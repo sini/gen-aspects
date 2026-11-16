@@ -9,20 +9,29 @@
 # same origin CHECKS it (a dangling one refuses by name there) and one under another origin publishes it
 # as a foreign reference, never as a local node of a same-spelled path.
 #
-# `children cnf aspects path` → the named include value `{ name; includes = childrenOf …; }`: a raw
-# named value (identity design §2), so it is ONE node wherever it is included, keyed by the position of
-# its `name` (this file) and the name, its sightings decided same-or-distinct by `==` over the whole value.
-# The name is `toJSON` of the origin and the path, which is injective over the pair (a plain rendering
-# of `origin ++ path` would join the two), so two parents never share a name; the value also carries the
-# children's references, so two trees with one origin and one parent path but different children are two
-# classes. Nothing is minted (ADR-0034; 7gp66 OQ4 (b′)).
+# THE ORIGIN IS THE TREE'S, CHECKED, NEVER THE CALLER'S CLAIM. A tree's origin is minted into every
+# node's `id_hash` (`aspectId origin node`, the stamp the aspect type writes) and is held nowhere else, so
+# the parent's stamp is re-derived under `cnf.providerPrefix` through the one authority and compared,
+# as `facts.nix` `isCanonical` compares a by-value element's: a tree stamped under another origin, or a
+# stampless one, refuses by name, so a reference never carries an origin its targets were not built
+# under. Nothing new is minted or keyed by the comparison.
 #
-# Only the walk's predicate is read: the node's attribute names and each value's shape. A child's content,
-# and every `includes`, stay unforced, so a bundle may be written inside the tree it enumerates.
+# `childBundle cnf aspects path` → the named include value `{ name; includes = childrenOf …; }`: a raw
+# named value (identity design §2), so it is ONE node wherever it is included from one gen-aspects
+# source, keyed by the position of its `name` (this file) and the name, its sightings decided
+# same-or-distinct by `==` over the whole value. The name is `toJSON` of the origin and the CHECKED path,
+# which is injective over the pair (a plain rendering of `origin ++ path` would join the two), so two
+# parents never share a name; the value also carries the children's references, so two trees with one
+# origin and one parent path but different children are two classes.
+#
+# Only the walk's predicate and the parent's stamp are read: the node's attribute names, each value's
+# shape and the parent's `id_hash`. A child's content, and every `includes`, stay unforced, so a bundle
+# may be written inside the tree it enumerates.
 {
   prelude,
   cnfDoor,
   keyRef,
+  aspectId,
 }:
 let
   inherit (import ./walk.nix) isNestedAspect isGuardLeaf;
@@ -35,52 +44,74 @@ let
   parentRefusal =
     door: path: what:
     "${door}: the parent `${render path}' is ${what}; name an aspect of this tree by its container-relative path (a list of segments).";
+  originRefusal =
+    door: path:
+    "${door}: the parent `${render path}' was not built under this cnf's `providerPrefix` (its stamp is another origin's, or it carries none); read the tree with the cnf it was evaluated under.";
   nodeAt =
-    door: aspects: path:
-    if !(builtins.isList path && builtins.all builtins.isString path) then
-      throw "${door}: takes the parent's container-relative path as a list of strings, not a ${builtins.typeOf path}."
-    else if path == [ ] then
-      throw (parentRefusal door path "the container, which is no node")
-    else
-      builtins.foldl' (
-        node: i:
-        let
-          seg = builtins.elemAt path i;
-          at = builtins.genList (builtins.elemAt path) (i + 1);
-          v = node.${seg};
-        in
-        if !(node ? ${seg}) then
-          throw (parentRefusal door at "absent")
-        else if isGuardLeaf v then
-          throw (parentRefusal door at "a guard leaf, whose content exists only once a context is supplied")
-        else if !(isNestedAspect v) then
-          throw (parentRefusal door at "no aspect (class content, a structural option or a primitive)")
+    door: cnf: aspects: path:
+    let
+      node =
+        if !(builtins.isList path && builtins.all builtins.isString path) then
+          throw "${door}: takes the parent's container-relative path as a list of strings, not a ${builtins.typeOf path}."
+        else if path == [ ] then
+          throw (parentRefusal door path "the container, which is no node")
         else
-          v
-      ) aspects (builtins.genList (i: i) (builtins.length path));
+          builtins.foldl' (
+            node: i:
+            let
+              seg = builtins.elemAt path i;
+              at = builtins.genList (builtins.elemAt path) (i + 1);
+              v = node.${seg};
+            in
+            if !(node ? ${seg}) then
+              throw (parentRefusal door at "absent")
+            else if isGuardLeaf v then
+              throw (parentRefusal door at "a guard leaf, whose content exists only once a context is supplied")
+            else if !(isNestedAspect v) then
+              throw (parentRefusal door at "no aspect (class content, a structural option or a primitive)")
+            else
+              v
+          ) aspects (builtins.genList (i: i) (builtins.length path));
+    in
+    if (node.id_hash or null) == aspectId cnf.providerPrefix node then
+      node
+    else
+      throw (originRefusal door path);
 
   childrenOfAt =
     door: cnf: aspects: path:
     let
-      node = nodeAt door aspects path;
+      node = nodeAt door cnf aspects path;
     in
-    map (
-      k:
-      keyRef {
-        origin = cnf.providerPrefix;
-        path = path ++ [ k ];
-      }
-    ) (builtins.filter (k: isChild node.${k}) (builtins.attrNames node));
+    {
+      inherit node;
+      refs = map (
+        k:
+        keyRef {
+          origin = cnf.providerPrefix;
+          path = path ++ [ k ];
+        }
+      ) (builtins.filter (k: isChild node.${k}) (builtins.attrNames node));
+    };
 in
 {
-  childrenOf = cnfDoor prelude "gen-aspects.childrenOf" (childrenOfAt "gen-aspects.childrenOf");
-  children = cnfDoor prelude "gen-aspects.children" (
-    cnf: aspects: path: {
-      name = builtins.toJSON {
-        origin = cnf.providerPrefix;
-        inherit path;
-      };
-      includes = childrenOfAt "gen-aspects.children" cnf aspects path;
+  childrenOf = cnfDoor prelude "gen-aspects.childrenOf" (
+    cnf: aspects: path: (childrenOfAt "gen-aspects.childrenOf" cnf aspects path).refs
+  );
+  childBundle = cnfDoor prelude "gen-aspects.childBundle" (
+    cnf: aspects: path:
+    let
+      c = childrenOfAt "gen-aspects.childBundle" cnf aspects path;
+    in
+    {
+      # The path is checked (through the node) before it is rendered, so a bad one gets its named refusal.
+      name = builtins.seq c.node (
+        builtins.toJSON {
+          origin = cnf.providerPrefix;
+          inherit path;
+        }
+      );
+      includes = c.refs;
     }
   );
 }

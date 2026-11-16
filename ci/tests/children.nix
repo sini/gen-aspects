@@ -1,15 +1,15 @@
-# `childrenOf` and `children` (lib/children.nix): a node's children as structured references, and the
-# named include value over them. Ids are asserted by their RELATIONS, never by a literal: a bundle's id
+# `childrenOf` and `childBundle` (lib/children.nix): a node's children as structured references under
+# the tree's checked origin, and the named include value over them. Ids are asserted by their RELATIONS, never by a literal: a bundle's id
 # carries the source position of its `name` (identity design §2).
 #
 # Each cell carries the arm that discriminates it: the `RED` comment names the edit that turns it.
 {
   aspects,
-  mkSchemaEval,
+  genMerge,
   ...
 }:
 let
-  inherit (aspects) guard pred children childrenOf;
+  inherit (aspects) guard pred childBundle childrenOf;
   ks.couching.category = "class";
   marked = n: { couching.stitches = [ n ]; };
   try =
@@ -21,13 +21,13 @@ let
   first = l: if builtins.isList l && l != [ ] then builtins.head l else "<none>";
   isBundle = n: builtins.match "@/includes/.*" n != null;
 
+  # The origin is STAMPED: `mkAspectModule { providerPrefix }` writes it into every node's `id_hash`.
+  # (`mkSchemaEval { providerPrefix }` does not: its tree is stamped at the root origin.)
   treeAt =
     prefix: mods:
-    (mkSchemaEval {
-      keySemantics = ks;
-      providerPrefix = prefix;
-      modules = mods;
-    }).config.aspects;
+    (genMerge.evalModuleTree { } (
+      [ ((aspects.mkAspectSchema { keySemantics = ks; }).mkAspectModule { providerPrefix = prefix; }) ] ++ mods
+    )).config.aspects;
   cnfAt = prefix: {
     keySemantics = ks;
     providerPrefix = prefix;
@@ -47,7 +47,7 @@ let
       (
         { config, ... }:
         let
-          ch = children cnf config.aspects;
+          ch = childBundle cnf config.aspects;
         in
         {
           aspects = {
@@ -73,12 +73,12 @@ let
   ab = treeAt [ "a" "b" ] [ { aspects.c = marked "c"; } ];
   a1 = treeAt [ "a" ] [ { aspects.b.c = marked "c"; } ];
   env = factsOf (main {
-    s.includes = [ (children (cnfAt [ "far" ]) far [ "loom" ]) ];
-    sb.includes = [ (children cnf sib [ "loom" ]) ];
+    s.includes = [ (childBundle (cnfAt [ "far" ]) far [ "loom" ]) ];
+    sb.includes = [ (childBundle cnf sib [ "loom" ]) ];
   });
   inj = factsOf (main {
-    i1.includes = [ (children (cnfAt [ "a" "b" ]) ab [ "c" ]) ];
-    i2.includes = [ (children (cnfAt [ "a" ]) a1 [ "b" "c" ]) ];
+    i1.includes = [ (childBundle (cnfAt [ "a" "b" ]) ab [ "c" ]) ];
+    i2.includes = [ (childBundle (cnfAt [ "a" ]) a1 [ "b" "c" ]) ];
   });
   spell = factsOf (main {
     sp.includes = [
@@ -87,7 +87,7 @@ let
           origin = [ ];
           path = [ "loom" ];
         };
-        # the same value `children` builds, written at another `name` position
+        # the same value `childBundle` builds, written at another `name` position
         includes = map (
           k:
           aspects.keyRef {
@@ -115,7 +115,7 @@ let
             couching.stitches = [ "loom" ];
             gate = guard (pred.has "rope") (marked "gate");
           };
-          aspects.p.includes = [ (children cnf config.aspects [ "loom" ]) ];
+          aspects.p.includes = [ (childBundle cnf config.aspects [ "loom" ]) ];
         }
       )
       {
@@ -131,7 +131,7 @@ let
   });
 in
 {
-  # RED: drop `name` from `children` (an anonymous bundle is a node per site, 0cmbt Q1): p and q differ.
+  # RED: drop `name` from `childBundle` (an anonymous bundle is a node per site, 0cmbt Q1): p and q differ.
   flake.tests.children.test-one-node-wherever-included = {
     expr = {
       same = pB == first f.includesOf.q;
@@ -247,7 +247,7 @@ in
     expr = {
       ghost = try (
         let
-          g = factsOf (main { gh.includes = [ (children cnf ghost [ "loom" ]) ]; });
+          g = factsOf (main { gh.includes = [ (childBundle cnf ghost [ "loom" ]) ]; });
         in
         g.includesOf.${first g.includesOf.gh}
       );
@@ -267,5 +267,33 @@ in
       "loom/warp"
       "loom/weft"
     ];
+  };
+  # THE ORIGIN IS THE TREE'S. RED: compare nothing (trust `cnf.providerPrefix`): the far tree read under
+  # a root claim binds its references into the including tree, `local = [ "loom/warp" ]`.
+  flake.tests.children.test-a-claimed-origin-the-tree-was-not-built-under-refuses = {
+    expr = {
+      farUnderRoot = try (childrenOf cnf far [ "loom" ]);
+      rootUnderFar = try (childrenOf (cnfAt [ "far" ]) (main { }) [ "loom" ]);
+      stampless = try (childrenOf cnf { loom = { name = "loom"; warp.name = "warp"; }; } [ "loom" ]);
+      control = map (r: r.origin) (childrenOf (cnfAt [ "far" ]) far [ "loom" ]);
+    };
+    expected = {
+      farUnderRoot = "REFUSED";
+      rootUnderFar = "REFUSED";
+      stampless = "REFUSED";
+      control = [ [ "far" ] ];
+    };
+  };
+  # The name is rendered from the CHECKED path. RED: render it unchecked: a function path aborts in
+  # `toJSON`, which `tryEval` does not catch, and the whole cell dies.
+  flake.tests.children.test-a-bad-path-refuses-before-the-name-renders = {
+    expr = {
+      fn = try (childBundle cnf (main { }) (y: y)).name;
+      str = try (childBundle cnf (main { }) "loom").name;
+    };
+    expected = {
+      fn = "REFUSED";
+      str = "REFUSED";
+    };
   };
 }

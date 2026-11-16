@@ -2248,11 +2248,21 @@ in
     };
   # lib/children.nix: an absent parent is refused by name, never read as a childless one.
   flake.testsError.children-refusal = {
+    test-function-path = thrown (aspects.childBundle { } { } (y: y)).name (
+      exactly "gen-aspects.childBundle: takes the parent's container-relative path as a list of strings, not a lambda."
+    );
+    test-claimed-origin = thrown (aspects.childrenOf { providerPrefix = [ "far" ]; } {
+      loom = {
+        name = "loom";
+      };
+    } [ "loom" ]) (
+      exactly "gen-aspects.childrenOf: the parent `loom' was not built under this cnf's `providerPrefix` (its stamp is another origin's, or it carries none); read the tree with the cnf it was evaluated under."
+    );
     test-absent-parent = thrown (aspects.childrenOf { } { } [ "nope" ]) (
       exactly "gen-aspects.childrenOf: the parent `nope' is absent; name an aspect of this tree by its container-relative path (a list of segments)."
     );
-    test-guard-leaf-parent = thrown (aspects.children { } { g = aspects.guard (aspects.pred.has "rope") { }; } [ "g" ]) (
-      exactly "gen-aspects.children: the parent `g' is a guard leaf, whose content exists only once a context is supplied; name an aspect of this tree by its container-relative path (a list of segments)."
+    test-guard-leaf-parent = thrown (aspects.childBundle { } { g = aspects.guard (aspects.pred.has "rope") { }; } [ "g" ]) (
+      exactly "gen-aspects.childBundle: the parent `g' is a guard leaf, whose content exists only once a context is supplied; name an aspect of this tree by its container-relative path (a list of segments)."
     );
   };
 }
