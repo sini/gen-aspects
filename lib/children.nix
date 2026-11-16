@@ -82,13 +82,14 @@ let
     door: cnf: aspects: path:
     let
       node = nodeAt door cnf aspects path;
+      origin = cnf.providerPrefix;
     in
     {
       inherit node;
       refs = map (
         k:
         keyRef {
-          origin = cnf.providerPrefix;
+          inherit origin;
           path = path ++ [ k ];
         }
       ) (builtins.filter (k: isChild node.${k}) (builtins.attrNames node));
