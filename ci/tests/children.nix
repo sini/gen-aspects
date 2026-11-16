@@ -87,10 +87,20 @@ let
           origin = [ ];
           path = [ "loom" ];
         };
-        includes = [
-          "loom/gate"
-          "loom/warp"
-          "loom/weft"
+        # the same value `children` builds, written at another `name` position
+        includes = map (
+          k:
+          aspects.keyRef {
+            origin = [ ];
+            path = [
+              "loom"
+              k
+            ];
+          }
+        ) [
+          "gate"
+          "warp"
+          "weft"
         ];
       }
     ];
