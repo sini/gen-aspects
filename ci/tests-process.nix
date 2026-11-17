@@ -357,9 +357,62 @@
           done
           echo "applied-apart-leaf: beside a static class the join reads the fired and the static digests and dies on the declared channel; alone, false"
 
+          # lib/children.nix's cost (den-hoag-children-bundle-node-zww0n). childrenAt <arm> <n> [lib] runs
+          # `children-site-<arm>` at n sites over `lib` (default: this library) and leaves `thunks` set.
+          childrenAt() {
+            rm -f "$TMPDIR/stats"
+            export NIX_SHOW_STATS=1 NIX_SHOW_STATS_PATH="$TMPDIR/stats"
+            libSrc=''${3:-$libSrc} evalArm "children-site-$1" "$2"
+            unset NIX_SHOW_STATS NIX_SHOW_STATS_PATH
+            want=1
+            [ "$1" = none ] && want=0
+            [ "$rc" -eq 0 ] || die "children-$1" "n=$2: expected exit 0, got $rc"
+            [ "$val" = "$want" ] || die "children-$1" "n=$2: expected $want bundle nodes, got '$val'"
+            [ -s "$TMPDIR/stats" ] || die "children-$1" "n=$2: could not measure, no statistics written"
+            thunks=$(sed -n 's/.*"nrThunks": *\([0-9][0-9]*\).*/\1/p' "$TMPDIR/stats")
+            [ -n "$thunks" ] || die "children-$1" "n=$2: could not measure, no nrThunks in the statistics"
+          }
+          # What an evaluation that never reads the exports pays for them: this library against itself with
+          # lib/children.nix and its two bindings in lib/default.nix removed, at 4 and 16 sites. The binding is
+          # per instantiation, so it is the same at both sizes (3 thunks on all three evaluators).
+          libBase=$TMPDIR/lib-base
+          cp -r "$libSrc" "$libBase"
+          chmod -R u+w "$libBase"
+          rm "$libBase/children.nix"
+          sed -i -e '/^  childrenModule = import \.\/children\.nix {$/,/^  };$/d' \
+            -e '/^  inherit (childrenModule) childrenOf childBundle;$/d' "$libBase/default.nix"
+          left=$(grep -c 'childrenModule' "$libBase/default.nix" || true)
+          cut=$(($(wc -l < "$libSrc/default.nix") - $(wc -l < "$libBase/default.nix")))
+          [ "$left" = 0 ] && [ "$cut" = 6 ] \
+            || die children-no-reader "could not measure: the baseline library still binds lib/children.nix ($left left, $cut lines cut)"
+          childrenAt none 4 "$libBase"; b1=$thunks
+          childrenAt none 4; h1=$thunks
+          childrenAt none 16 "$libBase"; b2=$thunks
+          childrenAt none 16; h2=$thunks
+          r1=$((h1 - b1)); r2=$((h2 - b2))
+          echo "children-no-reader: an evaluation that never reads the exports pays $r1 / $r2 thunks for them at 4 / 16 sites"
+          [ "$r1" = "$r2" ] || die children-no-reader "the unread exports cost per node: $r1 / $r2 thunks at 4 / 16 sites"
+          [ "$r1" -le 3 ] || die children-no-reader "the unread exports cost more than 3 thunks per instantiation: $r1"
+          # One bundle node over n sites, and its per-site increment against the framework-written twin's.
+          # The residue is the door per call, the parent's stamp re-derived through the mint, its coordinate
+          # and the walk's checks; it is flat (1.0200 at both increments on all three evaluators), so each
+          # slope is linear and each ratio is bounded at 1.021.
+          for arm in gen twin; do
+            childrenAt "$arm" 4; t4=$thunks
+            childrenAt "$arm" 8; t8=$thunks
+            childrenAt "$arm" 16; t16=$thunks
+            eval "''${arm}1=$((t8 - t4)) ''${arm}2=$((t16 - t8))"
+          done
+          echo "children-site: gen $gen1 / $gen2 against the twin's $twin1 / $twin2 thunks over 4 / 8 more sites"
+          [ "$twin1" -gt 0 ] || die children-site "could not measure: the twin costs nothing per site ($twin1)"
+          [ $((100 * gen2)) -le $((202 * gen1)) ] \
+            || die children-site "the bundle's per-site cost grows with sites: $gen1 / $gen2 thunks over 4 / 8 more sites"
+          [ $((1000 * gen1)) -le $((1021 * twin1)) ] && [ $((1000 * gen2)) -le $((1021 * twin2)) ] \
+            || die children-site "the bundle costs more than 1.021 times the twin per site: $gen1 / $gen2 against $twin1 / $twin2"
+
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "69" ] || die runner "expected 69 evaluations, ran $ran"
-          echo "tests-process: 21 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "79" ] || die runner "expected 79 evaluations, ran $ran"
+          echo "tests-process: 23 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

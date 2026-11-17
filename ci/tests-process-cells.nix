@@ -573,7 +573,79 @@ let
         };
       in
       namedNodes { a.includes = [ (unfold 0) ]; };
+
+    # lib/children.nix's cost, against the framework-written twin of the same named value (den v1's
+    # bundle shape, written by hand): one parent of 4 children, its bundle included at n sites. The value
+    # is the number of bundle nodes: 1 at every n for both, 0 with no bundle anywhere.
+    children-site-gen = childrenSites "gen";
+    children-site-twin = childrenSites "twin";
+    children-site-none = childrenSites "none";
   };
+  childrenSites =
+    arm:
+    let
+      sites = builtins.fromJSON n;
+      cnf.keySemantics.couching.category = "class";
+      marked = s: { couching.stitches = [ s ]; };
+      twin =
+        as: p:
+        let
+          node = builtins.foldl' (x: s: x.${s}) as p;
+        in
+        {
+          name = builtins.toJSON {
+            origin = [ ];
+            path = p;
+          };
+          includes =
+            map
+              (
+                k:
+                ga.keyRef {
+                  origin = [ ];
+                  path = p ++ [ k ];
+                }
+              )
+              (
+                builtins.filter (
+                  k: builtins.isAttrs node.${k} && (node.${k} ? name || (node.${k}.__guard or false))
+                ) (builtins.attrNames node)
+              );
+        };
+      bundle = as: if arm == "gen" then ga.childBundle cnf as [ "par" ] else twin as [ "par" ];
+      as =
+        (spiedDoored.evalModuleTree { } [
+          ((ga.mkAspectSchema cnf).mkAspectModule { })
+          (
+            { config, ... }:
+            {
+              aspects = {
+                par =
+                  marked "par"
+                  // builtins.listToAttrs (
+                    builtins.genList (i: {
+                      name = "k${toString i}";
+                      value = marked "k${toString i}";
+                    }) 4
+                  );
+              }
+              // builtins.listToAttrs (
+                builtins.genList (i: {
+                  name = "site${toString i}";
+                  value = marked "s" // (if arm == "none" then { } else { includes = [ (bundle config.aspects) ]; });
+                }) sites
+              );
+            }
+          )
+        ]).config.aspects;
+      f = ga.graphFacts cnf as;
+    in
+    builtins.deepSeq [
+      f.nodes
+      f.parentOf
+      f.includesOf
+      f.foreignIncludesOf
+    ] (builtins.length (builtins.filter (x: builtins.match "@/includes/.*" x != null) f.nodes));
   namedNodes =
     aspects:
     let
