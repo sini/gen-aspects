@@ -82,16 +82,13 @@ let
   siteRefusal =
     prefix:
     "gen-aspects: the include element at `${merge.showOption prefix}' was handed no declaration address (gen-merge's `nests.declAt`), so it has no declaring position to be keyed by; evaluate it through an include position of an aspect type.";
-  # The position of a named value's `name`, or null where it has none (F14).
-  namedPos =
-    v: if v ? name && builtins.isString v.name then builtins.unsafeGetAttrPos "name" v else null;
   # A named value's §2 segment, `<name>@<line>:<column>:<file>` (identity design §2: the position of
   # its `name` and the name), or null where the name has no position (F14). The one writer: the type's
   # stamp and `facts.nix`' applied-body sightings both read it.
   namedSegment =
     v:
     let
-      pos = namedPos v;
+      pos = if v ? name && builtins.isString v.name then builtins.unsafeGetAttrPos "name" v else null;
     in
     if pos == null then
       null
@@ -99,16 +96,17 @@ let
       "${
         builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] v.name
       }@${toString pos.line}:${toString pos.column}:${pos.file}";
-  # Decided on the position, so the rendered segment stays an unforced list element.
+  # Decided on namedSegment's own position test, inline so the segment stays an unforced list element
+  # and the type's load binds nothing more.
   includeSite =
     d: prefix:
     let
       v = d.value;
     in
-    if namedPos v == null then unnamedSite d prefix else prelude.init prefix ++ [ (namedSegment v) ];
-  # Rendered by type, never coerced: a non-string `name` reaches this door. Read only by its refusals,
-  # so a stamp that refuses nothing renders no name.
-  includeNameOf = v: if builtins.isString v.name then v.name else "<a ${builtins.typeOf v.name}>";
+    if v ? name && builtins.isString v.name && builtins.unsafeGetAttrPos "name" v != null then
+      prelude.init prefix ++ [ (namedSegment v) ]
+    else
+      unnamedSite d prefix;
   # The element, read as a module that also DEFINES its declared path, from the module argument
   # `prefix` (its declared position, `includeEntryCoercedAt`) and its own authored value. An authored `key`, `id_hash` or
   # `meta.loc` refuses by name BEFORE the wrap: inside `imports` the attrset is a module, and its
@@ -128,10 +126,17 @@ let
           builtins.isAttrs (d.value.meta or null) && d.value.meta ? sighting
         ) "meta.sighting";
     in
-    if written != [ ] then
-      throw "gen-aspects: an include element named `${includeNameOf d.value}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
-    else if d.value ? id then
-      throw "gen-aspects: an include element named `${includeNameOf d.value}' writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition."
+    if written != [ ] || d.value ? id then
+      let
+        # Rendered by type, never coerced: a non-string `name` reaches this door. Bound only where a
+        # refusal reads it, so a stamp that refuses nothing renders no name.
+        name =
+          if builtins.isString d.value.name then d.value.name else "<a ${builtins.typeOf d.value.name}>";
+      in
+      if written != [ ] then
+        throw "gen-aspects: an include element named `${name}' writes `${builtins.head written}', which the aspect type writes; remove the definition."
+      else
+        throw "gen-aspects: an include element named `${name}' writes `id', which is reserved and keys nothing: an include element is keyed by its declaring position. Declare the node as an aspect and include it, or remove the definition."
     else
       d
       // {
