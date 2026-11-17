@@ -298,6 +298,34 @@
               || die "$arm" "thunks grow faster than linear in hosts: $m1 / $m2 / $m3 at n = 50 / 100 / 200"
           done
 
+          # den-hoag-named-include-instance-bodies-sfkyy: what a static graphFacts reader pays per include
+          # site, each shape less the include-free control, between 16 / 32 / 64 / 128 aspects. Linear, and
+          # the same on all three evaluators at this lock: 2879 thunks per named site and 3331 per anonymous
+          # one, against 2895 and 3337 before the static stratum's levers, so one more thunk per site reds.
+          # The figure carries the type's own per-element cost, so a pin that moves it re-anchors the bound.
+          for shape in named anon none; do
+            for k in 16 32 64 128; do
+              appliedAt "static-sites-$shape" "$k"
+              eval "ss_''${shape}_$k=$thunks"
+            done
+          done
+          for shape in named anon; do
+            bound=$([ "$shape" = named ] && echo 2879 || echo 3331)
+            per=""
+            for iv in 16:32 32:64 64:128; do
+              k1=''${iv%:*} k2=''${iv#*:}
+              eval "d=\$(((ss_''${shape}_$k2 - ss_none_$k2) - (ss_''${shape}_$k1 - ss_none_$k1)))"
+              [ "$d" -gt 0 ] || die "static-site-$shape" "could not measure: a site costs nothing from $k1 to $k2 aspects ($d)"
+              [ $((d % (k2 - k1))) = 0 ] || die "static-site-$shape" "the per-site cost is not linear from $k1 to $k2 aspects: $d thunks over $((k2 - k1)) sites"
+              per="$per $((d / (k2 - k1)))"
+            done
+            echo "static-site-$shape: a site costs$per thunks over 16 / 32 / 64 more aspects"
+            for p in $per; do
+              [ "$p" -le "$bound" ] \
+                || die "static-site-$shape" "a static $shape include site costs more than $bound thunks:$per"
+            done
+          done
+
           # den-hoag-qxip5: the declared abort (identity design §4 row 4). Each cell dies on the
           # evaluator's stack-overflow channel, which Nix, Determinate ("stack overflow; max-call-depth
           # exceeded") and Lix ("stack overflow (possible infinite recursion)") all print; a value, an
@@ -330,8 +358,8 @@
           echo "applied-apart-leaf: beside a static class the join reads the fired and the static digests and dies on the declared channel; alone, false"
 
           # 0/0 is a false pass: the runner must have executed every cell above.
-          [ "$ran" = "57" ] || die runner "expected 57 evaluations, ran $ran"
-          echo "tests-process: 19 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+          [ "$ran" = "69" ] || die runner "expected 69 evaluations, ran $ran"
+          echo "tests-process: 21 cells, every exit read unpiped, every death on its named channel, every count read" > $out
         ''
         + ''
           cat "$out"

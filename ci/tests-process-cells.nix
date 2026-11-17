@@ -270,6 +270,42 @@ let
         }) ix
       );
     };
+  # n static aspects, each with class content and one include of `shape` (`named`: a named value; `anon`:
+  # unnamed content; `none`: no include), and graphFacts' nodes, includesOf and includeSitesOf forced.
+  # Nothing reads the applied surface.
+  staticSites =
+    shape:
+    let
+      ix = builtins.genList (i: "a${toString (1000 + i)}") (builtins.fromJSON n);
+      as =
+        (spiedDoored.evalModuleTree { } [
+          { options.aspects = (ga.mkAspectSchema { keySemantics.T.category = "class"; }).mkAspectOption { }; }
+          {
+            aspects = builtins.listToAttrs (
+              map (i: {
+                name = i;
+                value = {
+                  T.marks = [ i ];
+                  includes =
+                    if shape == "named" then
+                      [
+                        {
+                          name = "v${i}";
+                          T.marks = [ "v${i}" ];
+                        }
+                      ]
+                    else if shape == "anon" then
+                      [ { T.marks = [ "v${i}" ]; } ]
+                    else
+                      [ ];
+                };
+              }) ix
+            );
+          }
+        ]).config.aspects;
+      f = ga.graphFacts { } as;
+    in
+    builtins.deepSeq [ f.nodes f.includesOf f.includeSitesOf ] (builtins.length f.nodes);
   # One factory's value `t` fired in an applied body and declared statically with other content. The
   # static `T` is one attribute wider, so `==` between them is false on the attribute count, in every
   # evaluator's interning order, and never reads a leaf. `leaf`: where the uncatchable leaf (`T.zz`)
@@ -499,6 +535,11 @@ let
     applied-onehost-stamped-lift = appliedOneHost true true true;
     # The same two values each holding a lambda: outside the mint, decided by the rung.
     applied-fnmixed = appliedMixed "fn" 0;
+    # What a static graphFacts reader pays per include site: the runner reads each shape less `-none`, per
+    # aspect, at four sizes.
+    static-sites-named = staticSites "named";
+    static-sites-anon = staticSites "anon";
+    static-sites-none = staticSites "none";
 
     # den-hoag-qxip5 (identity design §4 row 4, R7's declared exception): named content whose
     # structural comparison does not terminate aborts the whole graph. The verdict is the exit and its
