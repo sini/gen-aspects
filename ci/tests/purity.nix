@@ -168,6 +168,7 @@ in
     expr = map (s: s.name) sources;
     expected = [
       "lib/can-take.nix"
+      "lib/children.nix"
       "lib/cnf.nix"
       "lib/default.nix"
       "lib/facts.nix"
@@ -196,6 +197,7 @@ in
     expr = liveReads;
     expected = [
       "lib/can-take.nix"
+      "lib/children.nix"
       "lib/cnf.nix"
       "lib/default.nix"
       "lib/facts.nix"
