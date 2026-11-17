@@ -451,8 +451,11 @@ rec {
           # joins a static class), so a reader that needs no id (no second sighting at its key) never forces
           # one. Tested on the `name` position first, so an unnamed site never reads the vertex's index, and
           # a key-less one (a raw value in an applied body; the type stamps every static one) never does.
-          prelude.optionalAttrs targeted (
-            if builtins.unsafeGetAttrPos "name" elem != null && (!(elem ? key) || applied) then
+          # Spelled as a conditional, not `optionalAttrs`, which costs a thunk per element.
+          (
+            if !targeted then
+              { }
+            else if builtins.unsafeGetAttrPos "name" elem != null && (!(elem ? key) || applied) then
               {
                 inherit target;
                 info = found;
@@ -704,11 +707,11 @@ rec {
       # catches no `abort` and no stack overflow (identity design §4 row 4).
       same =
         a: b:
-        if a.exact && b.exact then
-          algebra.conservativeEq a.val b.val
+        if a.nm.exact && b.nm.exact then
+          algebra.conservativeEq a.nm.val b.nm.val
         else
           let
-            eq = builtins.tryEval (a.val == b.val);
+            eq = builtins.tryEval (a.nm.val == b.nm.val);
           in
           eq.success && eq.value;
 
@@ -719,10 +722,11 @@ rec {
       staticNamed =
         elem:
         if isNamedContent elem then
-          {
+          rec {
             named = true;
             s2 = s2Of elem;
             val = elem.meta.sighting.value;
+            exact = isExactCtor val;
           }
         else
           null;
@@ -740,12 +744,14 @@ rec {
               q = p ++ [ i ];
               nm = namedOf elem;
               named = nm != null && nm.named;
+              # `nm` rides whole, so a reader forces only the sighting field it reads.
               r = {
                 inherit
                   host
                   elem
                   named
                   encl
+                  nm
                   ;
                 parent = parentRec;
                 rel = rel ++ [ i ];
@@ -755,9 +761,6 @@ rec {
                   q
                 ];
                 s2 = if named then nm.s2 else null;
-                val = if named then nm.val else null;
-                pk = if nm == null then null else nm.pk or null;
-                exact = named && isExactCtor nm.val;
                 back = !structural && named && builtins.any (a: a.s2 == r.s2 && same a r) ancestors;
               };
             in
@@ -846,12 +849,16 @@ rec {
               if ids == [ ] then null else builtins.head (builtins.sort builtins.lessThan ids);
           namedRecs = builtins.filter (r: r.named) recs;
           # The join is decided per §2 key, inside that key's group, so a reader forces the joins at
-          # its own keys only.
-          classesAt = builtins.mapAttrs (_: rs: componentsOf (builtins.filter (r: joinFor r == null) rs)) (
-            builtins.groupBy (r: r.s2) namedRecs
-          );
+          # its own keys only. With no prior nothing joins, so the static stratum reads no join term here,
+          # in `classIds` or in `classIdOf`.
+          classesAt = builtins.mapAttrs (
+            if prior == null then
+              (_: componentsOf)
+            else
+              (_: rs: componentsOf (builtins.filter (r: joinFor r == null) rs))
+          ) (builtins.groupBy (r: r.s2) namedRecs);
           # Each member's digest, per class (null where the mint refuses the member).
-          digestsAt = builtins.mapAttrs (_: map (map (m: ownDigest' m.val))) classesAt;
+          digestsAt = builtins.mapAttrs (_: map (map (m: ownDigest' m.nm.val))) classesAt;
           # Per §2 key, every class indexed by each digest its members mint (so OQ8's `==`-equal pair with
           # two digests is reached from either), read only by a later stratum's join.
           digestIxAt = builtins.mapAttrs (
@@ -907,8 +914,12 @@ rec {
               base = qualify "@/includes/${s2}";
             in
             if
-              builtins.length cs + builtins.length (if prior == null then [ ] else prior.classesAt.${s2} or [ ])
-              == 1
+              (
+                if prior == null then
+                  builtins.length cs == 1
+                else
+                  builtins.length cs + builtins.length (prior.classesAt.${s2} or [ ]) == 1
+              )
             then
               [ base ]
             else
@@ -916,15 +927,13 @@ rec {
           ) classesAt;
           classIdOf =
             r:
-            let
-              j = joinFor r;
-            in
-            if j != null then
-              j
-            else if prior == null then
+            if prior == null then
               builtins.elemAt classIds.${r.s2} classIx.${r.s2}.${r.addr}
             else
-              appliedIdOf r;
+              let
+                j = joinFor r;
+              in
+              if j != null then j else appliedIdOf r;
           # AN APPLIED SIGHTING'S CLASS IS KEYED BY ITS CONTENT, through the one mint (ADR-0034), where
           # the mint takes it: `<key>/<aspect-content digest>`, which carries no `%2F` and so is never a
           # site's form. Two sightings mint one digest exactly when `==` identifies them, so the id is the
@@ -954,7 +963,7 @@ rec {
             let
               n = applied.declNodeOf r;
             in
-            if n != null && n.v == r.val then n.d else ownDigest r.val;
+            if n != null && n.v == r.nm.val then n.d else ownDigest r.nm.val;
           appliedIdOf =
             r:
             let
@@ -965,7 +974,12 @@ rec {
             r:
             let
               rs = builtins.filter (
-                c: c.pk == r.pk && c.named && c.s2 == r.s2 && joinFor c == null && digestOf c == null
+                c:
+                (c.nm.pk or null) == (r.nm.pk or null)
+                && c.named
+                && c.s2 == r.s2
+                && joinFor c == null
+                && digestOf c == null
               ) (applied.localOf r.host);
               c = builtins.head (
                 builtins.filter (c: builtins.any (m: m.addr == r.addr) c) (componentsOf rs) ++ [ [ r ] ]
@@ -997,7 +1011,8 @@ rec {
                   (parentIdOf r)
                   (prelude.last r.pos)
                 ];
-                value = recInfo r;
+                # The static stratum publishes no `info`, so its entry is the id alone.
+                value = if prior == null then { id = idOfRec r; } else recInfo r;
               }) rs
             );
           recAt = recIndex recs;
@@ -1071,6 +1086,7 @@ rec {
               named = seg.success && seg.value != null;
               s2 = escape seg.value;
               val = elem;
+              exact = isExactCtor elem;
             }
         else
           null;
@@ -1089,7 +1105,7 @@ rec {
             hasNamePos 1 l
             && builtins.deepSeq (map (r: [
               r.addr
-              r.pk
+              (r.nm.pk or null)
             ]) recs) true
           );
         in
@@ -1173,11 +1189,11 @@ rec {
               map (r: {
                 name = builtins.toJSON r.pos;
                 value = recInfo r;
-              }) (builtins.filter (r: r.pk != null || pkAbove r) __recs)
+              }) (builtins.filter (r: (r.nm.pk or null) != null || pkAbove r) __recs)
             );
           }) vertices;
           # By `name` POSITION only, so the filter reads no `name`.
-          pkAbove = r: r.parent != null && (r.parent.pk != null || pkAbove r.parent);
+          pkAbove = r: r.parent != null && ((r.parent.nm.pk or null) != null || pkAbove r.parent);
         in
         iid: entry:
         if isGuardLeaf entry then
