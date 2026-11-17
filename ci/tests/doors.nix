@@ -54,6 +54,8 @@ let
     "keyCategory"
     "mkAspectSchema"
     "graphFacts"
+    "childrenOf"
+    "childBundle"
     "includeSitesOfInstance"
     "instanceOf"
     "instancesFor"
