@@ -46,9 +46,11 @@ let
   # `<owner> includes <name>@<line>:<column>:<file>`, so two elements sharing a name at two positions
   # are two declarations (ADR-0034's rider: the declaring position, never the merged one). A nested
   # element's `<owner>` is its enclosing element's DECLARED loc, since every element's tree is
-  # evaluated at its declared site (`includeEntryCoercedAt`): module order moves no key whose
-  # ancestors are declared by a path or a keyed module. `@` is escaped in the name, so the segment is
-  # injective, and `path.nix` escapes the file's `/` where the path is rendered.
+  # evaluated at its declared site (`includeEntryCoercedAt`): in gen's engine module order moves no key
+  # whose ancestors are declared by a path or a keyed module. `@` is escaped in the name, so the
+  # segment is injective, and `path.nix` escapes the file's `/` where the path is rendered. A named
+  # element's site is the same in both engines, so it is the order-stable route under a nixpkgs
+  # mount, for as long as its `name`'s source position holds: a source edit that moves it moves the key.
   #
   # An element with no positioned string `name` is declared at its DECLARATION ADDRESS (gen-merge's
   # `declAt` on the seed definition: the declaring module's anchor and the structural path to the
@@ -56,7 +58,12 @@ let
   # escaped, so it never holds the raw `@` a named site's segment holds, and never starts `[d` as the
   # merge position does. Never minted (7gp66 OQ4 (b′)). An element handed no address has no declaring
   # position, so it refuses by name (`siteRefusal`); no published route reaches that branch, since
-  # every include member states `nests.declAt`.
+  # every include member states `nests.declAt`. Mounted through unmodified nixpkgs `lib.evalModules`,
+  # the declaring module is known only by its definition's position in nixpkgs' `{ file; value; }`
+  # hand-over (gen-merge `declAnchorOf`), so an unnamed element's address, and the key, `id_hash`,
+  # `meta.loc` and default `name` rendered from it, move when the modules are reordered, keyed and
+  # path modules included; they stay distinct within one evaluation (ADR-0025 item 1, the
+  # interoperability limit; `ci/tests/foreign-include-order.nix`).
   declSegment = declAt: builtins.replaceStrings [ "%" "@" ] [ "%25" "%40" ] (builtins.toJSON declAt);
   # The segment is the whole declaration address, so it names the element alone: the loc is the
   # OWNER (the walk node whose `includes` the outermost element sits in) and `includes` and that
@@ -1625,6 +1632,8 @@ let
             # position (`includeEntryCoercedAt`), so its `prefix`, and the `name` and `aspect-chain`
             # rendered from it, name the declaration and never move with module order (ADR-0034's
             # den-module rider); an unnamed element's default `name` is its declaration-address segment.
+            # That holds in gen's engine; under a nixpkgs mount an unnamed element's declaration address is
+            # its position in nixpkgs' hand-over order and moves with it (see `declSegment` above).
             config.meta = {
               aspect-chain = merge.mkDefault (if prefix == [ ] then [ ] else prelude.init prefix);
             }

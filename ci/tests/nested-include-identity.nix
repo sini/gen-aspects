@@ -7,8 +7,9 @@
 # an unnamed element's default `name` — names the declaration, never the `[definition N-entry M]`
 # list position the merge gave it, which moves with module order.
 #
-# The fixture is keyed modules, so an unnamed ancestor's address is its module key and never a list
-# index, read over four orders and an empty `owner.includes` definition first (`q2empty`, which
+# The fixture is keyed modules evaluated by gen's engine, so an unnamed ancestor's address is its module
+# key and never a list index (under a nixpkgs mount it is a list index: `foreign-include-order.nix`), read
+# over four orders and an empty `owner.includes` definition first (`q2empty`, which
 # shifts every merge position by one). Each cell's `RED` comment names an edit that turns it.
 #
 # Not a member here: a guard record written DIRECTLY as an include element is dispatched with no
