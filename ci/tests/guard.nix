@@ -899,6 +899,161 @@ in
       };
     };
 
+  # A vocabulary folds a carrier by its own declarations only where they are the position's, on the
+  # declaration evidence the carrier holds (lib/types.nix `carrierEvidence`). Where a vocabulary of another
+  # cnf declares `ch` and the position does not, or declares it with another type, the carrier keeps the
+  # law no declaration enters (F1(b)): unequal lists are served and equal ones keep both copies, in either
+  # definition order. Where the vocabulary declares less than the position, the same. The matched pairing
+  # (the instance path's) is T4's: the default `raw` channel refuses unequal lists and folds equal ones to
+  # one copy. Members are compared, since the carrier's order is route (a)'s. RED (measured on the
+  # vocabulary's law taken unconditionally): `moreUnequal`, `moreUnequalPlainFirst`, `listOfUnderRaw` and
+  # `strUnderRaw` refused, `moreEqual` and `moreEqualPlainFirst` one copy.
+  flake.tests.guard.test-guard-carrier-under-another-vocabulary-keeps-the-base-law =
+    let
+      raw.ch.category = "channel";
+      chan = type: {
+        ch = {
+          category = "channel";
+          option = genMerge.mkOption {
+            inherit type;
+            default = [ ];
+          };
+        };
+      };
+      dupOf =
+        keySemantics: plainFirst: a: b:
+        (mkSchemaEval {
+          inherit keySemantics;
+          fixtureKeySemantics = { };
+          modules =
+            let
+              ms = [
+                { config.aspects.dup = a; }
+                { config.aspects.dup = b; }
+              ];
+            in
+            if plainFirst then lib.reverseList ms else ms;
+        }).config.aspects.dup;
+      read =
+        x:
+        let
+          r = builtins.tryEval (builtins.deepSeq x.ch x.ch);
+        in
+        if r.success then lib.sort (p: q: p < q) r.value else "refused";
+      # position keySemantics, vocabulary keySemantics, definition order, the two `ch` lists
+      fold =
+        pos: voc: plainFirst: a: b:
+        let
+          gv = aspects.mkGuardVocab { keySemantics = voc; };
+        in
+        read (
+          gv.applyGuard { thimble.name = "cortex"; } (
+            dupOf pos plainFirst (gv.vocab.always { ch = a; }) { ch = b; }
+          )
+        );
+    in
+    {
+      expr = {
+        moreUnequal = fold { } raw false [ "a" ] [ "b" ];
+        moreUnequalPlainFirst = fold { } raw true [ "a" ] [ "b" ];
+        moreEqual = fold { } raw false [ "a" ] [ "a" ];
+        moreEqualPlainFirst = fold { } raw true [ "a" ] [ "a" ];
+        listOfUnderRaw = fold (chan (genMerge.types.listOf genMerge.types.str)) raw false [ "a" ] [ "b" ];
+        strUnderRaw = fold (chan genMerge.types.str) raw false [ "a" ] [ "b" ];
+        rawUnderNone = fold raw { } false [ "a" ] [ "b" ];
+        rawUnderListOf = fold raw (chan (genMerge.types.listOf genMerge.types.str)) false [ "a" ] [ "b" ];
+        matchedUnequal = fold raw raw false [ "a" ] [ "b" ];
+        matchedEqual = fold raw raw true [ "a" ] [ "a" ];
+      };
+      expected = {
+        moreUnequal = [
+          "a"
+          "b"
+        ];
+        moreUnequalPlainFirst = [
+          "a"
+          "b"
+        ];
+        moreEqual = [
+          "a"
+          "a"
+        ];
+        moreEqualPlainFirst = [
+          "a"
+          "a"
+        ];
+        listOfUnderRaw = [
+          "a"
+          "b"
+        ];
+        strUnderRaw = [
+          "a"
+          "b"
+        ];
+        rawUnderNone = [
+          "a"
+          "b"
+        ];
+        rawUnderListOf = [
+          "a"
+          "b"
+        ];
+        matchedUnequal = "refused";
+        matchedEqual = [ "a" ];
+      };
+    };
+
+  # Choosing the law reads declarations, never configuration: a carrier whose plain definition holds a
+  # throwing sibling (`description`, held raw by route (a)), at a position whose cnf also holds a malformed
+  # key (its option refuses by name where its value is read), folds `ch` under the matched vocabulary (the
+  # `raw` channel's equality fold, one copy) and under one of another cnf (F1(b), both copies), and neither
+  # the sibling nor the malformed key's value is forced. RED (measured on evidence that reads each option's
+  # value): both arms refused.
+  flake.tests.guard.test-guard-carrier-law-choice-forces-no-configuration =
+    let
+      pos = {
+        ch.category = "channel";
+        bad = "not-an-entry";
+      };
+      fold =
+        voc:
+        let
+          gv = aspects.mkGuardVocab { keySemantics = voc; };
+          r =
+            (mkSchemaEval {
+              keySemantics = pos;
+              fixtureKeySemantics = { };
+              modules = [
+                { config.aspects.dup = gv.vocab.always { ch = [ "a" ]; }; }
+                {
+                  config.aspects.dup = {
+                    ch = [ "a" ];
+                    description = throw "forced";
+                  };
+                }
+              ];
+            }).config.aspects.dup;
+          v = builtins.tryEval (
+            builtins.deepSeq (gv.applyGuard { thimble.name = "cortex"; } r).ch
+              (gv.applyGuard { thimble.name = "cortex"; } r).ch
+          );
+        in
+        if v.success then v.value else "refused";
+    in
+    {
+      expr = {
+        matched = fold pos;
+        otherCnf = fold { };
+      };
+      expected = {
+        matched = [ "a" ];
+        otherCnf = [
+          "a"
+          "a"
+        ];
+      };
+    };
+
   # A guard carrier of record fragments is first-order data (the 2026-08-27 Arm B identity: "inert
   # first-order structure"): its content law is bound where it is discharged, never stored on it. So two
   # carriers built from the same definitions are equal, the same carrier defined twice at a `raw` option
@@ -951,6 +1106,7 @@ in
       expected = {
         twoBuildsEq = true;
         foldTwice = [
+          "__evidence"
           "__guard"
           "fragments"
           "meta"

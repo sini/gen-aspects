@@ -773,6 +773,9 @@ let
       # contribution adds nothing a definition did not write, apart from an empty `includes` at a nested
       # position, and no typed default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
       declaredKeys = sub.getSubOptions [ ];
+      # this position's declaration evidence, which a carrier placed here holds, as data, for the
+      # vocabulary that discharges it (`carrierEvidence`; lib/guard.nix `applyGuardScoped`)
+      evidence = carrierEvidence cnf declaredKeys;
       # the vocabulary a guard placed at this position is judged under
       guardVocab = keyVocab cnf (builtins.attrNames declaredKeys) // {
         inherit nesting;
@@ -903,6 +906,7 @@ let
       # carried by value splices its own fragments.
       mkGuardCarrier = fold: loc: defs: {
         __guard = true;
+        __evidence = evidence;
         fragments =
           let
             typed = {
@@ -1023,7 +1027,9 @@ let
           # than once under one key; den-hoag-sezf Arm B).
           if isCarrierValue v then
             {
+              # re-stamped here, so it holds this position's evidence, as its name and loc are
               value = v // {
+                __evidence = evidence;
                 name = prelude.last loc;
                 meta = (v.meta or { }) // {
                   inherit loc;
@@ -1481,11 +1487,12 @@ let
   # data: `carrierLawOf cnf` reads the declarations of the aspect submodule the cnf builds, once per
   # guard vocabulary (lib/guard.nix `guardVocabOf`), never per firing or per position: building the
   # types costs more than the fold they run (den-hoag-15wnx), and evaluating a submodule for its
-  # declarations costs more again, so they are read from its construction where no module declares one. So a carrier discharged under a
-  # vocabulary of another cnf folds by that cnf's declarations; `mkGuardVocab { }` declares the
-  # structural options alone, and its other fields take the undeclared law.
+  # declarations costs more again, so they are read from its construction where no module declares one.
+  # A vocabulary's declarations stand in for the position's only on EVIDENCE: the carrier holds its
+  # position's (`carrierEvidence`, as data), and where the vocabulary's differ, or either lacks evidence
+  # for a key, the carrier folds by the law no declaration enters, F1(b)'s (`noDeclarations`).
   carrierLawFor =
-    declared:
+    declared: evidence:
     let
       self = {
         field = merge.mkOptionType {
@@ -1504,6 +1511,9 @@ let
             else if k == "includes" || (declared.${k}.type.functor.name or null) == "listOf" then
               # a `listOf`'s list law: its elements are typed where the carrier's typed position types
               # them (`carrierSub`), never twice
+              builtins.concatLists (map (d: d.value) defs)
+            # a type no evidence certifies is never trusted to stand for the position's: F1(b)'s law
+            else if evidence.${k} or null == null then
               builtins.concatLists (map (d: d.value) defs)
             else
               declared.${k}.type.merge loc defs;
@@ -1524,28 +1534,79 @@ let
       };
     in
     self;
-  noDeclarations = carrierLawFor { };
+  noDeclarations = carrierLawFor { } { };
+  # THE DECLARATION EVIDENCE of a set of top-level options, one first-order datum per option, written by
+  # whoever constructed its type, so two sets with equal evidence declare one law at every key. A list
+  # law (`includes`, a `listOf`) is its own evidence, since it never reads the type. A type gen minted
+  # with no sealed component is its identity (ADR-0034: one mint and no seal is one type; gen-merge
+  # `completeParametric`'s `markShared` reads it so). A type gen-aspects builds from the cnf's first-order
+  # data alone (a class, a default channel, a malformed key's refusal, `meta`) is that construction's
+  # name, where gen-aspects' is the option's only declaration. Anything else has none (`null`): a
+  # sealed or unminted type a caller wrote, or one another module also declares. Neither a key name
+  # nor a type name alone is evidence, and no closure is compared.
+  carrierEvidence =
+    cnf: options:
+    builtins.mapAttrs (
+      k: o:
+      let
+        ty = o.type;
+        e = cnf.keySemantics.${k} or null;
+        category = if builtins.isAttrs e then e.category or null else null;
+        own =
+          if k == "meta" then
+            "gen-aspects.meta"
+          else if e == null then
+            null
+          else if category == "class" then
+            "gen-aspects.class"
+          else if category == "channel" && !(e ? option) then
+            "gen-aspects.channel"
+          else if !(builtins.elem category validCategories) then
+            "gen-aspects.refused"
+          else
+            null;
+      in
+      if k == "includes" || (ty.functor.name or null) == "listOf" then
+        "list"
+      else if
+        (ty.__sealed or { }) == { }
+        && builtins.isAttrs (ty.__mint or null)
+        && builtins.isString (ty.__mint.minted or null)
+      then
+        "mint:" + ty.__mint.minted
+      # an evaluated option lists its declarations; `keyedOptionsOf`'s own records are gen-aspects' alone
+      else if own != null && (!(o ? declarations) || builtins.length o.declarations == 1) then
+        own
+      else
+        null
+    ) (prelude.filterAttrs (_: o: (o._type or null) == "option") options);
   # A guard vocabulary's carrier law over a CONSTRUCTED cnf. Where no module can declare an option (no
   # `aspectModules`, schema extension or facet module), the declarations are the submodule's own
   # construction read without evaluating a submodule: the keySemantics options (`keyedOptionsOf`) beside
   # the six structural names, whose records are the submodule's and are read only where a list meets one.
-  # Where a module can declare one, they are the evaluated submodule's options.
+  # Where a module can declare one, they are the evaluated submodule's options. `evidence` is theirs, and
+  # `base` the law a carrier whose position's evidence differs folds by.
   carrierLawOf =
     cnf:
     let
       keyed = keyedOptionsOf cnf;
       evaluated = (aspectSubmodule cnf).getSubOptions [ ];
+      declared =
+        if cnf.aspectModules != [ ] || cnf.schemaDefs != null || keyed.facetModules != [ ] then
+          prelude.filterAttrs (_: o: (o._type or null) == "option") evaluated
+        else
+          prelude.genAttrs nativeStructuralKeys (k: evaluated.${k})
+          // keyed.classOptions
+          // keyed.channelOptions
+          // keyed.facetOptions
+          // keyed.refusedOptions;
+      evidence = carrierEvidence cnf declared;
     in
-    carrierLawFor (
-      if cnf.aspectModules != [ ] || cnf.schemaDefs != null || keyed.facetModules != [ ] then
-        prelude.filterAttrs (_: o: (o._type or null) == "option") evaluated
-      else
-        prelude.genAttrs nativeStructuralKeys (k: evaluated.${k})
-        // keyed.classOptions
-        // keyed.channelOptions
-        // keyed.facetOptions
-        // keyed.refusedOptions
-    );
+    carrierLawFor declared evidence
+    // {
+      inherit evidence;
+      base = noDeclarations;
+    };
 
   # The options an aspect submodule declares FROM cnf.keySemantics, one binding per cnf: the submodule
   # (`aspectSubmoduleAt`) mounts them beside its six structural options, and a guard vocabulary reads

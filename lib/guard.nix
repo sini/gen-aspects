@@ -63,8 +63,12 @@ let
       # A guard carrier's content law, T4's at its top-level fields (lib/types.nix `carrierLawFor`),
       # bound here, where carriers are discharged, from the declarations this cnf's aspect submodule
       # makes; once per vocabulary and only where a carrier is first discharged. Never on the carrier,
-      # which stays first-order data.
+      # which stays first-order data. It stands for the carrier's position only where the position's
+      # declaration evidence, which the carrier holds, is this vocabulary's; elsewhere the carrier folds
+      # by the law no declaration enters (`base`), so a vocabulary never folds a carrier by declarations
+      # its position does not make (lib/types.nix `carrierEvidence`).
       carrierLaw = carrierLawOf cnf;
+      lawFor = g: if (g.__evidence or null) == carrierLaw.evidence then carrierLaw else carrierLaw.base;
       checked = loc: GT.checkGuardIn null loc cnf (at loc);
       fireAt =
         args: loc: g:
@@ -92,13 +96,14 @@ let
             loc = g.meta.loc or [ "<guard-carrier>" ];
             survivors = builtins.filter (r: r.value != null) (map (dischargeFragment args loc) g.fragments);
             values = map (r: r.value) survivors;
+            law = lawFor g;
           in
           {
             value =
               if survivors == [ ] then
                 null
               else
-                # The carrier's content law, T4's at its top-level fields (`carrierLaw`). The fields are
+                # The carrier's content law, T4's at its top-level fields (`lawFor`). The fields are
                 # LAZY, as the aspect type's own freeform slot is: a field whose every definition discharges
                 # to nothing is kept and refused by name where it is read, and reading one field never forces another
                 # (ADR-0010 §4(a), per-field substitution). Each field's definitions take gen-merge's spine,
@@ -110,7 +115,7 @@ let
                 # `mkOptionDefault`, so the typed half, the remainders and the fired content meet in one
                 # priority pass, as T4's definitions do; one survivor takes the law as several do, because
                 # the law is not the identity on one definition.
-                carrierLaw.fold carrierLaw.lazy loc (
+                law.fold law.lazy loc (
                   map (v: {
                     file = g.meta.file or "<unknown>";
                     value = v;
