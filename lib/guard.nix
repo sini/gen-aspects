@@ -80,51 +80,6 @@ let
       # identifiers, which name the registration and the position, so two fragments share a key only
       # where they share the closure.
       applyGuardScoped =
-        let
-          # A guard carrier's content law over its survivors is T4's: the fold the same definitions take
-          # with each fired guard replaced by its body as a plain sibling. A carrier stages a key's
-          # DISCHARGE, not its typing (den-hoag-3849t). Plain attrset survivors fold per field, lazily, as
-          # the aspect type's own freeform slot (T4) does; below the fields the key set is strict, as
-          # `anything`'s attrset arm is. A field the carrier's position DECLARES folds its lists by the
-          # declaration (a `listOf` concatenates; any other type folds them by its own merge, so a `raw`
-          # refuses unequal lists), and its other content by this law with no declarations. A nested
-          # aspect position's fields fold by this law at the same declarations. Where no per-key type was
-          # authored, lists concatenate in definition order: the 2026-08-27 sitting's `mergeDefaultOption`
-          # parity (F1(b)), which T4's own undeclared positions take. Every other survivor list (a scalar,
-          # a construction carrying `__mint`, a mix) takes gen-merge's `anything`, nixpkgs' law: equal
-          # values agree and a conflict is refused by name (ADR-0025 item 1).
-          contentLaw =
-            attrs: declared: loc: defs:
-            if
-              builtins.all (d: builtins.isAttrs d.value) defs
-              && !((builtins.head defs).value ? __mint && builtins.all (d: d.value ? __mint) defs)
-            then
-              (attrs (fieldLaw declared)).merge loc defs
-            else if builtins.all (d: builtins.isList d.value) defs then
-              builtins.concatLists (map (d: d.value) defs)
-            else
-              merge.types.anything.merge loc defs;
-          fieldLaw =
-            declared:
-            merge.mkOptionType {
-              name = "guardCarrierContent";
-              merge =
-                loc: defs:
-                let
-                  k = prelude.last loc;
-                in
-                if !(declared ? ${k}) then
-                  contentLaw merge.types.attrsOf declared loc defs
-                else if !(builtins.all (d: builtins.isList d.value) defs) then
-                  contentLaw merge.types.attrsOf { } loc defs
-                else if (declared.${k}.functor.name or null) == "listOf" then
-                  # a `listOf`'s list law: its elements are typed where the carrier's typed position types
-                  # them (`carrierSub`), never twice
-                  builtins.concatLists (map (d: d.value) defs)
-                else
-                  declared.${k}.merge loc defs;
-            };
-        in
         args: g:
         if g ? fragments then
           let
@@ -137,9 +92,9 @@ let
               if survivors == [ ] then
                 null
               else
-                # T4's law over the surviving fragments (`contentLaw`, above). The fields are LAZY, as the
-                # aspect type's own freeform slot is: a field whose every definition discharges to nothing
-                # is kept and refused by name where it is read, and reading one field never forces another
+                # The carrier's own content law, T4's (lib/types.nix `carrierLawFor`). The fields are
+                # LAZY, as the aspect type's own freeform slot is: a field whose every definition discharges
+                # to nothing is kept and refused by name where it is read, and reading one field never forces another
                 # (ADR-0010 §4(a), per-field substitution). Each field's definitions take gen-merge's spine,
                 # so a property marker a raw fragment holds at a nested key is discharged at fire time, where
                 # a fired record's content can meet its priority. So is the coerced fragment's: its typed
@@ -149,7 +104,7 @@ let
                 # `mkOptionDefault`, so the typed half, the remainders and the fired content meet in one
                 # priority pass, as T4's definitions do; one survivor takes the law as several do, because
                 # the law is not the identity on one definition.
-                contentLaw merge.types.lazyAttrsOf ((g.declared or (_: { })) null) loc (
+                g.contentLaw loc (
                   map (v: {
                     file = g.meta.file or "<unknown>";
                     value = v;

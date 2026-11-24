@@ -773,10 +773,9 @@ let
       # contribution adds nothing a definition did not write, apart from an empty `includes` at a nested
       # position, and no typed default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
       declaredKeys = sub.getSubOptions [ ];
-      # the position's declared option types, which a guard carrier's content law folds lists by
-      declaredTypes = prelude.mapAttrs (_: o: o.type) (
-        prelude.filterAttrs (_: o: (o._type or null) == "option") declaredKeys
-      );
+      # a guard carrier's content law at this position: its declared options, read as T4 reads them, one
+      # key at a time where a list meets it
+      carrierLaw = carrierLawFor declaredKeys;
       # the vocabulary a guard placed at this position is judged under
       guardVocab = keyVocab cnf (builtins.attrNames declaredKeys) // {
         inherit nesting;
@@ -958,9 +957,9 @@ let
             }
             defs
           ).fs;
-        # The declarations of the position the carrier stands at, which its content law reads as T4's fold
-        # does (lib/guard.nix `contentLaw`). A function, so a deep read of the carrier never walks a type.
-        declared = _: declaredTypes;
+        # The carrier's content law, bound once per position (`carrierLawFor`, below); a function, so a deep
+        # read of the carrier never walks a type. `applyGuardScoped` folds the surviving fragments by it.
+        contentLaw = loc: defs: carrierLaw.fold carrierLaw.lazy loc defs;
         name = prelude.last loc;
         meta = {
           inherit loc;
@@ -1468,6 +1467,64 @@ let
   # The `includes` option's declared default, ONE binding: `graphFacts` reads it for a member of a
   # directly-supplied registry, which bypasses this type and so lacks the key the type always supplies.
   includesDefault = [ ];
+
+  # A GUARD CARRIER'S CONTENT LAW over its survivors is T4's: the fold the same definitions take
+  # with each fired guard replaced by its body as a plain sibling. A carrier stages a key's
+  # DISCHARGE, not its typing (den-hoag-3849t). Plain attrset survivors fold per field, lazily, as
+  # the aspect type's own freeform slot (T4) does; below the fields the key set is strict, as
+  # `anything`'s attrset arm is. A field the carrier's position DECLARES folds its lists by the
+  # declaration (a `listOf` concatenates; any other type folds them by its own merge, so a `raw`
+  # refuses unequal lists), and its other content by this law with no declarations. A nested
+  # aspect position's fields fold by this law at the same declarations. Where no per-key type was
+  # authored, lists concatenate: the 2026-08-27 sitting's `mergeDefaultOption` parity (F1(b)),
+  # which T4's own undeclared positions take (in the order the carrier holds its survivors, route
+  # (a)'s, den-hoag-3849t P4). Every other survivor list (a scalar,
+  # a construction carrying `__mint`, a mix) takes gen-merge's `anything`, nixpkgs' law: equal
+  # values agree and a conflict is refused by name (ADR-0025 item 1).
+  # `carrierLawFor declared` is built once per aspect position (`carrierLaw`), never per firing:
+  # building the types costs more than the fold they run (den-hoag-15wnx).
+  carrierLawFor =
+    declared:
+    let
+      self = {
+        field = merge.mkOptionType {
+          name = "guardCarrierContent";
+          merge =
+            loc: defs:
+            let
+              k = prelude.last loc;
+              # the option declared at `k`, read only here: `declared` is the position's option tree
+              option = declared.${k} or null;
+              isDeclared = option != null && (option._type or null) == "option";
+            in
+            if !isDeclared then
+              self.fold self.strict loc defs
+            else if !(builtins.all (d: builtins.isList d.value) defs) then
+              noDeclarations.fold noDeclarations.strict loc defs
+            else if (option.type.functor.name or null) == "listOf" then
+              # a `listOf`'s list law: its elements are typed where the carrier's typed position types
+              # them (`carrierSub`), never twice
+              builtins.concatLists (map (d: d.value) defs)
+            else
+              option.type.merge loc defs;
+        };
+        lazy = merge.types.lazyAttrsOf self.field;
+        strict = merge.types.attrsOf self.field;
+        fold =
+          attrsType: loc: defs:
+          if
+            builtins.all (d: builtins.isAttrs d.value) defs
+            && !((builtins.head defs).value ? __mint && builtins.all (d: d.value ? __mint) defs)
+          then
+            attrsType.merge loc defs
+          else if builtins.all (d: builtins.isList d.value) defs then
+            builtins.concatLists (map (d: d.value) defs)
+          else
+            merge.types.anything.merge loc defs;
+      };
+    in
+    self;
+  noDeclarations = carrierLawFor { };
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
