@@ -737,10 +737,11 @@ in
       };
     };
 
-  # den-hoag-ywlww (ADR-0025 item 1): the carrier's discharge merges the surviving fragments by the
-  # module system's law for untyped content (`types.anything`), as nixpkgs does: lists concatenate,
-  # attrsets merge per key, a conflicting scalar is refused by name. RED (measured at gen-aspects
-  # 9827a96): `mergeDefaultOption` folded with `//`, so two firing definitions with different
+  # den-hoag-ywlww (ADR-0025 item 1): the carrier's discharge merges the surviving fragments by T4's
+  # law (lib/guard.nix `contentLaw`): a declared `includes` concatenates as its `listOf` does, attrsets
+  # merge per key, and a conflicting scalar is refused by name, as nixpkgs' `types.anything` refuses it.
+  # The list law is not `anything`'s: nixpkgs' `anything` refuses two unequal lists. RED (measured at
+  # gen-aspects 9827a96): `mergeDefaultOption` folded with `//`, so two firing definitions with different
   # `description` read one value at rc 0 and `includes = [ "p" ]` / `[ "q" ]` read `[ "p" ]`.
   flake.tests.guard.test-guard-multidef-carrier-discharge-merges-by-module-law =
     let
@@ -802,6 +803,86 @@ in
         ];
         equalScalars = "s";
         nonFiringDoesNotConflict = "a";
+      };
+    };
+
+  # A carrier's survivors fold their lists by T4's law, computed in the cell: the same definitions with the
+  # guard replaced by its body as a plain sibling. A declared `listOf` channel and an undeclared key
+  # concatenate (the undeclared one by F1(b)'s `mergeDefaultOption` parity), and a channel at its default
+  # `raw` option refuses unequal lists and folds equal ones to one copy. Members are compared, because the
+  # carrier's order is route (a)'s (den-hoag-3849t P4). RED: the content law's lists taken by gen-merge's
+  # `anything` at a `mergeEqualOption` list fold (nixpkgs' law) refuses `listOf` and `undeclared`; at a
+  # concatenating one, `rawUnequal` serves both lists and `rawEqual` reads `[ "a" "a" ]`.
+  flake.tests.guard.test-guard-carrier-lists-fold-by-their-declaration-as-t4 =
+    let
+      gv = aspects.mkGuardVocab { };
+      keySemantics = {
+        ch.category = "channel";
+        tags = {
+          category = "channel";
+          option = genMerge.mkOption {
+            type = genMerge.types.listOf genMerge.types.str;
+            default = [ ];
+          };
+        };
+      };
+      dupOf =
+        a: b:
+        (mkSchemaEval {
+          inherit keySemantics;
+          modules = [
+            { config.aspects.dup = a; }
+            { config.aspects.dup = b; }
+          ];
+        }).config.aspects.dup;
+      read =
+        k: x:
+        let
+          r = builtins.tryEval (builtins.deepSeq x.${k} x.${k});
+        in
+        if r.success then lib.sort (p: q: p < q) r.value else "refused";
+      # the carrier (the first definition under a guard that fires) beside T4 (the same body, plain)
+      both = k: a: b: {
+        carrier = read k (gv.applyGuard { thimble.name = "cortex"; } (dupOf (gv.vocab.always a) b));
+        t4 = read k (dupOf a b);
+      };
+    in
+    {
+      expr = {
+        listOf = both "tags" { tags = [ "a" ]; } { tags = [ "b" ]; };
+        undeclared = both "foo" { foo = [ "a" ]; } { foo = [ "b" ]; };
+        rawUnequal = both "ch" { ch = [ "a" ]; } { ch = [ "b" ]; };
+        rawEqual = both "ch" { ch = [ "a" ]; } { ch = [ "a" ]; };
+      };
+      expected = {
+        listOf = {
+          carrier = [
+            "a"
+            "b"
+          ];
+          t4 = [
+            "a"
+            "b"
+          ];
+        };
+        undeclared = {
+          carrier = [
+            "a"
+            "b"
+          ];
+          t4 = [
+            "a"
+            "b"
+          ];
+        };
+        rawUnequal = {
+          carrier = "refused";
+          t4 = "refused";
+        };
+        rawEqual = {
+          carrier = [ "a" ];
+          t4 = [ "a" ];
+        };
       };
     };
 

@@ -81,22 +81,49 @@ let
       # where they share the closure.
       applyGuardScoped =
         let
-          # A guard carrier's content law over its survivors. Plain attrsets fold as `lazyAttrsOf
-          # anything`, bound once, where `applyGuardScoped` is first forced: not in a let the library's
-          # load builds (a member-load cost), and not per firing (building the type cost more than the
-          # fold it runs; den-hoag-15wnx, measured against nixpkgs' same fold). Every other survivor list
-          # (a scalar or list body at a freeform field, a construction carrying `__mint`, a mix) takes
-          # `anything`, whose own arms are the same law; the test is `anything`'s own attrset-arm test.
-          fields = merge.types.lazyAttrsOf merge.types.anything;
+          # A guard carrier's content law over its survivors is T4's: the fold the same definitions take
+          # with each fired guard replaced by its body as a plain sibling. A carrier stages a key's
+          # DISCHARGE, not its typing (den-hoag-3849t). Plain attrset survivors fold per field, lazily, as
+          # the aspect type's own freeform slot (T4) does; below the fields the key set is strict, as
+          # `anything`'s attrset arm is. A field the carrier's position DECLARES folds its lists by the
+          # declaration (a `listOf` concatenates; any other type folds them by its own merge, so a `raw`
+          # refuses unequal lists), and its other content by this law with no declarations. A nested
+          # aspect position's fields fold by this law at the same declarations. Where no per-key type was
+          # authored, lists concatenate in definition order: the 2026-08-27 sitting's `mergeDefaultOption`
+          # parity (F1(b)), which T4's own undeclared positions take. Every other survivor list (a scalar,
+          # a construction carrying `__mint`, a mix) takes gen-merge's `anything`, nixpkgs' law: equal
+          # values agree and a conflict is refused by name (ADR-0025 item 1).
           contentLaw =
-            loc: defs:
+            attrs: declared: loc: defs:
             if
               builtins.all (d: builtins.isAttrs d.value) defs
               && !((builtins.head defs).value ? __mint && builtins.all (d: d.value ? __mint) defs)
             then
-              fields.merge loc defs
+              (attrs (fieldLaw declared)).merge loc defs
+            else if builtins.all (d: builtins.isList d.value) defs then
+              builtins.concatLists (map (d: d.value) defs)
             else
               merge.types.anything.merge loc defs;
+          fieldLaw =
+            declared:
+            merge.mkOptionType {
+              name = "guardCarrierContent";
+              merge =
+                loc: defs:
+                let
+                  k = prelude.last loc;
+                in
+                if !(declared ? ${k}) then
+                  contentLaw merge.types.attrsOf declared loc defs
+                else if !(builtins.all (d: builtins.isList d.value) defs) then
+                  contentLaw merge.types.attrsOf { } loc defs
+                else if (declared.${k}.functor.name or null) == "listOf" then
+                  # a `listOf`'s list law: its elements are typed where the carrier's typed position types
+                  # them (`carrierSub`), never twice
+                  builtins.concatLists (map (d: d.value) defs)
+                else
+                  declared.${k}.merge loc defs;
+            };
         in
         args: g:
         if g ? fragments then
@@ -110,26 +137,19 @@ let
               if survivors == [ ] then
                 null
               else
-                # The module system's own law for untyped content (`types.anything`): lists concatenate,
-                # attrsets merge per key, equal scalars agree, and a conflicting scalar is refused by name
-                # (ADR-0025 item 1). `mergeDefaultOption` folds attrsets with `//`, which drops a
-                # definition's keys without a message (den-hoag-ywlww).
-                #
-                # Plain attrset survivors' fields fold as `lazyAttrsOf anything` (den-hoag-15wnx). Each
-                # field's definitions take gen-merge's spine, so a property marker a raw fragment holds at a
-                # nested key is discharged at fire time, where a fired record's content can meet its
-                # priority. So is the coerced fragment's: its typed body keeps, at each nested key and at
-                # each declared `includes`, the priority that selected its winners (gen-merge
-                # `partialAttrsOf`, den-hoag-fjdnf; `partialSubmodule`, den-hoag-5ov3p), and an `includes`
-                # nobody wrote is its declared default at `mkOptionDefault`, so the typed half, the
-                # remainders and the fired content meet in one priority pass, as T4's definitions do; one
-                # survivor takes the law as several do, because the law is not the identity
-                # on one definition. The field level is LAZY, as the aspect type's own freeform slot (T4)
-                # is: a field whose every definition discharges to nothing is kept and refused by name
-                # where it is read, and reading one field never forces another (ADR-0010 §4(a),
-                # per-field substitution). Below the fields `anything` is nixpkgs' own, strict key set
-                # and all. Survivors that are not plain attrsets take `anything` whole (`contentLaw`).
-                contentLaw loc (
+                # T4's law over the surviving fragments (`contentLaw`, above). The fields are LAZY, as the
+                # aspect type's own freeform slot is: a field whose every definition discharges to nothing
+                # is kept and refused by name where it is read, and reading one field never forces another
+                # (ADR-0010 §4(a), per-field substitution). Each field's definitions take gen-merge's spine,
+                # so a property marker a raw fragment holds at a nested key is discharged at fire time, where
+                # a fired record's content can meet its priority. So is the coerced fragment's: its typed
+                # body keeps, at each nested key and at each declared `includes`, the priority that selected
+                # its winners (gen-merge `partialAttrsOf`, den-hoag-fjdnf; `partialSubmodule`,
+                # den-hoag-5ov3p), and an `includes` nobody wrote is its declared default at
+                # `mkOptionDefault`, so the typed half, the remainders and the fired content meet in one
+                # priority pass, as T4's definitions do; one survivor takes the law as several do, because
+                # the law is not the identity on one definition.
+                contentLaw merge.types.lazyAttrsOf ((g.declared or (_: { })) null) loc (
                   map (v: {
                     file = g.meta.file or "<unknown>";
                     value = v;

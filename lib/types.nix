@@ -768,11 +768,15 @@ let
         );
       # ROUTE (a) (den-hoag-3849t): of a plain definition beside a guard, only its `includes` lists are
       # typed, at every aspect position, and a module function at a nested key is coerced into one.
-      # F4(a)'s content law (`types.anything`) merges attrsets per key and scalars by agreement, and
-      # concatenates lists without entering their elements; so the typed contribution adds nothing a
-      # definition did not write, apart from an empty `includes` at a nested position, and no typed
-      # default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
+      # The carrier's content law (lib/guard.nix `contentLaw`) merges attrsets per key and scalars by
+      # agreement, and folds lists by T4's law without entering their elements; so the typed
+      # contribution adds nothing a definition did not write, apart from an empty `includes` at a nested
+      # position, and no typed default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
       declaredKeys = sub.getSubOptions [ ];
+      # the position's declared option types, which a guard carrier's content law folds lists by
+      declaredTypes = prelude.mapAttrs (_: o: o.type) (
+        prelude.filterAttrs (_: o: (o._type or null) == "option") declaredKeys
+      );
       # the vocabulary a guard placed at this position is judged under
       guardVocab = keyVocab cnf (builtins.attrNames declaredKeys) // {
         inherit nesting;
@@ -954,6 +958,9 @@ let
             }
             defs
           ).fs;
+        # The declarations of the position the carrier stands at, which its content law reads as T4's fold
+        # does (lib/guard.nix `contentLaw`). A function, so a deep read of the carrier never walks a type.
+        declared = _: declaredTypes;
         name = prelude.last loc;
         meta = {
           inherit loc;

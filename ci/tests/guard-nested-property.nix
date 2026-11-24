@@ -3,8 +3,8 @@
 # A carrier's survivors fold by the module system's law for untyped content (lib/guard.nix
 # `applyGuardScoped`). That law reached gen-merge's `anything`, which carried a marker below the top level
 # as data, and one survivor skipped the law altogether; so an `mkIf false`'s content was SERVED and an
-# `mkForce` lost to the plain value it overrides. The survivors now fold as `lazyAttrsOf anything`, whose
-# fields take gen-merge's spine and whose `anything` is nixpkgs'.
+# `mkForce` lost to the plain value it overrides. The survivors now fold per field (`lazyAttrsOf`), whose
+# fields take gen-merge's spine and whose content other than lists folds by nixpkgs' `anything`.
 #
 # ★ THE REFERENCE IS nixpkgs, RUN IN THE CELL. Each grid cell evaluates the carrier and, beside it, nixpkgs'
 # `types.anything` over the same survivors (the fired record's body when it fires, then the plain
