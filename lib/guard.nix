@@ -9,6 +9,7 @@
   merge,
   T,
   GT,
+  carrierLawOf,
 }:
 let
   tm = T.term;
@@ -59,6 +60,11 @@ let
     cnf:
     let
       at = loc: "aspect `${prelude.concatStringsSep "." loc}`";
+      # A guard carrier's content law, T4's at its top-level fields (lib/types.nix `carrierLawFor`),
+      # bound here, where carriers are discharged, from the declarations this cnf's aspect submodule
+      # makes; once per vocabulary and only where a carrier is first discharged. Never on the carrier,
+      # which stays first-order data.
+      carrierLaw = carrierLawOf cnf;
       checked = loc: GT.checkGuardIn null loc cnf (at loc);
       fireAt =
         args: loc: g:
@@ -92,7 +98,7 @@ let
               if survivors == [ ] then
                 null
               else
-                # The carrier's own content law, T4's (lib/types.nix `carrierLawFor`). The fields are
+                # The carrier's content law, T4's at its top-level fields (`carrierLaw`). The fields are
                 # LAZY, as the aspect type's own freeform slot is: a field whose every definition discharges
                 # to nothing is kept and refused by name where it is read, and reading one field never forces another
                 # (ADR-0010 §4(a), per-field substitution). Each field's definitions take gen-merge's spine,
@@ -104,7 +110,7 @@ let
                 # `mkOptionDefault`, so the typed half, the remainders and the fired content meet in one
                 # priority pass, as T4's definitions do; one survivor takes the law as several do, because
                 # the law is not the identity on one definition.
-                g.contentLaw loc (
+                carrierLaw.fold carrierLaw.lazy loc (
                   map (v: {
                     file = g.meta.file or "<unknown>";
                     value = v;

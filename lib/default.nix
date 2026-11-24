@@ -73,7 +73,7 @@ let
       T
       cnfDoor
       ;
-    inherit (types) GT;
+    inherit (types) GT carrierLawOf;
   };
   instanceModule = import ./instance.nix {
     inherit prelude cnfDoor;

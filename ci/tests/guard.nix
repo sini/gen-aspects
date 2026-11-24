@@ -738,7 +738,7 @@ in
     };
 
   # den-hoag-ywlww (ADR-0025 item 1): the carrier's discharge merges the surviving fragments by T4's
-  # law (lib/guard.nix `contentLaw`): a declared `includes` concatenates as its `listOf` does, attrsets
+  # law (lib/types.nix `carrierLawFor`): a declared `includes` concatenates as its `listOf` does, attrsets
   # merge per key, and a conflicting scalar is refused by name, as nixpkgs' `types.anything` refuses it.
   # The list law is not `anything`'s: nixpkgs' `anything` refuses two unequal lists. RED (measured at
   # gen-aspects 9827a96): `mergeDefaultOption` folded with `//`, so two firing definitions with different
@@ -806,16 +806,19 @@ in
       };
     };
 
-  # A carrier's survivors fold their lists by T4's law, computed in the cell: the same definitions with the
-  # guard replaced by its body as a plain sibling. A declared `listOf` channel and an undeclared key
+  # A carrier's survivors fold their top-level lists by T4's law, computed in the cell: the same definitions
+  # with the guard replaced by its body as a plain sibling. A declared `listOf` channel and an undeclared key
   # concatenate (the undeclared one by F1(b)'s `mergeDefaultOption` parity), and a channel at its default
-  # `raw` option refuses unequal lists and folds equal ones to one copy. Members are compared, because the
-  # carrier's order is route (a)'s (den-hoag-3849t P4). RED: the content law's lists taken by gen-merge's
-  # `anything` at a `mergeEqualOption` list fold (nixpkgs' law) refuses `listOf` and `undeclared`; at a
-  # concatenating one, `rawUnequal` serves both lists and `rawEqual` reads `[ "a" "a" ]`.
+  # `raw` option refuses unequal lists and folds equal ones to one copy. The law is the declarations of the
+  # cnf whose vocabulary discharges the carrier, so the carrier is fired under the schema's own cnf; under a
+  # vocabulary that declares no `ch` (`otherCnfRawUnequal`), `ch` is undeclared and its lists concatenate.
+  # Members are compared, because the carrier's order is route (a)'s. RED: the content law's lists taken by
+  # gen-merge's `anything` at a `mergeEqualOption` list fold (nixpkgs' law) refuses `listOf` and
+  # `undeclared`; at a concatenating one, `rawUnequal` serves both lists and `rawEqual` reads `[ "a" "a" ]`.
   flake.tests.guard.test-guard-carrier-lists-fold-by-their-declaration-as-t4 =
     let
-      gv = aspects.mkGuardVocab { };
+      gv = aspects.mkGuardVocab { inherit keySemantics; };
+      gv0 = aspects.mkGuardVocab { };
       keySemantics = {
         ch.category = "channel";
         tags = {
@@ -830,6 +833,7 @@ in
         a: b:
         (mkSchemaEval {
           inherit keySemantics;
+          fixtureKeySemantics = { };
           modules = [
             { config.aspects.dup = a; }
             { config.aspects.dup = b; }
@@ -853,6 +857,11 @@ in
         undeclared = both "foo" { foo = [ "a" ]; } { foo = [ "b" ]; };
         rawUnequal = both "ch" { ch = [ "a" ]; } { ch = [ "b" ]; };
         rawEqual = both "ch" { ch = [ "a" ]; } { ch = [ "a" ]; };
+        otherCnfRawUnequal = read "ch" (
+          gv0.applyGuard { thimble.name = "cortex"; } (
+            dupOf (gv0.vocab.always { ch = [ "a" ]; }) { ch = [ "b" ]; }
+          )
+        );
       };
       expected = {
         listOf = {
@@ -883,6 +892,180 @@ in
           carrier = [ "a" ];
           t4 = [ "a" ];
         };
+        otherCnfRawUnequal = [
+          "a"
+          "b"
+        ];
+      };
+    };
+
+  # A guard carrier of record fragments is first-order data (the 2026-08-27 Arm B identity: "inert
+  # first-order structure"): its content law is bound where it is discharged, never stored on it. So two
+  # carriers built from the same definitions are equal, the same carrier defined twice at a `raw` option
+  # folds to one copy, and no function is reachable in it, read by a walk over the data. RED (measured on
+  # the law stored as a closure field on the carrier): `twoBuildsEq` false, `foldTwice` refused, and
+  # `functionFree` false.
+  flake.tests.guard.test-guard-carrier-is-first-order-data =
+    let
+      gv = aspects.mkGuardVocab { };
+      build =
+        _:
+        (mkSchemaEval {
+          modules = [
+            { config.aspects.dup = gv.vocab.always { includes = [ "p" ]; }; }
+            { config.aspects.dup = gv.vocab.always { includes = [ "q" ]; }; }
+          ];
+        }).config.aspects.dup;
+      c1 = build 1;
+      c2 = build 2;
+      functionFree =
+        x:
+        if builtins.isFunction x then
+          false
+        else if builtins.isAttrs x then
+          builtins.all functionFree (builtins.attrValues x)
+        else if builtins.isList x then
+          builtins.all functionFree x
+        else
+          true;
+      t =
+        x:
+        let
+          r = builtins.tryEval (builtins.deepSeq x x);
+        in
+        if r.success then r.value else "<R>";
+    in
+    {
+      expr = {
+        twoBuildsEq = t (c1 == c2);
+        foldTwice = t (
+          builtins.attrNames
+            (genMerge.evalModuleTree { } [
+              { options.o = genMerge.mkOption { type = genMerge.types.raw; }; }
+              { o = c1; }
+              { o = c2; }
+            ]).config.o
+        );
+        functionFree = t (functionFree c1);
+      };
+      expected = {
+        twoBuildsEq = true;
+        foldTwice = [
+          "__guard"
+          "fragments"
+          "meta"
+          "name"
+        ];
+        functionFree = true;
+      };
+    };
+
+  # The carrier against T4 at N = 2, 3 and 4 definitions of one key, in every placement of guarded (g) and
+  # plain (p) definitions with at least one guard, on the four list shapes the law decides: a declared
+  # `listOf` channel (`tags`), an undeclared key (`foo`), and a declared `raw` channel (`ch`) with every
+  # definition equal and with them unequal: 4 shapes x 25 placements. Lists are compared as sets, since the
+  # order is route (a)'s; a refusal reads "<R>". RED: with gen-merge's `anything` folding the survivors
+  # (nixpkgs' `mergeEqualOption` list fold) the `listOf` and undeclared cells are refused where T4
+  # concatenates; with every survivor list concatenated, the `raw` cells serve where T4 refuses unequal lists
+  # and keeps one copy of equal ones.
+  flake.tests.guard.test-guard-carrier-equals-t4-at-every-placement =
+    let
+      keySemantics = {
+        ch.category = "channel";
+        tags = {
+          category = "channel";
+          option = genMerge.mkOption {
+            type = genMerge.types.listOf genMerge.types.str;
+            default = [ ];
+          };
+        };
+      };
+      gv = aspects.mkGuardVocab { inherit keySemantics; };
+      words =
+        n:
+        if n == 0 then
+          [ [ ] ]
+        else
+          builtins.concatMap (w: [
+            ([ "g" ] ++ w)
+            ([ "p" ] ++ w)
+          ]) (words (n - 1));
+      placements = n: builtins.filter (w: builtins.elem "g" w) (words n);
+      evalWith =
+        t4: defs:
+        (mkSchemaEval {
+          inherit keySemantics;
+          fixtureKeySemantics = { };
+          modules = map (d: {
+            config.aspects.dup = if t4 || d.k == "p" then d.b else gv.vocab.always d.b;
+          }) defs;
+        }).config.aspects.dup;
+      served =
+        t4: defs:
+        if t4 then evalWith true defs else gv.applyGuard { thimble.name = "cortex"; } (evalWith false defs);
+      norm =
+        x:
+        let
+          r = builtins.tryEval (builtins.deepSeq x x);
+        in
+        if !r.success then
+          "<R>"
+        else if builtins.isList r.value then
+          lib.sort (p: q: p < q) r.value
+        else
+          r.value;
+      shapes = {
+        listOf = i: {
+          b.tags = [ "v${toString i}" ];
+          sel = v: v.tags;
+        };
+        undecl = i: {
+          b.foo = [ "v${toString i}" ];
+          sel = v: v.foo;
+        };
+        rawEq = _: {
+          b.ch = [ "a" ];
+          sel = v: v.ch;
+        };
+        rawUneq = i: {
+          b.ch = [ "v${toString i}" ];
+          sel = v: v.ch;
+        };
+      };
+      cells =
+        builtins.concatMap
+          (
+            n:
+            builtins.concatMap (
+              w:
+              map (
+                s:
+                let
+                  defs = builtins.genList (i: (shapes.${s} i) // { k = builtins.elemAt w i; }) n;
+                  inherit (shapes.${s} 0) sel;
+                in
+                {
+                  name = "${s}-n${toString n}-${builtins.concatStringsSep "" w}";
+                  t4 = norm (sel (served true defs));
+                  carrier = norm (sel (served false defs));
+                }
+              ) (builtins.attrNames shapes)
+            ) (placements n)
+          )
+          [
+            2
+            3
+            4
+          ];
+    in
+    {
+      expr = {
+        total = builtins.length cells;
+        mismatched = map (c: c.name) (builtins.filter (c: c.t4 != c.carrier) cells);
+      };
+      expected = {
+        total = 100;
+        mismatched = [ ];
       };
     };
 

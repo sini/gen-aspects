@@ -768,14 +768,11 @@ let
         );
       # ROUTE (a) (den-hoag-3849t): of a plain definition beside a guard, only its `includes` lists are
       # typed, at every aspect position, and a module function at a nested key is coerced into one.
-      # The carrier's content law (lib/guard.nix `contentLaw`) merges attrsets per key and scalars by
-      # agreement, and folds lists by T4's law without entering their elements; so the typed
+      # The carrier's content law (`carrierLawFor`, below) merges attrsets per key and scalars by
+      # agreement, and folds a top-level field's lists by T4's law without entering their elements; so the typed
       # contribution adds nothing a definition did not write, apart from an empty `includes` at a nested
       # position, and no typed default can meet a fired value. Every other value stays its raw fragment (`remainderOf`).
       declaredKeys = sub.getSubOptions [ ];
-      # a guard carrier's content law at this position: its declared options, read as T4 reads them, one
-      # key at a time where a list meets it
-      carrierLaw = carrierLawFor declaredKeys;
       # the vocabulary a guard placed at this position is judged under
       guardVocab = keyVocab cnf (builtins.attrNames declaredKeys) // {
         inherit nesting;
@@ -957,9 +954,6 @@ let
             }
             defs
           ).fs;
-        # The carrier's content law, bound once per position (`carrierLawFor`, below); a function, so a deep
-        # read of the carrier never walks a type. `applyGuardScoped` folds the surviving fragments by it.
-        contentLaw = loc: defs: carrierLaw.fold carrierLaw.lazy loc defs;
         name = prelude.last loc;
         meta = {
           inherit loc;
@@ -1468,21 +1462,27 @@ let
   # directly-supplied registry, which bypasses this type and so lacks the key the type always supplies.
   includesDefault = [ ];
 
-  # A GUARD CARRIER'S CONTENT LAW over its survivors is T4's: the fold the same definitions take
-  # with each fired guard replaced by its body as a plain sibling. A carrier stages a key's
-  # DISCHARGE, not its typing (den-hoag-3849t). Plain attrset survivors fold per field, lazily, as
-  # the aspect type's own freeform slot (T4) does; below the fields the key set is strict, as
-  # `anything`'s attrset arm is. A field the carrier's position DECLARES folds its lists by the
-  # declaration (a `listOf` concatenates; any other type folds them by its own merge, so a `raw`
-  # refuses unequal lists), and its other content by this law with no declarations. A nested
-  # aspect position's fields fold by this law at the same declarations. Where no per-key type was
-  # authored, lists concatenate: the 2026-08-27 sitting's `mergeDefaultOption` parity (F1(b)),
-  # which T4's own undeclared positions take (in the order the carrier holds its survivors, route
-  # (a)'s, den-hoag-3849t P4). Every other survivor list (a scalar,
-  # a construction carrying `__mint`, a mix) takes gen-merge's `anything`, nixpkgs' law: equal
-  # values agree and a conflict is refused by name (ADR-0025 item 1).
-  # `carrierLawFor declared` is built once per aspect position (`carrierLaw`), never per firing:
-  # building the types costs more than the fold they run (den-hoag-15wnx).
+  # A GUARD CARRIER'S CONTENT LAW over its survivors is T4's at the carrier's top-level fields: the
+  # fold the same definitions take with each fired guard replaced by its body as a plain sibling. A
+  # carrier stages a key's DISCHARGE, not its typing (den-hoag-3849t). Plain attrset survivors fold
+  # per field, lazily, as the aspect type's own freeform slot (T4) does; below the fields the key set
+  # is strict, as `anything`'s attrset arm is. A top-level field the position DECLARES folds its
+  # lists by the declaration (a `listOf` concatenates; any other type folds them by its own merge, so
+  # a `raw` refuses unequal lists). Where no per-key type was authored, lists concatenate: the
+  # 2026-08-27 sitting's `mergeDefaultOption` parity (F1(b)), which T4's own undeclared positions
+  # take, in the order the carrier holds its survivors (route (a)'s order bound, den-hoag-3849t).
+  # BELOW a declared field whose definitions are not lists, the content folds by this law with no
+  # declarations, so lists there concatenate and scalars take `anything` where T4 would read the
+  # declared type: the carrier keeps base's fold there, short of T4 (den-hoag-uef94). A nested
+  # aspect position's fields fold by this law at the same declarations. Every other survivor list (a
+  # scalar, a construction carrying `__mint`, a mix) takes gen-merge's `anything`, nixpkgs' law:
+  # equal values agree and a conflict is refused by name (ADR-0025 item 1).
+  # The law is bound where a carrier is DISCHARGED, never on the carrier, which stays first-order
+  # data: `carrierLawOf cnf` reads the declarations of the aspect submodule the cnf builds, once per
+  # guard vocabulary (lib/guard.nix `guardVocabOf`), never per firing or per position: building the
+  # types costs more than the fold they run (den-hoag-15wnx). So a carrier discharged under a
+  # vocabulary of another cnf folds by that cnf's declarations; `mkGuardVocab { }` declares the
+  # structural options alone, and its other fields take the undeclared law.
   carrierLawFor =
     declared:
     let
@@ -1492,12 +1492,10 @@ let
           merge =
             loc: defs:
             let
-              k = prelude.last loc;
-              # the option declared at `k`, read only here: `declared` is the position's option tree
-              option = declared.${k} or null;
-              isDeclared = option != null && (option._type or null) == "option";
+              # the option declared at the key, read only here: `declared` is the position's option tree
+              option = declared.${prelude.last loc} or null;
             in
-            if !isDeclared then
+            if option == null || (option._type or null) != "option" then
               self.fold self.strict loc defs
             else if !(builtins.all (d: builtins.isList d.value) defs) then
               noDeclarations.fold noDeclarations.strict loc defs
@@ -1525,6 +1523,7 @@ let
     in
     self;
   noDeclarations = carrierLawFor { };
+  carrierLawOf = cnf: carrierLawFor ((aspectSubmodule cnf).getSubOptions [ ]);
 
   # Aspect entry submodule.
   # Structural options (name, includes, meta) give each aspect identity.
@@ -1999,6 +1998,9 @@ in
   # For the ci-side cell on the refusal (`ci/tests/nested-include-identity.nix`), NOT re-exported from
   # `lib/default.nix`: no published route reaches `unnamedSite` without an address.
   inherit unnamedSite siteRefusal;
+  # a guard carrier's content law over a CONSTRUCTED cnf, for the guard vocabulary that discharges
+  # carriers (lib/guard.nix `guardVocabOf`); NOT re-exported from `lib/default.nix`
+  inherit carrierLawOf;
   # the construction key, for `mkAspectModule` (lib/schema.nix)
   inherit keyedConstruction constructionKey;
   constructionPayload = name: cnf: (cnfFunctor name cnf { } null).payload;
