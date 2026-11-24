@@ -775,7 +775,7 @@ let
       declaredKeys = sub.getSubOptions [ ];
       # this position's declaration evidence, which a carrier placed here holds, as data, for the
       # vocabulary that discharges it (`carrierEvidence`; lib/guard.nix `applyGuardScoped`)
-      evidence = carrierEvidence cnf declaredKeys;
+      evidence = evidenceRecord (declarationsOf cnf declaredKeys).evidence;
       # the vocabulary a guard placed at this position is judged under
       guardVocab = keyVocab cnf (builtins.attrNames declaredKeys) // {
         inherit nesting;
@@ -1540,12 +1540,13 @@ let
   # law (`includes`, a `listOf`) is its own evidence, since it never reads the type. A type gen minted
   # with no sealed component is its identity (ADR-0034: one mint and no seal is one type; gen-merge
   # `completeParametric`'s `markShared` reads it so). A type gen-aspects builds from the cnf's first-order
-  # data alone (a class, a default channel, a malformed key's refusal, `meta`) is that construction's
-  # name, where gen-aspects' is the option's only declaration. Anything else has none (`null`): a
+  # data alone (a structural option, a class, a default channel, a malformed key's refusal) is that
+  # construction's name, where gen-aspects' is the option's only declaration. Anything else has none (`null`): a
   # sealed or unminted type a caller wrote, or one another module also declares. Neither a key name
   # nor a type name alone is evidence, and no closure is compared.
+  # `ours name option` says gen-aspects' construction is the option's only declaration.
   carrierEvidence =
-    cnf: options:
+    cnf: ours: options:
     builtins.mapAttrs (
       k: o:
       let
@@ -1553,8 +1554,8 @@ let
         e = cnf.keySemantics.${k} or null;
         category = if builtins.isAttrs e then e.category or null else null;
         own =
-          if k == "meta" then
-            "gen-aspects.meta"
+          if builtins.elem k nativeStructuralKeys then
+            "gen-aspects.${k}"
           else if e == null then
             null
           else if category == "class" then
@@ -1566,7 +1567,10 @@ let
           else
             null;
       in
-      if k == "includes" || (ty.functor.name or null) == "listOf" then
+      # read first, so no type gen-aspects built is constructed to be described
+      if own != null && ours k o then
+        own
+      else if k == "includes" || (ty.functor.name or null) == "listOf" then
         "list"
       else if
         (ty.__sealed or { }) == { }
@@ -1574,25 +1578,30 @@ let
         && builtins.isString (ty.__mint.minted or null)
       then
         "mint:" + ty.__mint.minted
-      # an evaluated option lists its declarations; `keyedOptionsOf`'s own records are gen-aspects' alone
-      else if own != null && (!(o ? declarations) || builtins.length o.declarations == 1) then
-        own
       else
         null
-    ) (prelude.filterAttrs (_: o: (o._type or null) == "option") options);
-  # A guard vocabulary's carrier law over a CONSTRUCTED cnf. Where no module can declare an option (no
-  # `aspectModules`, schema extension or facet module), the declarations are the submodule's own
-  # construction read without evaluating a submodule: the keySemantics options (`keyedOptionsOf`) beside
-  # the six structural names, whose records are the submodule's and are read only where a list meets one.
-  # Where a module can declare one, they are the evaluated submodule's options. `evidence` is theirs, and
-  # `base` the law a carrier whose position's evidence differs folds by.
-  carrierLawOf =
-    cnf:
+    ) options;
+  # an evaluated option lists its declarations
+  soleDeclaration = _: o: builtins.length o.declarations == 1;
+  # The evidence as a carrier holds it: a list of `{ name; law; }` in name order, as a checked guard holds
+  # the names it was checked under (`keyVocab`'s `declared`, a list), so a declaration name rides as
+  # data, never as an attribute of the carried value.
+  evidenceRecord = prelude.mapAttrsToList (name: law: { inherit name law; });
+  # A cnf's top-level declarations and their evidence, from `evaluated`, the aspect submodule's options
+  # (read lazily). Where no module can declare an option (no `aspectModules`, schema extension or facet
+  # module), the declarations are the submodule's own construction, read without evaluating a submodule:
+  # the keySemantics options (`keyedOptionsOf`) beside the six structural names, whose records are the
+  # submodule's and are read only where a list meets one; the only other declaration there is the merged
+  # payload's `includes` and `meta`, present where `metaModules` is not empty (`aspectSubmoduleAt`). Where
+  # a module can declare one, they are the evaluated options, and each lists its declarations. A position
+  # (`aspectTypeOver`) and a guard vocabulary (`carrierLawOf`) read them by this one construction.
+  declarationsOf =
+    cnf: evaluated:
     let
       keyed = keyedOptionsOf cnf;
-      evaluated = (aspectSubmodule cnf).getSubOptions [ ];
+      modular = cnf.aspectModules != [ ] || cnf.schemaDefs != null || keyed.facetModules != [ ];
       declared =
-        if cnf.aspectModules != [ ] || cnf.schemaDefs != null || keyed.facetModules != [ ] then
+        if modular then
           prelude.filterAttrs (_: o: (o._type or null) == "option") evaluated
         else
           prelude.genAttrs nativeStructuralKeys (k: evaluated.${k})
@@ -1600,11 +1609,31 @@ let
           // keyed.channelOptions
           // keyed.facetOptions
           // keyed.refusedOptions;
-      evidence = carrierEvidence cnf declared;
     in
-    carrierLawFor declared evidence
+    {
+      inherit declared;
+      evidence = carrierEvidence cnf (
+        if modular then
+          soleDeclaration
+        else
+          k: _:
+          cnf.metaModules == [ ]
+          || !(builtins.elem k [
+            "includes"
+            "meta"
+          ])
+      ) declared;
+    };
+  # A guard vocabulary's carrier law over a CONSTRUCTED cnf: its declarations, its evidence, and `base`,
+  # the law a carrier whose position's evidence differs folds by.
+  carrierLawOf =
+    cnf:
+    let
+      d = declarationsOf cnf ((aspectSubmodule cnf).getSubOptions [ ]);
+    in
+    carrierLawFor d.declared d.evidence
     // {
-      inherit evidence;
+      evidence = evidenceRecord d.evidence;
       base = noDeclarations;
     };
 
