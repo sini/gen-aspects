@@ -1480,7 +1480,8 @@ let
   # The law is bound where a carrier is DISCHARGED, never on the carrier, which stays first-order
   # data: `carrierLawOf cnf` reads the declarations of the aspect submodule the cnf builds, once per
   # guard vocabulary (lib/guard.nix `guardVocabOf`), never per firing or per position: building the
-  # types costs more than the fold they run (den-hoag-15wnx). So a carrier discharged under a
+  # types costs more than the fold they run (den-hoag-15wnx), and evaluating a submodule for its
+  # declarations costs more again, so they are read from its construction where no module declares one. So a carrier discharged under a
   # vocabulary of another cnf folds by that cnf's declarations; `mkGuardVocab { }` declares the
   # structural options alone, and its other fields take the undeclared law.
   carrierLawFor =
@@ -1492,19 +1493,20 @@ let
           merge =
             loc: defs:
             let
-              # the option declared at the key, read only here: `declared` is the position's option tree
-              option = declared.${prelude.last loc} or null;
+              k = prelude.last loc;
             in
-            if option == null || (option._type or null) != "option" then
+            # `declared` holds option records only, and a record is read only where a list meets it
+            if !(declared ? ${k}) then
               self.fold self.strict loc defs
             else if !(builtins.all (d: builtins.isList d.value) defs) then
               noDeclarations.fold noDeclarations.strict loc defs
-            else if (option.type.functor.name or null) == "listOf" then
+            # the structural `includes` is a `listOf` at every aspect position, so its record is not read
+            else if k == "includes" || (declared.${k}.type.functor.name or null) == "listOf" then
               # a `listOf`'s list law: its elements are typed where the carrier's typed position types
               # them (`carrierSub`), never twice
               builtins.concatLists (map (d: d.value) defs)
             else
-              option.type.merge loc defs;
+              declared.${k}.type.merge loc defs;
         };
         lazy = merge.types.lazyAttrsOf self.field;
         strict = merge.types.attrsOf self.field;
@@ -1523,25 +1525,33 @@ let
     in
     self;
   noDeclarations = carrierLawFor { };
-  carrierLawOf = cnf: carrierLawFor ((aspectSubmodule cnf).getSubOptions [ ]);
+  # A guard vocabulary's carrier law over a CONSTRUCTED cnf. Where no module can declare an option (no
+  # `aspectModules`, schema extension or facet module), the declarations are the submodule's own
+  # construction read without evaluating a submodule: the keySemantics options (`keyedOptionsOf`) beside
+  # the six structural names, whose records are the submodule's and are read only where a list meets one.
+  # Where a module can declare one, they are the evaluated submodule's options.
+  carrierLawOf =
+    cnf:
+    let
+      keyed = keyedOptionsOf cnf;
+      evaluated = (aspectSubmodule cnf).getSubOptions [ ];
+    in
+    carrierLawFor (
+      if cnf.aspectModules != [ ] || cnf.schemaDefs != null || keyed.facetModules != [ ] then
+        prelude.filterAttrs (_: o: (o._type or null) == "option") evaluated
+      else
+        prelude.genAttrs nativeStructuralKeys (k: evaluated.${k})
+        // keyed.classOptions
+        // keyed.channelOptions
+        // keyed.facetOptions
+        // keyed.refusedOptions
+    );
 
-  # Aspect entry submodule.
-  # Structural options (name, includes, meta) give each aspect identity.
-  # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
-  #   class   → deferredModule option (lazy class content; inspectable before forcing)
-  #   channel → raw passthrough (mkOption { type = raw; default = null; }); value rides verbatim
-  #   facet   → the entry's own bare `option`, or a full `module` mounted via imports
-  # A key that isn't declared and isn't structural falls through the freeform fallback → a nested
-  # aspect (gets identity). No hardcoded class arm: a class is just a keySemantics category.
-  # cnf.aspectModules still extends with pipeline-specific options AND carries gen-schema's
-  # __defsModule seam (schema.nix injects config.schema.aspect.__defsModule into it), so it MUST
-  # stay live in `imports` even though per-key channels no longer ride it: it rides the unkeyed
-  # payload module beside the keyed core, so two declarations' lists concatenate.
-  # `nesting` is the aspect's own position (`aspectType`, above): its freeform slot's elements are
-  # anchored at this aspect's loc when it is declared, and inherit its anchor, `deep`, when it is not.
-  aspectSubmodule = cnf: aspectSubmoduleAt cnf null;
-  aspectSubmoduleAt =
-    cnf: nesting:
+  # The options an aspect submodule declares FROM cnf.keySemantics, one binding per cnf: the submodule
+  # (`aspectSubmoduleAt`) mounts them beside its six structural options, and a guard vocabulary reads
+  # them as its carriers' declarations (`carrierLawOf`), so both read one construction.
+  keyedOptionsOf =
+    cnf:
     let
       ks = cnf.keySemantics;
       # categoryOf e : "class" | "channel" | "facet" | null — the TOTAL classifier the option
@@ -1599,6 +1609,42 @@ let
       facetModules = prelude.mapAttrsToList (_: e: e.module) (
         prelude.filterAttrs (_: e: categoryOf e == "facet" && e ? module) ks
       );
+    in
+    {
+      inherit
+        refusedOptions
+        classOptions
+        channelOptions
+        facetOptions
+        facetModules
+        ;
+    };
+
+  # Aspect entry submodule.
+  # Structural options (name, includes, meta) give each aspect identity.
+  # Each DECLARED aspect key gets its option built generically FROM cnf.keySemantics:
+  #   class   → deferredModule option (lazy class content; inspectable before forcing)
+  #   channel → raw passthrough (mkOption { type = raw; default = null; }); value rides verbatim
+  #   facet   → the entry's own bare `option`, or a full `module` mounted via imports
+  # A key that isn't declared and isn't structural falls through the freeform fallback → a nested
+  # aspect (gets identity). No hardcoded class arm: a class is just a keySemantics category.
+  # cnf.aspectModules still extends with pipeline-specific options AND carries gen-schema's
+  # __defsModule seam (schema.nix injects config.schema.aspect.__defsModule into it), so it MUST
+  # stay live in `imports` even though per-key channels no longer ride it: it rides the unkeyed
+  # payload module beside the keyed core, so two declarations' lists concatenate.
+  # `nesting` is the aspect's own position (`aspectType`, above): its freeform slot's elements are
+  # anchored at this aspect's loc when it is declared, and inherit its anchor, `deep`, when it is not.
+  aspectSubmodule = cnf: aspectSubmoduleAt cnf null;
+  aspectSubmoduleAt =
+    cnf: nesting:
+    let
+      inherit (keyedOptionsOf cnf)
+        refusedOptions
+        classOptions
+        channelOptions
+        facetOptions
+        facetModules
+        ;
       # the keyed core's cnf: its identity content, the merged lists empty (lib/cnf.nix regimes)
       corePayload =
         (cnfFunctor "gen-aspects.aspectSubmodule" cnf (
