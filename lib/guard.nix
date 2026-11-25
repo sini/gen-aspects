@@ -86,7 +86,10 @@ let
           # load builds (a member-load cost), and not per firing (building the type cost more than the
           # fold it runs; den-hoag-15wnx, measured against nixpkgs' same fold). Every other survivor list
           # (a scalar or list body at a freeform field, a construction carrying `__mint`, a mix) takes
-          # `anything`, whose own arms are the same law; the test is `anything`'s own attrset-arm test.
+          # `anything`, whose own arms are the same law. The test is `anything`'s attrset-arm test WITHOUT
+          # the string-coercible arm `anything` decides first (den-hoag-z9m0f): survivors that are all
+          # derivations or `outPath`/`__toString` sets take `fields` here and are rebuilt per key, where
+          # `anything` carries one whole and refuses several or a mix.
           fields = merge.types.lazyAttrsOf merge.types.anything;
           contentLaw =
             loc: defs:
